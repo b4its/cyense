@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "frameworks": {
+    "django": {
+      "hints": ["csrftoken", "django"],
+      "id_pattern": "numeric",
+      "strategy": "increment around baseline, expect 404 page for missing ids"
+    },
+    "laravel": {
+      "hints": ["laravel_session", "xsrf-token"],
+      "id_pattern": "numeric or uuid",
+      "strategy": "try increment and uuid shapes"
+    },
+    "rails": {
+      "hints": ["_session_id", "x-request-id", "rails"],
+      "id_pattern": "numeric",
+      "strategy": "increment around baseline"
+    },
+    "flask": {
+      "hints": ["werkzeug", "flask"],
+      "id_pattern": "numeric",
+      "strategy": "increment around baseline"
+    },
+    "express": {
+      "hints": ["x-powered-by: express"],
+      "id_pattern": "unknown",
+      "strategy": "use provided wordlist first"
+    }
+  },
+  "memory": {}
+}
