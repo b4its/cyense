@@ -61,12 +61,13 @@ class ProberAgent(BaseAgent):
         self.wordlist_path = wordlist_path or WORDLIST_PATH
 
     async def run(self, ctx: dict[str, Any]) -> AgentResult:
-        profile = TargetProfile(**ctx["profile"])
+        profile = TargetProfile.from_dict(ctx["profile"])
         headers: dict[str, str] = ctx.get("headers", {}) or {}
         cookies: dict[str, str] = ctx.get("cookies", {}) or {}
         method: str = ctx.get("method", "GET")
         probe_max: int = int(ctx.get("probe_max", 50))
         requested_ids: list[str] | None = ctx.get("probe_ids")
+        baseline_body: str = ctx.get("baseline_body", "")
 
         # recall previous knowledge about this host (Brain memory capability)
         known_valid: list[str] = []
@@ -82,7 +83,7 @@ class ProberAgent(BaseAgent):
         )
         self.trajectory.step("candidates_built", {"count": len(candidates)})
 
-        baseline_body = profile.baseline_body
+        baseline_body = baseline_body or profile.baseline_body
         hits: list[ProbeHit] = []
         valid_ids: list[str] = []
 
@@ -127,7 +128,21 @@ class ProberAgent(BaseAgent):
             self.brain.remember_valid_ids(profile.host, valid_ids)
 
         data = {
+            # external-safe view (redacted headers, no body)
             "hits": [h.to_dict() for h in hits],
+            # internal view for the verifier: same hits with response bodies
+            "hits_internal": [
+                {
+                    "probe_id": h.probe_id,
+                    "url": h.url,
+                    "status": h.status,
+                    "similarity": h.similarity,
+                    "classification": h.classification,
+                    "body": h.body,
+                    "headers": h.headers,
+                }
+                for h in hits
+            ],
             "valid_ids": sorted(set(valid_ids)),
             "candidates_fired": len(fired),
         }

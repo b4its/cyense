@@ -57,6 +57,26 @@ class TargetProfile:
             "strategy": self.strategy,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TargetProfile":
+        """Rebuild from a to_dict() payload (ignores derived summary keys)."""
+        known = {
+            "url_template",
+            "host",
+            "placeholders",
+            "framework",
+            "server",
+            "content_type",
+            "baseline_status",
+            "baseline_body",
+            "strategy",
+        }
+        # `baseline_body` is intentionally NOT persisted (may be large); a
+        # profile rebuilt from a report keeps comparison fields empty.
+        payload = {k: v for k, v in data.items() if k in known}
+        payload.pop("baseline_body", None)
+        return cls(**payload)
+
 
 class ReconAgent(BaseAgent):
     name = "recon"
@@ -118,7 +138,11 @@ class ReconAgent(BaseAgent):
             profile.strategy = self.brain.strategy_for(fingerprint)
             self.trajectory.step("brain_strategy", profile.strategy)
 
-        return AgentResult(agent=self.name, ok=True, data={"profile": profile.to_dict()})
+        data = {"profile": profile.to_dict()}
+        # internal-only: baseline body for downstream verification (never
+        # logged or reported; response bodies are target-owned data)
+        data["baseline_body"] = profile.baseline_body
+        return AgentResult(agent=self.name, ok=True, data=data)
 
     # -- helpers -------------------------------------------------------------
 

@@ -87,6 +87,7 @@ class Orchestrator:
         # stage 2 — probe
         probe_ctx = dict(base_ctx)
         probe_ctx["profile"] = recon_result.data["profile"]
+        probe_ctx["baseline_body"] = recon_result.data.get("baseline_body", "")
         if isinstance(base_ctx["probe_ids"], list):
             probe_ctx["probe_ids"] = base_ctx["probe_ids"]
         else:
@@ -98,7 +99,8 @@ class Orchestrator:
         # stage 3 — verify
         verify_ctx = dict(base_ctx)
         verify_ctx["profile"] = recon_result.data["profile"]
-        verify_ctx["hits"] = probe_result.data["hits"]
+        verify_ctx["baseline_body"] = recon_result.data.get("baseline_body", "")
+        verify_ctx["hits_internal"] = probe_result.data.get("hits_internal", [])
         verify_result = await verifier(verify_ctx)
 
         # stage 4 — report

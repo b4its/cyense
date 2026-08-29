@@ -133,6 +133,10 @@ def analyze_python_file(path: Any, source: str, scan_id: str) -> list[Finding]:
         guarded = _function_has_auth_guard(func)
         path_str = str(path)
 
+        # track locals assigned from request data (for CY006 indirection)
+        _REQUEST_ASSIGNED_VARS.clear()
+        _REQUEST_ASSIGNED_VARS.update(_request_assigned_vars(func))
+
         # ---- call shape extraction -----------------------------------------
         call_src = ast.unparse(call) if hasattr(ast, "unparse") else ""
 
@@ -193,57 +197,106 @@ def analyze_python_file(path: Any, source: str, scan_id: str) -> list[Finding]:
                 )
             )
 
-    # CY003: flask route with <int:id> + unscoped query
+    # CY003: flask route with <int:id> + unscoped query using the route param
     for func in ast.walk(tree):
         if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for dec in func.decorator_list:
             src = ast.unparse(dec) if hasattr(ast, "unparse") else ""
-            if "route" in src and "<int:" in src:
-                if not _function_has_auth_guard(func):
-                    for sub in ast.walk(func):
-                        if isinstance(sub, ast.Call) and (
-                            _matches_orm_get(sub) or _matches_filter_first(sub)
-                        ):
-                            if not _has_ownership(sub):
-                                findings.append(
-                                    _finding(
-                                        scan_id, "CY003", Severity.HIGH, str(path), sub,
-                                        "Flask route uses <int:id> with unscoped query",
-                                        f"Route `{src}` passes `<int:id>` straight into "
-                                        f"`{ast.unparse(sub)}` without ownership check.",
-                                        "Fetch within a user-scoped query, e.g. "
-                                        "Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).",
-                                    )
-                                )
-                            break
+            if "route" not in src or "<int:" not in src:
+                continue
+            if _function_has_auth_guard(func):
+                continue
+            params = {a.arg for a in func.args.args}
+            for sub in ast.walk(func):
+                if not isinstance(sub, ast.Call):
+                    continue
+                if not _is_orm_lookup(sub):
+                    continue
+                if not _uses_client_controlled_id(sub, params):
+                    continue
+                if _has_ownership(sub):
+                    continue
+                findings.append(
+                    _finding(
+                        scan_id, "CY003", Severity.HIGH, str(path), sub,
+                        "Flask route uses <int:id> with unscoped query",
+                        f"Route `{src}` passes `<int:id>` straight into "
+                        f"`{ast.unparse(sub)}` without ownership check.",
+                        "Fetch within a user-scoped query, e.g. "
+                        "Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).",
+                    )
+                )
+                break
 
     # CY004: FastAPI path param -> DB query directly
     for func in ast.walk(tree):
         if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
+        if _function_has_auth_guard(func):
+            continue
         params = {
             a.arg for a in list(func.args.args) + list(func.args.kwonlyargs)
         }
         for sub in ast.walk(func):
-            if isinstance(sub, ast.Call) and _matches_orm_get(sub):
-                kw_names = {k.arg for k in sub.keywords if k.arg}
-                if params & kw_names and not _has_ownership(sub) and not _function_has_auth_guard(func):
-                    findings.append(
-                        _finding(
-                            scan_id, "CY004", Severity.HIGH, str(path), sub,
-                            "FastAPI path parameter used in unscoped DB lookup",
-                            f"`{ast.unparse(sub)}` queries with the path parameter "
-                            "directly; FastAPI does not authorize object access.",
-                            "Scope the query by the authenticated user id or add a "
-                            "dependency-based authorization check.",
-                        )
-                    )
+            if not isinstance(sub, ast.Call):
+                continue
+            if not _is_orm_lookup(sub):
+                continue
+            if not _uses_client_controlled_id(sub, params):
+                continue
+            if _has_ownership(sub):
+                continue
+            findings.append(
+                _finding(
+                    scan_id, "CY004", Severity.HIGH, str(path), sub,
+                    "FastAPI path parameter used in unscoped DB lookup",
+                    f"`{ast.unparse(sub)}` queries with the path parameter "
+                    "directly; FastAPI does not authorize object access.",
+                    "Scope the query by the authenticated user id or add a "
+                    "dependency-based authorization check.",
+                )
+            )
 
     return findings
 
 
 # -- call-shape matchers -----------------------------------------------------
+
+def _is_orm_lookup(call: ast.Call) -> bool:
+    """Any ORM-style object fetch: .objects.get/filter, get_object_or_404."""
+    src = ast.unparse(call) if hasattr(ast, "unparse") else ""
+    if ".objects.get(" in src or ".objects.filter(" in src:
+        return True
+    if isinstance(call.func, ast.Name) and call.func.id == "get_object_or_404":
+        return True
+    return False
+
+
+def _uses_client_controlled_id(call: ast.Call, params: set[str]) -> bool:
+    """True if a lookup kw/arg references a route/path parameter or request data."""
+    if _has_request_kw(call):
+        return True
+    for kw in call.keywords:
+        if isinstance(kw.value, ast.Name) and kw.value.id in params:
+            return True
+    for arg in call.args:
+        if isinstance(arg, ast.Name) and arg.id in params:
+            return True
+    return False
+
+
+def _request_assigned_vars(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    """Local names assigned from request.* data (e.g. name = request.GET['n'])."""
+    names: set[str] = set()
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Assign):
+            continue
+        if _mentions_request(node.value):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+    return names
 
 def _matches_orm_get(call: ast.Call) -> bool:
     src = ast.unparse(call) if hasattr(ast, "unparse") else ""
@@ -253,8 +306,25 @@ def _matches_orm_get(call: ast.Call) -> bool:
 
 
 def _matches_filter_first(call: ast.Call) -> bool:
+    """Match ``Model.objects.filter(id=request...).first()`` chains.
+
+    The request keyword lives on the inner ``filter(...)`` call, so check
+    both the outer call and its argument sub-calls.
+    """
     src = ast.unparse(call) if hasattr(ast, "unparse") else ""
-    return ".objects.filter(" in src and ".first()" in src and _has_request_kw(call)
+    if ".objects.filter(" not in src or ".first()" not in src:
+        return False
+    candidates: list[ast.Call] = [call]
+    for arg in call.args:
+        if isinstance(arg, ast.Call):
+            candidates.append(arg)
+    for kw in call.keywords:
+        if isinstance(kw.value, ast.Call):
+            candidates.append(kw.value)
+    # walk one level into attribute chains (a.b.filter(...).first())
+    if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Call):
+        candidates.append(call.func.value)
+    return any(_has_request_kw(c) for c in candidates)
 
 
 def _matches_get_object_or_404(call: ast.Call) -> bool:
@@ -264,12 +334,27 @@ def _matches_get_object_or_404(call: ast.Call) -> bool:
 
 
 def _matches_open_request_param(call: ast.Call) -> bool:
+    """open() whose path is an f-string/template referencing a local variable
+    that was assigned from request data, or directly mentions request."""
     if not (isinstance(call.func, ast.Name) and call.func.id == "open"):
         return False
     if not call.args:
         return False
-    src = ast.unparse(call.args[0]) if hasattr(ast, "unparse") else ""
-    return "request" in src or "{" in src and "}" in src and "request" in src
+    path_node = call.args[0]
+
+    # direct mention: open(f"/x/{request.GET['n']}")
+    if _mentions_request(path_node):
+        return True
+
+    # indirection: name = request.GET['x']; open(f"/uploads/{name}")
+    for sub in ast.walk(path_node):
+        if isinstance(sub, ast.Name) and sub.id in _REQUEST_ASSIGNED_VARS:
+            return True
+    return False
+
+
+# populated per-function during analysis (see analyze_python_file)
+_REQUEST_ASSIGNED_VARS: set[str] = set()
 
 
 def _has_request_kw(call: ast.Call) -> bool:

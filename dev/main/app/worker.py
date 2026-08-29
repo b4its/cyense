@@ -101,7 +101,11 @@ class ScanWorker:
 
     @staticmethod
     def _program_report(scan_id: str, result: dict[str, Any], started: float) -> dict[str, Any]:
-        findings = result["findings"]
+        finding_models = result["findings"]
+        findings = [
+            f.model_dump(mode="json") if hasattr(f, "model_dump") else f
+            for f in finding_models
+        ]
         summary = {
             "critical": sum(1 for f in findings if f["severity"] == "critical"),
             "high": sum(1 for f in findings if f["severity"] == "high"),

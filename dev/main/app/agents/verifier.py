@@ -29,15 +29,17 @@ class VerifierAgent(BaseAgent):
     name = "verifier"
 
     async def run(self, ctx: dict[str, Any]) -> AgentResult:
-        profile = TargetProfile(**ctx["profile"])
-        hits = [ProbeHit(**h) if isinstance(h, dict) else h for h in ctx.get("hits", [])]
+        profile = TargetProfile.from_dict(ctx["profile"])
+        baseline_body: str = ctx.get("baseline_body", "")
+        hits = [ProbeHit(**h) for h in ctx.get("hits_internal", [])
+                if isinstance(h, dict)]
         headers: dict[str, str] = ctx.get("headers", {}) or {}
         cookies: dict[str, str] = ctx.get("cookies", {}) or {}
         control_id: str = str(ctx.get("control_id", "99999999"))
         threshold: float = float(ctx.get("similarity_threshold", 0.85))
         retries: int = int(ctx.get("verify_retries", 2))
 
-        baseline_pii = extract_pii(profile.baseline_body)
+        baseline_pii = extract_pii(baseline_body)
 
         async with HttpClient(
             timeout=ctx.get("timeout", 10.0),
@@ -58,8 +60,19 @@ class VerifierAgent(BaseAgent):
             verified: list[dict[str, Any]] = []
             for hit in hits:
                 verdict = await self._verify_one(
-                    client, profile, hit, baseline_pii, threshold, retries
+                    client, profile, hit, baseline_pii, baseline_body, threshold, retries
                 )
+                verdict["verification"]["control_id_blocked"] = control_blocked
+                # step 4 verdict: generic-200 endpoints swallow every id →
+                # nothing distinguishes a foreign object from a placeholder
+                # page → reject everything (PRD §4.1 classification table).
+                if not control_blocked and not verdict["verification"]["pii_matches"]:
+                    verdict["severity"] = None
+                    verdict["confidence"] = 0.1
+                    verdict["verification"]["notes"] = (
+                        "generic-200: control id also returned 200 without PII "
+                        "evidence; cannot confirm cross-account object access"
+                    )
                 verified.append(verdict)
                 self.trajectory.step(
                     "verified_candidate",
@@ -83,6 +96,7 @@ class VerifierAgent(BaseAgent):
         profile: TargetProfile,
         hit: ProbeHit,
         baseline_pii: list[str],
+        baseline_body: str,
         threshold: float,
         retries: int,
     ) -> dict[str, Any]:
@@ -90,7 +104,7 @@ class VerifierAgent(BaseAgent):
         evidence_headers = redact_headers(hit.headers)
 
         # step 1: similarity (recomputed on fresh copy for accuracy)
-        sim = similarity(hit.body, profile.baseline_body) if profile.baseline_body else None
+        sim = similarity(hit.body, baseline_body) if baseline_body else None
 
         # step 2: cross-account PII
         pii = extract_pii(hit.body)
