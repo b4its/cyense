@@ -6,4 +6,6 @@ __pycache__/
 .ruff_cache/
 reports/
 dev/main/reports/
+brain/
+dev/main/brain/
 .venv/
