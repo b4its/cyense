@@ -1,0 +1,103 @@
+"""httpx async client with rate limiting and retries (PRD v2.0 §5.2).
+
+Read-only discipline: the client only issues GET/HEAD (PRD §2.2 non-goals:
+no auto-exploit that mutates data).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass, field
+
+import httpx
+
+from app.utils.logger import get_logger
+from app.utils.redact import redact_headers
+
+log = get_logger("http")
+
+
+@dataclass
+class Response:
+    status: int
+    headers: dict[str, str]
+    body: str
+    elapsed_ms: int
+    url: str
+
+    @property
+    def blocked(self) -> bool:
+        return self.status in (401, 403) or 300 <= self.status < 400
+
+
+@dataclass
+class HttpClient:
+    timeout: float = 10.0
+    rate_limit: int = 50
+    max_concurrency: int = 10
+    headers: dict[str, str] = field(default_factory=dict)
+    cookies: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+        self._sem = asyncio.Semaphore(self.max_concurrency)
+        self._min_interval = 1.0 / max(self.rate_limit, 1)
+        self._last_request = 0.0
+
+    async def __aenter__(self) -> "HttpClient":
+        self._client = httpx.AsyncClient(
+            timeout=self.timeout,
+            headers=self.headers,
+            cookies=self.cookies,
+            follow_redirects=False,
+        )
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def _pace(self) -> None:
+        now = time.monotonic()
+        wait = self._last_request + self._min_interval - now
+        if wait > 0:
+            await asyncio.sleep(wait)
+        self._last_request = time.monotonic()
+
+    async def request(self, method: str, url: str) -> Response:
+        """Issue a read-only request. Non GET/HEAD methods are rejected."""
+        method = method.upper()
+        if method not in ("GET", "HEAD"):
+            raise ValueError(f"method {method} not allowed (read-only probing)")
+        if self._client is None:
+            raise RuntimeError("client not started; use 'async with'")
+        async with self._sem:
+            await self._pace()
+            start = time.monotonic()
+            try:
+                resp = await self._client.request(method, url)
+            except httpx.HTTPError as exc:
+                log.warning("request failed %s: %s", redact_headers({"u": url})["u"], exc)
+                return Response(
+                    status=0,
+                    headers={},
+                    body="",
+                    elapsed_ms=int((time.monotonic() - start) * 1000),
+                    url=url,
+                )
+            body = "" if method == "HEAD" else resp.text
+            return Response(
+                status=resp.status_code,
+                headers={k.lower(): v for k, v in resp.headers.items()},
+                body=body,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                url=str(resp.url),
+            )
+
+    async def get(self, url: str) -> Response:
+        return await self.request("GET", url)
+
+    async def head(self, url: str) -> Response:
+        return await self.request("HEAD", url)
