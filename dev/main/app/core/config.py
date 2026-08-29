@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     request_timeout: float = 10.0
 
     # verification (PRD §4.1)
-    similarity_threshold: float = 0.85
+    similarity_threshold: float = 0.80
     verify_retries: int = 2
     control_id: str = "99999999"
 

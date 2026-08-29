@@ -109,7 +109,9 @@ class ProberAgent(BaseAgent):
                     fired.add(hit.probe_id)
                     if hit.classification in ("same-shape", "different-shape"):
                         valid_ids.append(hit.probe_id)
-                    if hit.classification == "same-shape":
+                    # forward every 200 candidate to the verifier; it decides
+                    # (control-id + similarity + PII) what is a real object
+                    if hit.status == 200:
                         hits.append(hit)
 
                 # adaptive step: expand around first new valid id (PRD stage 2)

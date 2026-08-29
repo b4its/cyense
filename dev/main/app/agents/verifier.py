@@ -14,6 +14,7 @@ This is the innovation that separates Cyense from naive scanners.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from app.agents.base import AgentResult, BaseAgent
@@ -63,15 +64,26 @@ class VerifierAgent(BaseAgent):
                     client, profile, hit, baseline_pii, baseline_body, threshold, retries
                 )
                 verdict["verification"]["control_id_blocked"] = control_blocked
-                # step 4 verdict: generic-200 endpoints swallow every id →
-                # nothing distinguishes a foreign object from a placeholder
-                # page → reject everything (PRD §4.1 classification table).
-                if not control_blocked and not verdict["verification"]["pii_matches"]:
+                # step 4 — control-id comparison (negative control):
+                # a candidate whose body is indistinguishable from the
+                # control-id response is a placeholder page, not an object.
+                sim_to_control = (
+                    similarity(hit.body, control.body) if not control_blocked and control.body else None
+                )
+                verdict["verification"]["similarity_to_control"] = (
+                    round(sim_to_control, 3) if sim_to_control is not None else None
+                )
+                generic = (
+                    not control_blocked
+                    and not verdict["verification"]["pii_matches"]
+                    and self._same_shape(hit.body, control.body)
+                )
+                if generic:
                     verdict["severity"] = None
                     verdict["confidence"] = 0.1
                     verdict["verification"]["notes"] = (
-                        "generic-200: control id also returned 200 without PII "
-                        "evidence; cannot confirm cross-account object access"
+                        "generic-200: response identical to control-id response "
+                        "without PII evidence; cannot confirm cross-account access"
                     )
                 verified.append(verdict)
                 self.trajectory.step(
@@ -162,15 +174,31 @@ class VerifierAgent(BaseAgent):
         """Map signals → (severity|None, confidence) per PRD §4.1 table."""
         if status != 200:
             return None, 0.0
-        if sim is not None and sim < threshold and not pii:
-            return None, 0.1  # different shape, no pii → weak
         if pii and (consistent is None or consistent):
             return "critical", 0.95
         if sim is not None and sim >= threshold:
             if consistent is False:
                 return "medium", 0.5  # flaky → manual review
             return "high", 0.8
-        return None, 0.0
+        # different shape from baseline but still a 200 object response:
+        # defer to the control-id comparison (caller rejects generic bodies).
+        return "medium", 0.5
+
+    @staticmethod
+    def _same_shape(candidate_body: str, control_body: str) -> bool:
+        """True if candidate response is structurally identical to the control.
+
+        JSON bodies are compared by key set (robust to value changes like the
+        echoed id); non-JSON bodies fall back to text similarity.
+        """
+        try:
+            cand = json.loads(candidate_body)
+            ctrl = json.loads(control_body)
+        except (json.JSONDecodeError, TypeError):
+            return similarity(candidate_body, control_body) >= 0.8
+        if isinstance(cand, dict) and isinstance(ctrl, dict):
+            return set(cand.keys()) == set(ctrl.keys())
+        return similarity(candidate_body, control_body) >= 0.8
 
     @staticmethod
     def _render(profile: TargetProfile, value: str) -> str:
