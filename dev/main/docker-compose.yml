@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .
+    image: cyense-api:2.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./reports:/app/reports
+      - ../brain:/app/brain
+      - ../target:/workspace:ro
+    environment:
+      - CYENSE_LOG_LEVEL=INFO
+      - CYENSE_MAX_CONCURRENCY=10
+      - CYENSE_RATE_LIMIT=50
+      - CYENSE_REQUEST_TIMEOUT=10
+      - CYENSE_REPORTS_DIR=/app/reports
+      - CYENSE_BRAIN_DIR=/app/brain
+      - CYENSE_WORKSPACE_DIR=/workspace
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  vulnerable-app:
+    build:
+      context: ./tests/fixtures
+      dockerfile: lab_Dockerfile
+    image: cyense-lab:2.0.0
+    profiles: ["lab"]
+    ports:
+      - "8080:8080"
