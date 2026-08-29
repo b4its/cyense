@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # enums
@@ -32,13 +33,22 @@ class ScanStatus(str, Enum):
 
 class LinkScanRequest(BaseModel):
     mode: Literal["link"]
-    url: HttpUrl
+    # str instead of HttpUrl: pydantic's HttpUrl percent-encodes `{ID}`
+    # placeholders (%7BID%7D) which would break placeholder detection.
+    url: str
     headers: dict[str, str] = {}
     cookies: dict[str, str] = {}
     baseline_id: str | None = None
     probe_ids: list[str] | Literal["auto"] = "auto"
     method: Literal["GET", "HEAD"] = "GET"
     i_have_permission: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        if not re.match(r"^https?://\S+$", value):
+            raise ValueError("url must be a valid http(s) URL")
+        return value
 
     @model_validator(mode="after")
     def _permission_gate(self) -> "LinkScanRequest":

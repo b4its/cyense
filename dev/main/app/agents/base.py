@@ -82,6 +82,7 @@ class BaseAgent:
         except Exception as exc:  # keep the pipeline alive, record the failure
             self.log.error("agent %s failed: %s", self.name, exc)
             self.trajectory.step("error", {"error": str(exc)})
+            self.trajectory.save()
             return AgentResult(
                 agent=self.name,
                 ok=False,
@@ -90,4 +91,5 @@ class BaseAgent:
             )
         result.duration_ms = int((time.monotonic() - start) * 1000)
         self.trajectory.step("end", {"ok": result.ok, "ms": result.duration_ms})
+        self.trajectory.save()  # deliverable #4: trajectory log per agent
         return result
