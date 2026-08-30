@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Literal
+from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
-class FixStatus(str, Enum):
+class FixStatus(StrEnum):
     PROPOSED = "proposed"
     APPLIED = "applied"
     VERIFIED = "verified"
@@ -17,7 +17,7 @@ class FixStatus(str, Enum):
     MANUAL_REQUIRED = "manual_required"
 
 
-class FixRisk(str, Enum):
+class FixRisk(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -32,7 +32,7 @@ class PatchVerification(BaseModel):
 
 class FixProposal(BaseModel):
     """Single patch proposal per temuan (PRD §3.2)."""
-    
+
     fix_id: str
     session_id: str
     scan_id: str
@@ -48,19 +48,19 @@ class FixProposal(BaseModel):
     backup_path: str | None = None
     verification: PatchVerification | None = None
     notes: str = ""
-    
+
     def is_verified(self) -> bool:
         return self.verification is not None and self.verification.original_resolved
 
 
 class FixSession(BaseModel):
     """Container for a batch of fix proposals."""
-    
+
     session_id: str
     scan_id: str
     created_at: str = ""
     status: str = "proposed"  # active|completed|cancelled
-    
+
     @staticmethod
     def generate_session_id() -> str:
         import uuid

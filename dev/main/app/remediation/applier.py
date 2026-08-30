@@ -15,29 +15,29 @@ from pathlib import Path
 
 def is_same_origin(target_path: str, source_root: Path) -> tuple[bool, str]:
     """Validate bahwa target_path berada di dalam source_root (same-origin).
-    
+
     Returns (is_valid, error_message).
-    
+
     Security: mencegah path traversal / anti-writable-outside-source-root.
     """
     try:
         # Resolve to absolute path
         target = Path(target_path).resolve()
         root_resolved = source_root.resolve()
-        
+
         # Check containment
         if not target.is_relative_to(root_resolved):
             return False, f"Path outside source root: {target} not under {root_resolved}"
-        
+
         # Reject symlinks that escape source root
         for parent in target.parents:
             if parent.is_symlink():
                 real_parent = parent.resolve()
                 if not real_parent.is_relative_to(root_resolved):
                     return False, "Symlink escapes source root"
-        
+
         return True, ""
-    
+
     except Exception as exc:
         return False, f"Validation error: {exc}"
 
@@ -64,38 +64,37 @@ def apply_patch(
     is_valid, error = is_same_origin(str(file_path), source_root)
     if not is_valid:
         return False, error, None
-    
+
     # Create backup
     backup = create_backup(file_path)
     if not backup:
         return False, "Failed to create backup", None
-    
+
     # Parse unified diff and apply line substitutions
     lines = file_path.read_text().split("\n")
-    
+
     # Simple approach: find and replace matching lines
     # This assumes diff format has "- old" and "+ new" markers
-    
+
     patched_lines = []
-    skip_until_next_hunk = False
-    
-    for i, line in enumerate(lines):
+
+    for line in lines:
         # Remove trailing whitespace for comparison
         original_clean = line.rstrip()
-        
+
         # Handle removal
         if line.startswith("- ") and not line.startswith("---"):
             if original_clean == line.lstrip("- ")[1:].rstrip():
                 continue  # Skip removed line
-        
+
         # Handle addition
         elif line.startswith("+ ") and not line.startswith("+++"):
             patched_lines.append(line.lstrip("+ ").rstrip())
         else:
             patched_lines.append(line)
-    
+
     patched_content = "\n".join(patched_lines)
-    
+
     # Write patched file
     try:
         file_path.write_text(patched_content)
@@ -113,7 +112,7 @@ def revert_patch(
     """Revert to backup state."""
     if not backup_path or not backup_path.exists():
         return False
-    
+
     try:
         backup_content = backup_path.read_bytes()
         file_path.write_bytes(backup_content)
@@ -146,17 +145,17 @@ async def verify_after_apply(
     # Check size limit
     if file_path.stat().st_size > max_file_kb * 1024:
         return {"patch_id": patch_id, "verified": False, "reason": "File too large"}
-    
+
     # Parse AST first (syntax check)
     try:
         import ast
         source = file_path.read_text()
-        tree = ast.parse(source)
+        ast.parse(source)  # syntax gate — raise before re-scan
     except SyntaxError:
         return {"patch_id": patch_id, "verified": False, "reason": "Syntax error introduced"}
     except OSError:
         return {"patch_id": patch_id, "verified": False, "reason": "Cannot read file"}
-    
+
     # Run targeted re-scan
     try:
         result = program_engine_runner.run_program_scan(
@@ -164,12 +163,12 @@ async def verify_after_apply(
             source_dir=file_path.parent,
             scan_id=f"verify-{patch_id}",
         )
-        
+
         findings_count = result.get("total_findings", 0)
         new_findings = result.get("new_findings", 0)
-        
+
         verified = findings_count == 0
-        
+
         return {
             "patch_id": patch_id,
             "verified": verified,
