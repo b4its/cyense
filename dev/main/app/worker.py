@@ -13,6 +13,7 @@ from typing import Any
 from app.core.models import ScanJob
 from app.core.store import JobStore
 from app.engines.link_engine import run_link_scan
+from app.engines.github_engine import GithubEngine
 from app.engines.program_engine import resolve_source_dir, run_program_scan
 from app.utils.logger import get_logger
 
@@ -70,16 +71,44 @@ class ScanWorker:
 
         await self.store.mark_running(scan_id, stage="recon")
         started = time.monotonic()
-
+        
+        # Helper callback for all modes
         async def on_stage(stage: str) -> None:
-            progress = {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0)
+            progress = {"resolve": 25, "fetch": 50, "analyze": 75, "report": 90}.get(
+                stage if isinstance(stage, str) else str(stage),
+                {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0),
+            )
             await self.store.mark_stage(scan_id, stage, progress)
-
+        
+        # GitHub-specific notification handler
+        async def _notify_github(scan_id: str, on_stage: Any) -> None:
+            """Github mode uses resolve/fetch/analyze/report stages."""
+            await on_stage("resolve")
+            await on_stage("fetch")
+            await on_stage("analyze")
+            await on_stage("report")
+        
         try:
             if request_dict["mode"] == "link":
                 report = await run_link_scan(
                     scan_id=scan_id,
                     request_dict=request_dict,
+                    brain=self.brain,
+                    reports_dir=str(self.settings.reports_dir),
+                    settings=self.settings,
+                    on_stage=on_stage,
+                )
+            elif request_dict["mode"] == "github":
+                # github-scan mode (PRD feature)
+                await self._notify_github(scan_id, on_stage)
+                report = await run_github_scan(
+                    scan_id=scan_id,
+                    repo_url=request_dict["repo_url"],
+                    ref=request_dict.get("ref"),
+                    subdir=request_dict.get("subdir"),
+                    lang=request_dict.get("lang", "auto"),
+                    token=request_dict.get("github_token"),
+                    force=request_dict.get("force", False),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -146,6 +175,38 @@ class ScanWorker:
             (out_dir / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
         except OSError:
             log.warning("failed to dump report for %s", scan_id)
+
+
+async def run_github_scan(
+    scan_id: str,
+    repo_url: str,
+    ref: str | None = None,
+    subdir: str | None = None,
+    lang: str = "auto",
+    token: str | None = None,
+    force: bool = False,
+    brain: Any = None,
+    reports_dir: str = "",
+    settings: Any = None,
+    on_stage: Any = None,
+) -> dict[str, Any]:
+    """Run github-scan mode pipeline."""
+    engine = GithubEngine(
+        scan_id=scan_id,
+        brain=brain,
+        reports_dir=reports_dir,
+        settings=settings,
+        on_stage=on_stage,
+    )
+    return await engine.run(
+        repo_url=repo_url,
+        ref=ref,
+        subdir=subdir,
+        lang=lang,
+        force=force,
+        token=token,
+    )
+
 
     # -- access --------------------------------------------------------------------
 
