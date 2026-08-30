@@ -1,64 +1,73 @@
-# PRD Fitur — Audit IDOR dari Link GitHub Repository (mode `github`)
+# PRD Fitur — Audit IDOR & XSS dari Link GitHub Repository (mode `github`)
 
-> **Feature PRD** | Versi 1.0 | Status: draft untuk direview
+> **Feature PRD** | Versi 2.0 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` (v2.0) — dokumen ini adalah *addendum*, bukan pengganti
-> **Nama fitur:** GitHub Repository Audit
-> **Lokasi implementasi (rencana):** `dev/main/app/agents/fetcher.py`, `dev/main/app/engines/github_engine.py`
+> **Nama fitur:** GitHub Repository Audit — **jalur input utama Cyense**
+> **Lokasi implementasi:** `dev/main/app/agents/fetcher.py`, `dev/main/app/engines/github_engine.py`
+> **Fitur turunan yang bekerja di atas jalur ini:** `xss-detection.md`, `idor-remediation.md`, `xss-remediation.md`
 
 ---
 
 ## 0. Ringkasan Satu Paragraf
 
-Menambahkan mode scan ketiga — **`github`** — yang menerima **link repository GitHub**
-(mis. `https://github.com/owner/repo` atau link tree/PR), mengunduh source code-nya
-ke dalam sandbox read-only, lalu menjalankan **engine analisis statis yang sudah ada**
-(rules CY001–CY010) untuk menemukan pola rawan IDOR. Nilai utamanya: developer dan
-maintainer bisa mengaudit repo (milik sendiri maupun repo yang diberi akses) **tanpa
-clone manual** — cukup tempel link, dapat laporan berisi `file:line` + remediasi,
-dengan bukti commit SHA agar reprodusibel.
+**Fokus utama Cyense adalah mengaudit repository GitHub milik orang lain** — bukan
+memindai kode di ekosistem lokal sendiri. Alurnya satu langkah: user **menempel
+link repository GitHub** (mis. `https://github.com/owner/repo` atau varian
+`/tree/{ref}`), sistem **fetch** source code-nya (tarball codeload) ke dalam
+sandbox read-only, lalu **mencari kerentanan IDOR (CY001–CY010) dan XSS
+(XS001–XS008)** pada kode hasil fetch tersebut. Nilai utamanya: auditor,
+maintainer, dan pemilik program bounty dapat memeriksa kualitas keamanan repo
+publik (atau repo privat yang diberi akses) **tanpa clone manual** — cukup tempel
+link, dapat laporan berisi `file:line` untuk dua kelas kerentanan sekaligus,
+dengan bukti commit SHA agar reprodusibel. Mode `program` (source lokal
+mounted/sample) tetap tersedia sebagai jalur sekunder untuk testing/demo, tetapi
+bukan fokus produk.
 
 ---
 
 ## 1. Latar Belakang & Masalah
 
-### 1.1 Kondisi saat ini
+### 1.1 Kondisi sebelum fitur ini
 
-Mode `program` saat ini hanya menerima source dari:
+Satu-satunya jalur input static analysis adalah mode `program`:
 
 | `source_type` | Sumber | Keterbatasan |
 |---------------|--------|--------------|
 | `mounted` | folder di volume `/workspace` (read-only) | user harus clone + mount manual |
 | `sample` | fixture bawaan | hanya untuk demo/test |
 
-Artinya untuk mengaudit repo GitHub, alur user hari ini adalah:
+Artinya untuk mengaudit **repo GitHub orang lain**, alur user adalah:
 
 ```
-clone repo → taruh di dev/target/ (atau mount) → submit scan mode=program
+clone repo orang lain → taruh di dev/target/ (atau mount) → submit scan mode=program
 ```
 
-Itu **4 langkah manual** yang menghadang persona Developer (Budi) dan maintainer
-yang "cuma mau cek cepat": PRD induk §3.1 menargetkan zero-friction, tetapi
-friction justru paling terasa di langkah pertama (clone + mount).
+Itu **4 langkah manual** yang menghadang persona Developer (Budi), Pentester
+(Andi), dan maintainer yang "cuma mau cek cepat": PRD induk §3.1 menargetkan
+zero-friction, tetapi friction justru paling terasa di langkah pertama (clone +
+mount) — dan untuk repo orang lain, clone menambah beban disk lokal tanpa nilai.
 
 ### 1.2 Mengapa ini cocok untuk Cyense
 
-- **Reuse penuh engine yang sudah teruji**: rules CY001–CY006 (AST Python) dan
-  CY007–CY010 (regex JS/PHP) tidak perlu diubah — yang baru hanyalah *cara source
-  diperoleh*. Ini memperkecil risiko regresi.
-- **Menambah satu kapabilitas agent yang purposeful**: agent baru **🐙 Fetcher**
-  menambah kapabilitas *better tools* (akses sumber code jarak jauh + sandbox),
+- **Reuse penuh engine yang sudah teruji**: rules IDOR CY001–CY006 (AST Python),
+  CY007–CY010 (regex JS/PHP), dan XSS XS001–XS008 tidak perlu diubah — yang baru
+  hanyalah *cara source diperoleh*. Ini memperkecil risiko regresi.
+- **Menambah satu kapabilitas agent yang purposeful**: agent **🐙 Fetcher**
+  menambah kapabilitas *better tools* (akses source code jarak jauh + sandbox),
   konsisten dengan definisi agent di PRD induk (tool + memory + verification).
-- **Skenario nyata bug bounty**: banyak program bounty menyertakan repo open-source
-  milik vendor sebagai scope; auditor ingin memetakan endpoint rawan IDOR dari kode
-  sebelum dynamic testing.
+- **Skenario nyata bug bounty**: banyak program bounty menyertakan repo
+  open-source milik vendor sebagai scope; auditor memetakan endpoint rawan IDOR
+  dan sink XSS dari kode **sebelum** dynamic testing — cukup dengan link.
 
 ### 1.3 Persona & user story yang dilayani
 
-| Persona (PRD induk §3.1) | Story baru |
-|--------------------------|-----------|
-| **Developer** (Budi) | "Saya tempel link repo saya sendiri, pilih branch, dan dapat daftar endpoint rawan IDOR sebelum deploy — tanpa clone manual." |
-| **Pentester** (Andi) | "Saya dapat izin mengaudit repo privat klien; saya beri token read-only baca-saja, Cyense mengunduh, menganalisis, dan **token tidak pernah muncul di laporan/log**." |
-| **Maintainer OSS** | "Saya ingin tahu apakah PR terakhir menambah pola IDOR di repo publik saya — cukup link, tanpa setup apa pun." |
+| Persona (PRD induk §3.1) | Story |
+|--------------------------|-------|
+| **Pentester** (Andi) | "Saya menerima scope bounty berupa repo open-source vendor; saya tempel linknya, pilih branch, dan dapat peta titik rawan IDOR + XSS — tanpa clone manual." |
+| **Pentester / auditor kontrak** | "Saya dapat izin mengaudit repo privat klien; saya beri token read-only baca-saja, Cyense mengunduh, menganalisis, dan **token tidak pernah muncul di laporan/log**." |
+| **Researcher keamanan** | "Saya ingin membandingkan postur keamanan beberapa repo publik sebelum memilih target review — tiap repo cukup satu link." |
+| **Developer** (Budi) | "Saya mengaudit repo dependensi/library pihak ketiga yang saya pakai — tempel link, lihat apakah pola IDOR/XSS ada di dalamnya." |
+| **Maintainer OSS** | "Saya ingin tahu apakah PR terakhir menambah pola IDOR/XSS di repo publik saya — cukup link, tanpa setup apa pun." |
 
 ---
 
@@ -66,7 +75,8 @@ friction justru paling terasa di langkah pertama (clone + mount).
 
 ### 2.1 Goals (MVP)
 
-1. `POST /api/v1/scans` menerima `mode: "github"` dengan field `repo_url`.
+1. `POST /api/v1/scans` menerima `mode: "github"` dengan field `repo_url` —
+   **jalur utama input sistem**.
 2. Agent 🐙 **Fetcher**: resolve `owner/repo@ref` → unduh **tarball** (codeload) →
    ekstrak ke sandbox → serahkan ke `program_engine` yang sudah ada.
 3. **Guard keamanan** wajib (lihat §6): host allowlist, size cap, file cap,
@@ -74,8 +84,11 @@ friction justru paling terasa di langkah pertama (clone + mount).
 4. Laporan memuat metadata repo (`owner`, `repo`, `ref`, `commit_sha`) dan
    `location` berupa `path:line` **relatif terhadap root repo**.
 5. Deteksi bahasa otomatis (py/js/php) dengan override manual.
-6. Trajectory JSON untuk agent Fetcher (deliverable #4 kompetisi tetap jalan).
-7. Brain memory: catat `repo@sha` yang sudah discan → scan ulang pada SHA sama
+6. **Cakupan kerentanan: IDOR (CY001–CY010) dan XSS (XS001–XS008)** — kedua
+   kelas aturan berjalan pada kode hasil fetch dalam satu scan (lihat
+   `xss-detection.md`; parameter `scan_types` default `["idor","xss"]`).
+7. Trajectory JSON untuk agent Fetcher (deliverable #4 kompetisi tetap jalan).
+8. Brain memory: catat `repo@sha` yang sudah discan → scan ulang pada SHA sama
    bisa dilewati (dengan flag `force`).
 
 ### 2.2 Non-Goals (MVP)
@@ -86,8 +99,10 @@ friction justru paling terasa di langkah pertama (clone + mount).
   menghindari dependensi git binary di dalam container.
 - ❌ Host selain GitHub (GitLab/Bitbucket) — arsitektur `fetcher` dibuat pluggable,
   tapi MVP hanya github.com.
-- ❌ Deteksi kerentanan selain IDOR (tetap patuh non-goal PRD induk).
-- ❌ Menulis ke repo (comment PR, issue, fix) — Cyense **selalu read-only**.
+- ❌ Kerentanan selain IDOR dan XSS (SQLi/RCE dsb. tetap non-goal PRD induk).
+- ❌ Menulis ke repo (comment PR, issue, fix) — Cyense **selalu read-only**
+  terhadap GitHub; remediasi bekerja pada salinan sandbox dan mengembalikan
+  diff kepada user (lihat `idor-remediation.md`/`xss-remediation.md`).
 
 ---
 
@@ -146,9 +161,12 @@ POST /scans (mode=github)
 ┌──────────────────────────────────────────────────────────────────┐
 │ STAGE 3 — ANALYZE (reuse program_engine — TANPA perubahan rule)   │
 │  • Deteksi bahasa: hitung ekstensi → dominan (atau override)     │
-│  • run_program_scan(lang, source_dir=sandbox, scan_id)           │
+│  • run_program_scan(lang, source_dir=sandbox, scan_id,           │
+│        scan_types=["idor","xss"])                                │
+│      → pass IDOR: CY001–CY010 (python AST + js/php regex)        │
+│      → pass XSS:  XS001–XS008 (js/php/py regex + guards)         │
 │  • location dinormalisasi: path relatif root repo + ":line"      │
-│ Output: findings[] identik dengan mode program                   │
+│ Output: findings[] (IDOR + XSS) pada kode hasil fetch            │
 └──────────────┬───────────────────────────────────────────────────┘
                ▼
 ┌──────────────────────────────────────────────────────────────────┐
@@ -252,8 +270,25 @@ class RepoMeta(BaseModel):
 
 **Prinsip integrasi:** rules, report builder, store, state machine, redaction,
 dan trajectory infrastructure **tidak diubah**. Fitur ini menambah *source
-provider*, bukan analisis baru — sehingga parity hasil dengan mode `program`
-dapat diuji secara eksak (§8).
+provider* jarak jauh — jalur input utama sistem — sehingga parity hasil dengan
+jalur lokal (`program`) dapat diuji secara eksak (§8): kode yang sama harus
+menghasilkan temuan IDOR + XSS yang sama di mana pun asalnya.
+
+---
+
+## 5.1 Posisi Jalur Input (fokus produk)
+
+```
+                     ┌────────────────────────────────────────┐
+   JALUR UTAMA  ───► │ mode=github: link repo GitHub orang    │  ◄─ fokus
+   (fetch remote)    │ lain → fetch tarball → sandbox         │
+                     │ → analisis IDOR + XSS                  │
+                     └────────────────────────────────────────┘
+   JALUR SEKUNDER    mode=program: source lokal (mounted/sample)
+   (lokal/ekosistem  → analisis IDOR + XSS — dipakai untuk demo,
+    sendiri)          testing, dan parity; bukan fokus produk
+   JALUR DYNAMIC     mode=link: probing HTTP live (bukan static)
+```
 
 ---
 
@@ -292,14 +327,27 @@ Ekstraksi `tar.gz` dilakukan **streaming dengan akumulator guard**:
   (60 req/jam, cukup untuk 1 metadata call per scan).
 - Token **hanya** dikirim ke host allowlist §6.1.
 
-### 6.4 Etika & legal
+### 6.4 Etika & legal — mengaudit repo milik orang lain
 
-- Tetap dipintu `i_have_permission` (konsistensi UX + ground rule kompetisi).
-- Repo **publik**: analisis kode publik untuk keperluan audit keamanan adalah
-  use case yang sah; tetap didokumentasikan di README.
-- Repo **privat**: hanya bisa diakses jika pemilik token punya akses —
-  tanggung jawab pemilik token (dipertegas di README + response error).
-- Fetch read-only; Cyense tidak pernah menulis apa pun ke GitHub.
+Karena fokus utama Cyense adalah repo **milik orang lain**, etika adalah
+syarat produk, bukan catatan kaki:
+
+- Tetap dipintu `i_have_permission` (konsistensi UX + ground rule kompetisi
+  #4/#6); pesan error 422 menjelaskan bahwa hanya target berizin yang boleh.
+- **Repo publik orang lain**: analisis statis kode yang sudah publik untuk
+  keperluan riset/audit keamanan adalah use case yang sah (setara membaca kode
+  itu sendiri); Cyense tidak pernah mengeksekusi kode hasil fetch dan tidak
+  pernah melakukan probing aktif ke infrastruktur pemilik repo. Batas ini
+  ditegaskan di README dan di setiap laporan.
+- **Repo privat orang lain**: hanya bisa diakses jika token milik user sendiri
+  punya akses — Cyense tidak pernah minta/menyimpan kredensial pihak ketiga;
+  tanggung jawab kepatuhan ada pada pemilik token (ditegaskan di README +
+  response error).
+- **Scope undangan**: bila repo privat diberikan via kolaborator/token
+  fine-grained read-only, tetap disarankan dokumentasikan izin di luar sistem.
+- Fetch read-only; Cyense tidak pernah menulis apa pun ke GitHub (tidak ada
+  comment PR, issue, atau push) — ground rule #4 tetap terjaga.
+- Rate limit dipatuhi (§6.5) — menghormati layanan GitHub sebagai sumber data.
 
 ### 6.5 Rate limit & error paths (semua → FAILED dengan pesan jelas, tidak pernah crash)
 
@@ -398,6 +446,7 @@ Semua test **hermetik** — tidak memanggil github.com:
 | Versi | Perubahan |
 |-------|-----------|
 | 1.0 | Draft awal: mode `github`, agent Fetcher, sandbox guard, reuse program engine, parity test, brain cache same-sha |
+| 2.0 | **Reposisi sebagai jalur input UTAMA sistem**: fokus produk adalah fetch repo GitHub orang lain → cari IDOR **dan** XSS (XS001–XS008 ikut berjalan pada kode hasil fetch); mode program (ekosistem sendiri) diturunkan menjadi jalur sekunder untuk demo/testing; etika repo-orang-lain diperluas §6.4; contoh curl dan pipeline di-update |
 
 ---
 
