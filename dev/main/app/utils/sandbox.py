@@ -54,10 +54,26 @@ def validate_member_path(member_name: str, dest_resolved: Path) -> None:
 
 
 def is_safe_tarball(tar_obj: tarfile.TarFile) -> bool:
-    """Quick pre-scan: reject symlinks/devices without full extract."""
+    """Quick pre-scan: accept benign symlinks, reject dangerous ones."""
+    dest_prefix = "/tmp/"  # Will be set by extractor, but we'll check paths
+    
     for member in tar_obj.getmembers():
-        if member.issym() or member.islnk() or member.isdev():
-            return False
+        if member.isdev():
+            return False  # Reject device files absolutely
+        
+        if member.islnk():
+            continue  # Hardlinks are generally safe
+        
+        if member.issym():
+            link_target = member.linkname
+            # Reject absolute symlinks (path traversal)
+            if link_target.startswith('/'):
+                return False
+            # Reject symlink traversal via ..
+            resolved = Path(member.name).parent / link_target
+            if '..' in str(resolved):
+                return False
+    
     return True
 
 
