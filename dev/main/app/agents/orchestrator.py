@@ -119,6 +119,13 @@ class Orchestrator:
         # stage 4 — report
         await self._notify_stage("report")
         findings = self._build_findings(verify_result.data, headers, cookies)
+
+        # brain memory: only verified findings are worth remembering
+        # (probe-level 200s include generic-200 noise)
+        if findings:
+            host = recon_result.data["profile"].get("host", "")
+            verified_ids = [i["probe_id"] for i in verify_result.data.get("findings", [])]
+            self.brain.remember_valid_ids(host, verified_ids)
         findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], -f.confidence))
 
         summary = {

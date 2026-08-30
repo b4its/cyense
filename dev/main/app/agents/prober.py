@@ -126,9 +126,6 @@ class ProberAgent(BaseAgent):
                 self.trajectory.step("adaptive_expand", {"seed": seed, "count": len(expansion)})
                 probe_ids = expansion
 
-        if self.brain is not None and valid_ids:
-            self.brain.remember_valid_ids(profile.host, valid_ids)
-
         data = {
             # external-safe view (redacted headers, no body)
             "hits": [h.to_dict() for h in hits],
