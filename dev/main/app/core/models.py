@@ -8,10 +8,10 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Import GitHub models for union handling
 from .models_github import GithubScanRequest, RepoMeta  # noqa: F401
 
-# ---------------------------------------------------------------------------
-# enums
+
 
 
 class Severity(StrEnum):
@@ -117,7 +117,7 @@ class Finding(BaseModel):
 
 class ScanJob(BaseModel):
     scan_id: str
-    request: LinkScanRequest | ProgramScanRequest
+    request: LinkScanRequest | ProgramScanRequest | GithubScanRequest
     status: ScanStatus = ScanStatus.QUEUED
     stage: str | None = None  # recon | probe | verify | report
     progress: int = 0  # 0..100
