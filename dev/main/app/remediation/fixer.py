@@ -78,10 +78,13 @@ class FixerAgent(BaseAgent):
         self.brain = brain
         self.force = force
 
-    async def run(self, findings: list[Finding]) -> AgentResult:
+    async def run(
+        self, findings: list[Finding], session: FixSession | None = None
+    ) -> AgentResult:
         """Collect findings → generate FixProposal models → save to store."""
         _load_strategies()
-        session = self.store.create_session(self.scan_id)
+        if session is None:
+            session = self.store.create_session(self.scan_id)
         self.trajectory.step("session_created", {"session_id": session.session_id})
 
         proposals: list[FixProposal] = []

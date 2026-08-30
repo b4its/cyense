@@ -75,7 +75,7 @@ async def propose_fixes(
     )
 
     # Generate proposals
-    result = await agent.run(findings)
+    result = await agent.run(findings, session=session)
 
     return {
         "session_id": session.session_id,
