@@ -100,7 +100,7 @@ class ScanWorker:
                 )
             elif request_dict["mode"] == "github":
                 # github-scan mode (PRD feature)
-                await self._notify_github(scan_id, on_stage)
+                await _notify_github(scan_id, on_stage)
                 report = await run_github_scan(
                     scan_id=scan_id,
                     repo_url=request_dict["repo_url"],
@@ -222,19 +222,3 @@ async def run_github_scan(
         force=force,
         token=token,
     )
-
-
-    # -- access --------------------------------------------------------------------
-
-    def result(self, scan_id: str) -> dict[str, Any] | None:
-        return self._results.get(scan_id)
-
-    def discard(self, scan_id: str) -> None:
-        """Drop in-memory result and on-disk artifacts (PRD §4.3 DELETE)."""
-        self._results.pop(scan_id, None)
-        import shutil
-
-        try:
-            shutil.rmtree(self.settings.reports_dir / scan_id, ignore_errors=True)
-        except OSError:
-            log.warning("failed to remove artifacts for %s", scan_id)
