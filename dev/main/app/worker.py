@@ -140,8 +140,24 @@ class ScanWorker:
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
             raise
+    
+    def result(self, scan_id: str) -> dict[str, Any] | None:
+        """Get cached scan result by scan_id."""
+        return self._results.get(scan_id)
+    
+    def discard(self, scan_id: str) -> None:
+        """Drop in-memory result and on-disk artifacts (PRD §4.3 DELETE)."""
+        self._results.pop(scan_id, None)
+        import shutil
+        
+        try:
+            shutil.rmtree(self.settings.reports_dir / scan_id, ignore_errors=True)
+        except OSError:
+            log.warning("failed to remove artifacts for %s", scan_id)
+
 
     # -- helpers -----------------------------------------------------------------
+
 
     @staticmethod
     def _program_report(scan_id: str, result: dict[str, Any], started: float) -> dict[str, Any]:
