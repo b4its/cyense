@@ -80,7 +80,7 @@ class ProgramScanRequest(BaseModel):
         return self
 
 
-ScanRequest = LinkScanRequest | ProgramScanRequest
+ScanRequest = LinkScanRequest | ProgramScanRequest | GithubScanRequest
 
 
 # ---------------------------------------------------------------------------

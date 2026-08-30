@@ -153,10 +153,11 @@ async def test_github_mode_detects_idor_and_xss_from_fetched_repo(
 @pytest.mark.asyncio
 async def test_github_mode_rejects_non_github_host(github_client_patch):
     """SSRF guard: only github.com is accepted."""
+    import tempfile
+    from pathlib import Path
+
     from app.agents.brain import Brain
     from app.engines.github_engine import GithubEngine
-    from pathlib import Path
-    import tempfile
 
     class Settings:
         github_max_mb = 50
@@ -181,8 +182,9 @@ async def test_github_mode_rejects_non_github_host(github_client_patch):
 @pytest.mark.asyncio
 async def test_github_mode_permission_gate_on_request():
     """POST without i_have_permission returns 422."""
-    from app.core.models_github import GithubScanRequest
     from pydantic import ValidationError
+
+    from app.core.models_github import GithubScanRequest
 
     with pytest.raises(ValidationError):
         GithubScanRequest(mode="github", repo_url="https://github.com/a/b")
