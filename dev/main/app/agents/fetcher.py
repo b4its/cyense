@@ -69,7 +69,7 @@ class FetcherAgent(BaseAgent):
 
     async def run(self, ctx: dict[str, Any]) -> AgentResult:
         """Resolve→fetch→extract pipeline."""
-        self.trajectory.step("start", {"action": "resolve_repo"})
+        self.trajectory.step("resolve_repo")
 
         try:
             url = ctx["repo_url"]
