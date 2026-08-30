@@ -217,11 +217,8 @@ class ProberAgent(BaseAgent):
 
     @staticmethod
     def _baseline_id_hint(profile: TargetProfile) -> str:
-        # recon stores baseline id only implicitly; derive from template query
-        # or fall back to "1" (numeric default). Callers should prefer
-        # explicit probe_ids for determinism.
-        if profile.baseline_status:
-            return "1"
+        # Without an explicit baseline the numeric default is "1"; callers
+        # should prefer explicit probe_ids for determinism.
         return "1"
 
     def _numeric_neighbours(self, seed: str, spread: int) -> list[str]:
@@ -231,8 +228,8 @@ class ProberAgent(BaseAgent):
             return self._load_wordlist()
         out = []
         for delta in range(1, spread + 1):
-            out.append(str(base + delta))
-            out.append(str(base - delta))
+            out.append(base + delta)
+            out.append(base - delta)
         return [str(n) for n in out if n >= 0]
 
     def _load_wordlist(self) -> list[str]:
