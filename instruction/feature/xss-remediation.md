@@ -1,9 +1,10 @@
 # PRD Fitur — Remediasi XSS (Auto-Fix untuk Semua Jenis Temuan XSS)
 
-> **Feature PRD** | Versi 1.0 | Status: draft untuk direview
+> **Feature PRD** | Versi 2.0 | Status: draft untuk direview
 > **Parent PRD:** `instruction/PRD.md` (v2.0) — addendum, bukan pengganti
 > **Fitur terkait:**
-> · `instruction/feature/idor-remediation.md` — infrastruktur 🔧 Fixer (store, applier, verify loop, API `/fixes`) yang **dipakai ulang**; PRD itu mencantumkan remediasi XSS sebagai backlog — dokumen ini mengisinya
+> · `instruction/feature/github-repo-audit.md` — **jalur input utama**: temuan XSS yang diremediasi umumnya berasal dari **fetch repo GitHub orang lain** (sandbox `reports/<scan_id>/src/`)
+> · `instruction/feature/idor-remediation.md` — infrastruktur 🔧 Fixer (store, applier, verify loop, API `/fixes`) yang **dipakai ulang**; prinsip sama persis
 > · `instruction/feature/xss-detection.md` — sumber temuan `XS001`–`XS008`
 > **Nama fitur:** XSS Remediation (semua jenis XSS)
 > **Lokasi implementasi (rencana):** `dev/main/app/remediation/xss_strategies.py`, registrasi di `fixer.py`
@@ -13,14 +14,18 @@
 ## 0. Ringkasan Satu Paragraf
 
 Memperluas agent 🔧 **Fixer** agar mampu mengusulkan perbaikan deterministik untuk
-**seluruh delapan jenis temuan XSS** (`XS001`–`XS008`) yang dihasilkan mode
-`program`/`github`. Prinsipnya identik dengan remediasi IDOR: *dry-run by default*
-(proposal diff, tanpa tulis), *patch hanya via approval* (`confirm: true`), *backup
-wajib + revert*, dan *verify loop* — setelah patch, file di-scan ulang oleh
-`xss_rules` dan status `verified` hanya diberikan bila temuan rule tersebut **hilang**
-dari hasil re-scan. Tidak ada LLM; setiap strategi adalah transformasi kode
-yang shape-nya diketahui; bila konteks tidak memadai (mis. `eval` yang butuh keputusan
-semantik), sistem menandai `manual_required` dengan saran — **tidak pernah menebak**.
+**seluruh delapan jenis temuan XSS** (`XS001`–`XS008`) yang dihasilkan dari audit
+**repo GitHub orang lain** (jalur utama — kode hasil fetch ke sandbox) maupun
+kode lokal (jalur sekunder `program`). Prinsipnya identik dengan remediasi IDOR:
+*dry-run by default* (proposal diff, tanpa tulis), *patch hanya via approval*
+(`confirm: true`), *backup wajib + revert*, dan *verify loop* — setelah patch,
+file di-scan ulang oleh `xss_rules` dan status `verified` hanya diberikan bila
+temuan rule tersebut **hilang** dari hasil re-scan. Tidak ada LLM; setiap strategi
+adalah transformasi kode yang shape-nya diketahui; bila konteks tidak memadai
+(mis. `eval` yang butuh keputusan semantik), sistem menandai `manual_required`
+dengan saran — **tidak pernah menebak**. Karena source umumnya milik orang lain,
+patch hanya terjadi pada **salinan sandbox** dan output user adalah **diff
+siap-paste** — repo pemilik tidak pernah disentuh.
 
 ---
 
@@ -63,9 +68,10 @@ aman yang **deterministik**:
 
 | Persona | Story |
 |---------|-------|
-| **Developer** (Budi) | "Repo saya punya 15 temuan XSS; saya tinjau diff, approve 12 yang mekanis, dan re-scan membuktikan keduabelas hilang; 3 sisanya (`eval`) saya tangani manual dengan sarannya." |
-| **Maintainer OSS** | "CI menandai temuan XSS baru dan melampirkan proposal patch siap-review sebagai output dry-run." |
-| **Pentester** (Andi) | "Laporan klien tidak berhenti di 'rentan' — saya sertakan diff perbaikan yang bisa tim mereka terapkan." |
+| **Maintainer OSS** | "CI menandai temuan XSS baru di repo publik saya dan melampirkan proposal patch siap-review sebagai output dry-run." |
+| **Pentester** (Andi) | "Audit repo vendor untuk bounty tidak berhenti di 'rentan' — saya lampirkan diff perbaikan yang bisa tim mereka terapkan ke repo milik mereka." |
+| **Researcher keamanan** | "Saya mengaudit repo orang lain; proposal patch menjadi rekomendasi konkret yang saya sampaikan ke pemilik repo via issue/report — Cyense sendiri tidak pernah menulis ke repo mereka." |
+| **Developer** (Budi) | "Kode hasil audit dependensi pihak ketiga punya 15 temuan XSS; saya tinjau diff, terapkan yang relevan di fork milik saya." |
 
 ---
 
@@ -125,6 +131,9 @@ aman yang **deterministik**:
 ### 4.1 Alur (identik dengan remediasi IDOR — hanya sumber temuan beda)
 
 ```
+POST /api/v1/scans  mode=github (link repo orang lain)   ← jalur utama
+     │  🐙 Fetcher: tarball → sandbox reports/<id>/src/
+     ▼
 POST /api/v1/scans/{scan_id}/fixes            ← tidak berubah; temuan XS***
      │                                          ikut masuk batch proposal
      ▼
@@ -133,8 +142,15 @@ FixerAgent: untuk tiap Finding rule XS***:
      → FixProposal{diff, before/after, risk, strategy, notes}
 GET  /fixes/{session}/diff                    ← unified diff gabungan (JS+PHP+PY)
 POST /fixes/{session}/apply {confirm:true}    ← backup → patch → VERIFY
+     │                                          (patch hanya di salinan sandbox)
 POST /fixes/{session}/revert                  ← byte-identik restore
 ```
+
+> **Penting (source milik orang lain):** pada kode hasil fetch, `/apply`
+> memodifikasi **salinan sandbox milik sistem**, bukan repo pemilik. Output
+> akhir untuk user adalah diff (`/diff`) yang bisa dipakai untuk issue report,
+> PR di fork sendiri, atau disampaikan ke pemilik repo — Cyense tidak pernah
+> menulis ke GitHub.
 
 ### 4.2 Verify loop XSS (§2.1.3)
 
@@ -189,12 +205,17 @@ mode scan manapun, report builder (badge `FIXED` sudah generic).
 
 ---
 
-## 6. Keamanan & Etika (diwarisi penuh)
+## 6. Keamanan & Etika (diwarisi penuh + konteks repo orang lain)
 
 1. Dry-run default; tulis hanya `/apply` + `confirm: true` (422 tanpa itu).
 2. Backup wajib sebelum tulis; revert selalu tersedia & teruji.
-3. Same-origin: hanya file di bawah source root scan (reuse `is_same_origin`).
-4. Tanpa auto-commit git / tanpa push; diff siap-paste ke PR.
+3. Same-origin: hanya file di bawah source root scan (reuse `is_same_origin`)
+   — untuk jalur utama, root = sandbox `reports/<id>/src/` (salinan hasil
+   fetch), bukan folder sistem manapun di luar scan itu.
+4. **Repo pemilik tidak pernah disentuh**: tanpa auto-commit, tanpa push,
+   tanpa penulisan ke GitHub. Pada kode hasil fetch, hasil akhir user adalah
+   diff siap-paste ke PR/issue — kontribusi balik tetap lewat kanal resmi
+   pemilik repo.
 5. Klaim `verified` hanya setelah re-scan membuktikan (bukti, bukan asumsi).
 6. Kredensial tetap redacted di semua output/trajectory.
 
@@ -272,6 +293,7 @@ mode scan manapun, report builder (badge `FIXED` sudah generic).
 | Versi | Perubahan |
 |-------|-----------|
 | 1.0 | Draft awal: strategi remediasi untuk semua jenis XSS (XS001–XS008), 6 auto-patch + 2 manual_required berkualitas, verify loop berbasis re-scan xss_rules, integrasi penuh infrastruktur Fixer IDOR |
+| 2.0 | **Penyelarasan fokus produk**: sumber temuan utama = repo GitHub orang lain hasil fetch (sandbox); persona diperluas (researcher/dependensi); ditegaskan patch hanya pada salinan sandbox dan output user berupa diff — repo pemilik tidak pernah disentuh |
 
 ---
 
