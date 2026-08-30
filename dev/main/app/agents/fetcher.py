@@ -140,6 +140,10 @@ class FetcherAgent(BaseAgent):
                 {"size_kb": size_kb, "default_branch": meta_data.get("default_branch")},
             )
 
+            # Resolve the exact commit sha for the ref (reproducibility evidence)
+            commit_sha = await client.resolve_commit_sha(owner, repo, ref)
+            self.trajectory.step("sha_resolved", {"sha": commit_sha[:8] or "unknown"})
+
             # Download tarball
             self.trajectory.step("download_tarball")
             tar_content, etag = await client.download_tarball(owner, repo, ref)
@@ -175,7 +179,7 @@ class FetcherAgent(BaseAgent):
                 "owner": owner,
                 "repo": repo,
                 "ref": ref,
-                "sha": meta_data.get("sha", ""),  # may be in metadata response
+                "sha": commit_sha or meta_data.get("sha", ""),
                 "size_bytes": bytes_total,
                 "files_count": len(files_kept),
                 "tree_root": str(sandbox_path),

@@ -118,3 +118,18 @@ class GithubClient:
         """Get default branch name from metadata."""
         meta = await self.get_repo_metadata(owner, repo)
         return meta.get("default_branch", "main")
+
+    async def resolve_commit_sha(
+        self, owner: str, repo: str, ref: str
+    ) -> str:
+        """Resolve a ref (branch/tag) to its commit sha (PRD §8.1 evidence)."""
+        url = f"https://api.github.com/repos/{owner}/{repo}/commits/{ref}"
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            headers = {"Accept": "application/vnd.github+json", "User-Agent": "cyense"}
+            if self._token:
+                headers["Authorization"] = f"Bearer {self._token}"
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                return ""
+            return str(resp.json().get("sha", ""))
