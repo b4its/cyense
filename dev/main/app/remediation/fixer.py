@@ -12,7 +12,7 @@ from typing import Any
 
 from app.agents.base import AgentResult, BaseAgent
 from app.core.models import Finding
-from app.remediation.models import FixProposal, FixRisk
+from app.remediation.models import FixProposal, FixRisk, FixSession
 from app.remediation.store import FixStore
 
 
