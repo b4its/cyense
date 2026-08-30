@@ -401,6 +401,6 @@ Semua test **hermetik** — tidak memanggil github.com:
 
 ---
 
-*Addendum ini tunduk pada PRD induk (`instruction/PRD.md`). KonflikAturan: PRD
+*Addendum ini tunduk pada PRD induk (`instruction/PRD.md`). Aturan konflik: PRD
 induk menang untuk hal yang tidak diatur di sini (etika, redaction, state machine,
 gaya commit).*
