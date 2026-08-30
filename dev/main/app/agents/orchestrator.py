@@ -48,11 +48,20 @@ class Orchestrator:
         brain: Brain,
         reports_dir: str,
         settings: Any,
+        on_stage: Any | None = None,
     ) -> None:
         self.scan_id = scan_id
         self.brain = brain
         self.reports_dir = reports_dir
         self.settings = settings
+        self._on_stage = on_stage  # async callable(stage: str) for progress
+
+    async def _notify_stage(self, stage: str) -> None:
+        if self._on_stage is not None:
+            try:
+                await self._on_stage(stage)
+            except Exception:  # progress reporting must never fail a scan
+                pass
 
     async def run_link(self, request_dict: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
@@ -81,11 +90,13 @@ class Orchestrator:
         }
 
         # stage 1 — recon
+        await self._notify_stage("recon")
         recon_result = await recon(base_ctx)
         if not recon_result.ok:
             return self._empty_report(recon_result.error, started)
 
         # stage 2 — probe
+        await self._notify_stage("probe")
         probe_ctx = dict(base_ctx)
         probe_ctx["profile"] = recon_result.data["profile"]
         probe_ctx["baseline_body"] = recon_result.data.get("baseline_body", "")
@@ -98,6 +109,7 @@ class Orchestrator:
             return self._empty_report(probe_result.error, started)
 
         # stage 3 — verify
+        await self._notify_stage("verify")
         verify_ctx = dict(base_ctx)
         verify_ctx["profile"] = recon_result.data["profile"]
         verify_ctx["baseline_body"] = recon_result.data.get("baseline_body", "")
@@ -105,6 +117,7 @@ class Orchestrator:
         verify_result = await verifier(verify_ctx)
 
         # stage 4 — report
+        await self._notify_stage("report")
         findings = self._build_findings(verify_result.data, headers, cookies)
         findings.sort(key=lambda f: (SEVERITY_ORDER[f.severity], -f.confidence))
 

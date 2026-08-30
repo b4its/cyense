@@ -70,6 +70,11 @@ class ScanWorker:
 
         await self.store.mark_running(scan_id, stage="recon")
         started = time.monotonic()
+
+        async def on_stage(stage: str) -> None:
+            progress = {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0)
+            await self.store.mark_stage(scan_id, stage, progress)
+
         try:
             if request_dict["mode"] == "link":
                 report = await run_link_scan(
@@ -78,6 +83,7 @@ class ScanWorker:
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
+                    on_stage=on_stage,
                 )
             else:
                 await self.store.mark_stage(scan_id, "recon", 25)
