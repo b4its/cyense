@@ -2,7 +2,7 @@
 # Install dependencies first: pip install -r requirements.txt pytest ruff
 # Usage: make up / make down / make logs / make test / make shell
 
-.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes
+.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli demo
 
 SHELL := /bin/bash
 APP_DIR := dev/main
@@ -28,6 +28,8 @@ help: ## Show all available targets
 	@echo "  make lint       Run ruff linter"
 	@echo "  make ruff-fix   Apply auto-fixes with ruff"
 	@echo "  make format     Format code with ruff"
+	@echo "  make cli        Jalankan cyense CLI (lokal, service harus sudah up)"
+	@echo "  make demo       Demo end-to-end: scan repo contoh + lihat laporan"
 	@echo ""
 
 up: build ## Start services (API + lab app profile)
@@ -83,3 +85,21 @@ check-python: ## Verify Python version >=3.11
 
 start-venv: ## Activate virtualenv
 	@echo "Activate manually: source $(VENV)/bin/activate"
+
+# ---------------------------------------------------------------------------
+# CLI targets (cli-experience.md §5.2)
+
+cli: ## Jalankan cyense CLI (service harus sudah `make up`)
+	cd $(APP_DIR) && $(PYTHON) -m app.cli.main $(ARGS)
+
+demo: ## Demo end-to-end: scan repo publik contoh (butuh internet + service up)
+	@echo "=== Cyense CLI Demo ==="
+	@echo "Memastikan service berjalan..."
+	@cd $(APP_DIR) && $(PYTHON) -m app.cli.main version || (echo "ERROR: jalankan 'make up' dulu" && exit 1)
+	@echo ""
+	@echo "Scan repo contoh (octocat/Hello-World)..."
+	cd $(APP_DIR) && $(PYTHON) -m app.cli.main scan github \
+		https://github.com/octocat/Hello-World \
+		--i-have-permission \
+		--lang auto \
+		--fail-on none

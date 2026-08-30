@@ -84,6 +84,10 @@ class GithubEngine:
         # Extract sandbox path for analyzer
         tree_root = result.data["tree_root"]
 
+        # Stage fetch — dipanggil di sini agar progress 25→50→75 tidak melompat
+        # (cli-experience.md §5.2 perbaikan bug R2; worker.py:77 sudah memetakan fetch:50)
+        await self._notify("fetch")
+
         # Stage 2: ANALYZE (reuse program engine)
         await self._notify("analyze")
         analysis_result = run_program_scan(
