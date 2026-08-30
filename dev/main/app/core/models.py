@@ -92,6 +92,7 @@ class VerificationEvidence(BaseModel):
     pii_matches: list[str] = []
     retry_consistent: bool | None = None
     control_id_blocked: bool | None = None
+    similarity_to_control: float | None = None
     notes: str = ""
 
 

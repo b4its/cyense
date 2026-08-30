@@ -41,6 +41,14 @@ def test_redact_url_credentials() -> None:
     assert "hunter2" not in redact_url_credentials("http://user:hunter2@lab/invoice/1")
 
 
+def test_verification_evidence_keeps_control_similarity() -> None:
+    """similarity_to_control must survive the report round-trip (bug #5)."""
+    from app.core.models import VerificationEvidence
+
+    ev = VerificationEvidence(similarity_to_control=0.42)
+    assert ev.model_dump(mode="json")["similarity_to_control"] == 0.42
+
+
 def test_brain_strategy_and_memory(tmp_path) -> None:
     brain = Brain(tmp_path / "brain")
     strategy = brain.strategy_for({"framework": "flask", "server": "werkzeug"})
