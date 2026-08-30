@@ -11,7 +11,7 @@ from typing import Any
 
 from app.agents.brain import Brain
 from app.agents.fetcher import FetcherAgent
-from app.engines.program_engine import run_program_scan, RepoMeta  # reuse analysis
+from app.engines.program_engine import run_program_scan
 
 
 class GithubEngine:
