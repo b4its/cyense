@@ -13,11 +13,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-from app.agents.base import AgentResult, BaseAgent, TrajectoryRecorder
+from app.agents.base import AgentResult, BaseAgent
 from app.core.config import settings
-from app.utils.github_client import GithubClient, ALLOWED_HOSTS
+from app.utils.github_client import ALLOWED_HOSTS, GithubClient
 from app.utils.sandbox import SafeTarExtractor, sanitize_sandbox
-
 
 # Regex to parse common GitHub link formats (strictly balanced)
 # Matches: owner/repo, owner/repo/tree/ref, owner/repo/blob/ref/path
@@ -37,15 +36,15 @@ def parse_github_url(url: str) -> dict[str, str | None]:
     # Direct /owner/repo form
     if url.endswith(".git"):
         url = url[:-4]  # strip .git suffix
-    
+
     # Ensure valid format (owner/repo required)
     if not url.strip("/").count("/") >= 1:
         raise ValueError(f"invalid github url format: {url}")
-    
+
     match = GITHUB_URL_RE.match(url) or TREE_RE.match(url)
     if not match:
         raise ValueError(f"invalid github url format: {url}")
-    
+
     return {
         "owner": match.group("owner"),
         "repo": match.group("repo"),
@@ -56,9 +55,9 @@ def parse_github_url(url: str) -> dict[str, str | None]:
 
 class FetcherAgent(BaseAgent):
     """Fetch GitHub repository into secure sandbox."""
-    
+
     name = "fetcher"
-    
+
     def __init__(
         self,
         scan_id: str,
@@ -67,55 +66,53 @@ class FetcherAgent(BaseAgent):
     ):
         super().__init__(scan_id, reports_dir)
         self.brain = brain
-    
+
     async def run(self, ctx: dict[str, Any]) -> AgentResult:
         """Resolve→fetch→extract pipeline."""
         self.trajectory.step("start", {"action": "resolve_repo"})
-        
+
         try:
             url = ctx["repo_url"]
-            
+
             # Validate host first (SSRF guard)
             from urllib.parse import urlparse
             parsed = urlparse(url)
             if parsed.hostname not in ALLOWED_HOSTS:
                 raise ValueError(f"non-github host rejected ({parsed.hostname})")
-            
+
             # Parse URL components
             components = parse_github_url(url)
             owner = components["owner"]
             repo = components["repo"]
-            subdir = ctx.get("subdir")
-            
+
             self.trajectory.step(
                 "parse",
                 {"owner": owner, "repo": repo, "ref_hint": components["ref"]},
             )
-            
+
             # Initialize client with token (redacted internally)
             token = ctx.get("github_token")
             self.trajectory.step(
                 "token_check",
                 {"present": bool(token), "masked": self._mask_token(token)},
             )
-            
+
             client = GithubClient(
                 token=token,
                 timeout=settings.github_timeout,
             )
-            
+
             # Determine ref (user-provided or resolve from API)
             ref = ctx.get("ref")
             if not ref:
                 self.trajectory.step("api_resolve_ref")
                 default_branch = await client.resolve_default_branch(owner, repo)
                 ref = default_branch
-            
+
             self.trajectory.step("ref_resolved", {"ref": ref})
-            
+
             # Brain cache check (skip if already scanned at this sha)
             if not ctx.get("force", False) and self.brain:
-                cache_key = f"github.com/{owner}/{repo}"
                 cached_data = self.brain.get_repo_cache(owner, repo, ref, "")
                 if cached_data["hit"]:
                     self.trajectory.step("cache_hit", {"ref": ref})
@@ -127,51 +124,51 @@ class FetcherAgent(BaseAgent):
                         "owner": owner,
                         "repo": repo,
                     })
-            
+
             # Get metadata first (check size before downloading)
             self.trajectory.step("get_metadata")
             meta_data = await client.get_repo_metadata(owner, repo)
-            
+
             # Size guard before any download
             size_kb = meta_data.get("size", 0) * 1024
             max_bytes = settings.github_max_mb * 1024 * 1024
             if size_kb > max_bytes:
                 raise RuntimeError(f"repo too large ({size_kb:,} bytes > {max_bytes:,})")
-            
+
             self.trajectory.step(
                 "metadata_ok",
                 {"size_kb": size_kb, "default_branch": meta_data.get("default_branch")},
             )
-            
+
             # Download tarball
             self.trajectory.step("download_tarball")
             tar_content, etag = await client.download_tarball(owner, repo, ref)
-            
+
             self.trajectory.step("tarball_downloaded", {"bytes": len(tar_content)})
-            
+
             # Create sandbox directory
-            sandbox_path = Path(reports_dir) / scan_id / "src"
-            
+            sandbox_path = Path(self.reports_dir) / self.scan_id / "src"
+
             # Extract with guards
             extractor = SafeTarExtractor(
                 dest=sandbox_path,
                 max_bytes=max_bytes,
                 max_files=settings.github_max_files,
             )
-            
+
             try:
                 extractor.extract_stream(tar_content)
-            except Exception as e:
+            except Exception:
                 sanitize_sandbox(sandbox_path)
                 raise  # re-raise with cleanup
-                
+
             self.trajectory.step("extracted_ok", {"sandbox": str(sandbox_path)})
-            
+
             # Collect file stats
             files_kept = list(sandbox_path.rglob("*"))
             files_kept = [f for f in files_kept if f.is_file()]
             bytes_total = sum(f.stat().st_size for f in files_kept)
-            
+
             result = {
                 "ok": True,
                 "owner": owner,
@@ -183,15 +180,15 @@ class FetcherAgent(BaseAgent):
                 "tree_root": str(sandbox_path),
                 "cached": False,
             }
-            
+
             self.trajectory.step("complete", result)
             return AgentResult(agent=self.name, ok=True, data=result)
-            
+
         except Exception as exc:
             self.log.error("fetcher failed: %s", exc)
             self.trajectory.step("error", {"exception": str(exc)})
             return AgentResult(agent=self.name, ok=False, error=str(exc))
-    
+
     @staticmethod
     def _mask_token(token: str | None) -> str:
         """Mask token for trajectory logging."""

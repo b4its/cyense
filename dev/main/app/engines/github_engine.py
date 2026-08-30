@@ -16,7 +16,7 @@ from app.engines.program_engine import run_program_scan
 
 class GithubEngine:
     """Orchestrate github-scan pipeline with brain cache + trajectory."""
-    
+
     def __init__(
         self,
         scan_id: str,
@@ -30,7 +30,7 @@ class GithubEngine:
         self.reports_dir = reports_dir
         self.settings = settings
         self._on_stage = on_stage
-    
+
     async def _notify(self, stage: str) -> None:
         """Trigger progress callback if provided."""
         if self._on_stage is not None:
@@ -38,7 +38,7 @@ class GithubEngine:
                 await self._on_stage(stage)
             except Exception:  # never fail a scan on progress error
                 pass
-    
+
     async def run(
         self,
         repo_url: str,
@@ -50,7 +50,7 @@ class GithubEngine:
     ) -> dict[str, Any]:
         """Run full github scan pipeline."""
         started = time.monotonic()
-        
+
         # Stage 1: RESOLVE & FETCH
         await self._notify("resolve")
         fetcher = FetcherAgent(self.scan_id, self.reports_dir, brain=self.brain)
@@ -61,15 +61,15 @@ class GithubEngine:
             "github_token": token,
             "force": force,
         }
-        
+
         result = await fetcher(ctx)
         if not result.ok:
             return self._empty_report(f"resolve/fetch failed: {result.error}", started)
-        
+
         # Check cache hit response
         cached = result.data.get("cached", False)
         sha = result.data.get("sha", "")
-        
+
         if cached and sha:
             # Return from memory (caller provides stored report)
             meta = {
@@ -80,10 +80,10 @@ class GithubEngine:
                 "meta": {"repo": result.data},
             }
             return {"meta": meta, "summary": {}, "findings": [], "cached": True}
-        
+
         # Extract sandbox path for analyzer
         tree_root = result.data["tree_root"]
-        
+
         # Stage 2: ANALYZE (reuse program engine)
         await self._notify("analyze")
         analysis_result = run_program_scan(
@@ -91,12 +91,12 @@ class GithubEngine:
             source_dir=tree_root,
             scan_id=self.scan_id,
         )
-        
+
         findings = analysis_result["findings"]
-        
+
         # Stage 3: REPORT (merge metadata)
         await self._notify("report")
-        
+
         summary = {
             "total": len(findings),
             "critical": sum(1 for f in findings if f.get("severity") == "critical"),
@@ -106,7 +106,7 @@ class GithubEngine:
             "info": sum(1 for f in findings if f.get("severity") == "info"),
             "files_analyzed": analysis_result.get("files_scanned", len(findings)),
         }
-        
+
         meta = {
             "scan_id": self.scan_id,
             "mode": "github",
@@ -121,7 +121,7 @@ class GithubEngine:
                 "size_bytes": result.data.get("size_bytes", 0),
             },
         }
-        
+
         result_data = {
             "meta": meta,
             "summary": summary,
@@ -129,19 +129,18 @@ class GithubEngine:
                          for f in findings],
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
-        
+
         # Update brain memory after successful scan
         if self.brain and sha:
-            cache_key = f"github.com/{result.data['owner']}/{result.data['repo']}"
             self.brain.set_repo_scan_meta(
                 result.data["owner"],
                 result.data["repo"],
                 result.data.get("ref", ref),
                 sha,
             )
-        
+
         return result_data
-    
+
     @staticmethod
     def _empty_report(error: str, started: float) -> dict[str, Any]:
         """Return empty report structure for failures."""

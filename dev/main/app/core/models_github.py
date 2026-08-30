@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any, Literal
-
-from pydantic import BaseModel, Field, field_validator, model_validator
 from urllib.parse import urlparse
+
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class GithubScanRequest(BaseModel):
@@ -34,7 +33,7 @@ class GithubScanRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def _permission_gate(self) -> "GithubScanRequest":
+    def _permission_gate(self) -> GithubScanRequest:
         if not self.i_have_permission:
             raise ValueError(
                 "i_have_permission must be true: only scan repositories "

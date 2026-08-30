@@ -12,8 +12,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from .models_github import GithubScanRequest, RepoMeta  # noqa: F401
 
 
-
-
 class Severity(StrEnum):
     CRITICAL = "critical"
     HIGH = "high"

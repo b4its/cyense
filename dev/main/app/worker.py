@@ -12,8 +12,8 @@ from typing import Any
 
 from app.core.models import ScanJob
 from app.core.store import JobStore
-from app.engines.link_engine import run_link_scan
 from app.engines.github_engine import GithubEngine
+from app.engines.link_engine import run_link_scan
 from app.engines.program_engine import resolve_source_dir, run_program_scan
 from app.utils.logger import get_logger
 
@@ -71,7 +71,7 @@ class ScanWorker:
 
         await self.store.mark_running(scan_id, stage="recon")
         started = time.monotonic()
-        
+
         # Helper callback for all modes
         async def on_stage(stage: str) -> None:
             progress = {"resolve": 25, "fetch": 50, "analyze": 75, "report": 90}.get(
@@ -79,7 +79,7 @@ class ScanWorker:
                 {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0),
             )
             await self.store.mark_stage(scan_id, stage, progress)
-        
+
         # GitHub-specific notification handler
         async def _notify_github(scan_id: str, on_stage: Any) -> None:
             """Github mode uses resolve/fetch/analyze/report stages."""
@@ -87,7 +87,7 @@ class ScanWorker:
             await on_stage("fetch")
             await on_stage("analyze")
             await on_stage("report")
-        
+
         try:
             if request_dict["mode"] == "link":
                 report = await run_link_scan(
@@ -140,16 +140,16 @@ class ScanWorker:
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
             raise
-    
+
     def result(self, scan_id: str) -> dict[str, Any] | None:
         """Get cached scan result by scan_id."""
         return self._results.get(scan_id)
-    
+
     def discard(self, scan_id: str) -> None:
         """Drop in-memory result and on-disk artifacts (PRD §4.3 DELETE)."""
         self._results.pop(scan_id, None)
         import shutil
-        
+
         try:
             shutil.rmtree(self.settings.reports_dir / scan_id, ignore_errors=True)
         except OSError:
