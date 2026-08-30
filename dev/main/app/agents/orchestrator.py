@@ -58,6 +58,7 @@ class Orchestrator:
         started = time.monotonic()
         headers = request_dict.get("headers", {}) or {}
         cookies = request_dict.get("cookies", {}) or {}
+        self._method = request_dict.get("method", "GET")
 
         recon = ReconAgent(self.scan_id, self.reports_dir, brain=self.brain)
         prober = ProberAgent(self.scan_id, self.reports_dir, brain=self.brain)
@@ -139,8 +140,6 @@ class Orchestrator:
         findings: list[Finding] = []
         for i, item in enumerate(data.get("findings", []), start=1):
             verification = dict(item.get("verification", {}))
-            if self.settings.control_id and self._control_blocked_known(item):
-                pass
             finding = Finding(
                 finding_id=f"{self.scan_id}-L{i:03d}",
                 rule="IDOR-LINK",
@@ -153,7 +152,7 @@ class Orchestrator:
                 ),
                 evidence={
                     "request": {
-                        "method": "GET",
+                        "method": self._method,
                         "url": item["url"],
                         "headers": redact_headers(headers),
                         "cookies": redact_cookies(cookies),
@@ -169,11 +168,6 @@ class Orchestrator:
             )
             findings.append(finding)
         return findings
-
-    @staticmethod
-    def _control_blocked_known(item: dict[str, Any]) -> bool:
-        verification = item.get("verification", {})
-        return verification.get("control_id_blocked") is True
 
     @staticmethod
     def _path_of(url: str) -> str:
