@@ -9,6 +9,8 @@ GET/POST/POST /api/v1/fixes/{session_id}
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -69,7 +71,7 @@ async def propose_fixes(
 
 
 @router.get("/fixes/{session_id}")
-async def get_fixes(session_id: str, request: Request) -> dict[str, any]:
+async def get_fixes(session_id: str, request: Request) -> dict[str, Any]:
     """Get proposal list for a session."""
     session_store = request.app.state.fix_store
 

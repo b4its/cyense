@@ -322,13 +322,27 @@ def test_strategy_already_secured_returns_skipped():
     protected_code = b"""
 query = User.objects.get(id=id, user_id=request.user.id)
 """
+    import ast
 
     from app.remediation.python_strategies import generate_ownership_filter
 
-    result = generate_ownership_filter(None, protected_code.decode(), "request.user")
+    tree = ast.parse(protected_code.decode())
+    node = next(
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "get"
+    )
+    result = generate_ownership_filter(node, protected_code.decode(), "request.user")
 
-    # Should indicate already secured
-    assert "already" in result.notes.lower() or result.diff == "skipped"
+    # Should indicate already secured (english or indonesian note, or skipped diff)
+    note_lower = result.notes.lower()
+    diff_lower = result.diff.lower()
+    assert (
+        "already" in note_lower
+        or "sudah" in note_lower
+        or "skipped" in diff_lower
+    )
 
 
 def test_missing_auth_var_raises_manual_required():
