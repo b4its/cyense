@@ -65,5 +65,7 @@ async def get_scan(request: Request, scan_id: str) -> dict[str, object]:
 @router.delete("/scans/{scan_id}", status_code=204)
 async def delete_scan(request: Request, scan_id: str) -> None:
     deleted = request.app.state.store.delete(scan_id)
+    # also drop any computed report and its on-disk artifacts
+    request.app.state.worker.discard(scan_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="scan not found")

@@ -98,3 +98,21 @@ def test_link_scan_without_placeholder_fails_explicitly(client: TestClient) -> N
 
     assert detail["status"] == "failed", detail
     assert "placeholder" in (detail.get("error") or "").lower()
+
+
+def test_delete_scan_removes_report_artifacts(client: TestClient) -> None:
+    """DELETE must remove the report (PRD §4.3: hapus scan & artefak)."""
+    resp = client.post(
+        "/api/v1/scans",
+        json={"mode": "program", "source_type": "sample", "i_have_permission": True},
+    )
+    scan_id = resp.json()["scan_id"]
+    for _ in range(200):
+        detail = client.get(f"/api/v1/scans/{scan_id}").json()
+        if detail["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.05)
+    assert client.get(f"/api/v1/scans/{scan_id}/report").status_code == 200
+
+    assert client.delete(f"/api/v1/scans/{scan_id}").status_code == 204
+    assert client.get(f"/api/v1/scans/{scan_id}/report").status_code == 404

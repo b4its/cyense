@@ -151,3 +151,13 @@ class ScanWorker:
 
     def result(self, scan_id: str) -> dict[str, Any] | None:
         return self._results.get(scan_id)
+
+    def discard(self, scan_id: str) -> None:
+        """Drop in-memory result and on-disk artifacts (PRD §4.3 DELETE)."""
+        self._results.pop(scan_id, None)
+        import shutil
+
+        try:
+            shutil.rmtree(self.settings.reports_dir / scan_id, ignore_errors=True)
+        except OSError:
+            log.warning("failed to remove artifacts for %s", scan_id)
