@@ -1,8 +1,8 @@
-# PRD Fitur — Deteksi XSS dari Link GitHub Repository (mode `github`/`program`)
+# PRD Fitur — Deteksi XSS pada Repository Hasil Fetch GitHub (XS001–XS008)
 
-> **Feature PRD** | Versi 1.0 | Status: implemented
+> **Feature PRD** | Versi 2.0 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` (v2.0) — addendum, bukan pengganti
-> **Fitur terkait:** `instruction/feature/github-repo-audit.md` (mode github = source provider yang dipakai ulang; fitur ini hanya menambah *layer aturan*)
+> **Fitur terkait:** `instruction/feature/github-repo-audit.md` (**jalur input utama** — fetch repo GitHub orang lain; fitur ini menambah *layer aturan* yang berjalan pada kode hasil fetch)
 > **Nama fitur:** XSS Detection (XS001–XS008)
 > **Lokasi implementasi:** `dev/main/app/program/xss_rules.py`, integrasi di `program_engine.py`
 
@@ -10,14 +10,17 @@
 
 ## 0. Ringkasan Satu Paragraf
 
-Menambahkan **kelas aturan kedua** ke mesin analisis statis Cyense: **XSS (Cross-Site
-Scripting)**. Berbekal arsitektur yang sudah ada — mode `github` mengunduh repo ke
-sandbox dan `program_engine` menjalankan aturan regex/AST — fitur ini *hanya menambah
-lapisan aturan baru* (XS001–XS008) tanpa mengubah pipeline, state machine, atau
-format laporan. Nilai utamanya: satu tempel link repo kini menghasilkan **dua kelas
-temuan sekaligus** (IDOR + XSS) dengan `file:line`, bukti cuplikan kode, remediasi
-spesifik per pola, dan commit SHA reprodusibel — memperluas nilai audit satu
-permintaan tanpa biaya integrasi tambahan.
+Menambahkan **kelas aturan kedua** — **XSS (Cross-Site Scripting)** — ke mesin
+analisis statis Cyense yang berjalan pada **kode hasil fetch repository GitHub**
+(jalur utama). User menempel link repo orang lain → 🐙 Fetcher mengunduh tarball
+ke sandbox → `program_engine` menjalankan **dua pass**: IDOR (CY001–CY010) dan
+kini XSS (XS001–XS008) — tanpa mengubah pipeline, state machine, atau format
+laporan. Nilai utamanya: satu tempel link repo menghasilkan **dua kelas temuan
+sekaligus** dengan `file:line`, bukti cuplikan kode, remediasi spesifik per pola,
+dan commit SHA reprodusibel — memperluas nilai audit satu permintaan tanpa biaya
+integrasi tambahan. Mode `program` (kode lokal ekosistem sendiri) tetap didukung
+sebagai jalur sekunder demi demo/testing dan parity, tetapi konteks produk utama
+adalah repo hasil fetch remote.
 
 ---
 
@@ -58,8 +61,10 @@ keputusan no-LLM, PRD induk §1.2).
 ### 2.1 Goals (MVP)
 
 1. Delapan aturan XSS deterministik berbasis regex/AST-guided (XS001–XS008).
-2. Integrasi ke `program_engine` (dan otomatis mode `github`) via parameter
-   `scan_types` — default `["idor", "xss"]` agar backward-compatible.
+2. Integrasi ke `program_engine` via parameter `scan_types` — default
+   `["idor", "xss"]` agar backward-compatible — sehingga **mode `github`
+   (fetch repo GitHub orang lain) otomatis mendeteksi XSS** pada kode hasil
+   fetch, tanpa konfigurasi tambahan.
 3. `/rules` endpoint menampilkan kategori XSS.
 4. Remediasi teks spesifik per aturan (bukan instruksi generik).
 5. Test hermetik per aturan: fixture rentan → temuan; fixture bersih → nol.
@@ -69,8 +74,8 @@ keputusan no-LLM, PRD induk §1.2).
 - ❌ Data-flow/taint analysis penuh (melacak variabel lintas fungsi).
 - ❌ XSS berbasis DOM pada bundle JS hasil build (hanya source yang dibaca).
 - ❌ CSP bypass / mXSS / encoding- aware bypass — di luar cakupan regex MVP.
-- ❌ Remediasi otomatis (🔧 Fixer) untuk XSS — masuk backlog; temuan XSS tetap
-  punya teks remediasi namun tidak menghasilkan patch otomatis dulu.
+- ❌ Remediasi otomatis — dipisah ke `xss-remediation.md` (PRD terpisah;
+  temuan XSS tetap punya teks remediasi sejak deteksi).
 
 ---
 
@@ -101,15 +106,22 @@ keputusan no-LLM, PRD induk §1.2).
 
 ### 4.1 Input — tidak berubah
 
-Mode `program` dan `github` tetap memakai request yang sama. Tidak ada field
-baru pada MVP (kategori scan mengikuti default). Parameter `scan_types`
-tersedia di layer engine untuk seleksi kategori di masa depan.
+User cukup menempel **link repo GitHub orang lain** (`mode: "github"`) — tidak
+ada field baru. Parameter `scan_types` tersedia di layer engine untuk seleksi
+kategori; default-nya sudah `["idor", "xss"]` sehingga fetch repo = audit dua
+kelas kerentanan sekaligus. Mode `program` (kode lokal ekosistem sendiri)
+memakai request yang sama dan berperilaku identik — jalur sekunder untuk
+demo/testing/parity.
 
-### 4.2 Alur eksekusi
+### 4.2 Alur eksekusi (dalam satu scan mode github)
 
 ```
-program_engine.run_program_scan(lang, source_dir, scan_id)
-  ├─ pass 1: IDOR rules  (python AST + js/php regex)   ← existing
+User tempel link repo ──► 🐙 Fetcher (resolve → tarball → sandbox)
+                                   │
+                                   ▼
+program_engine.run_program_scan(lang, sandbox, scan_id,
+                                scan_types=["idor","xss"])
+  ├─ pass 1: IDOR rules  (CY001–CY010; python AST + js/php regex)
   └─ pass 2: XSS rules   (XS001–XS008 per tipe file)   ← NEW
         .js/.ts  → XS001–XS005
         .html    → XS005
@@ -118,18 +130,20 @@ program_engine.run_program_scan(lang, source_dir, scan_id)
 ```
 
 Hasil kedua pass digabung ke daftar `findings` yang sama → report JSON/HTML
-tetap satu format; temuan XSS tampil dengan rule `XS***`.
+tetap satu format; temuan XSS tampil dengan rule `XS***` dan `location` berupa
+path relatif root repo + baris.
 
-### 4.3 Contoh
+### 4.3 Contoh — audit repo frontend orang lain
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/scans \
   -H 'Content-Type: application/json' \
   -d '{"mode":"github","repo_url":"https://github.com/owner/frontend",
        "ref":"main","i_have_permission":true}'
-# → findings memuat campuran:
+# → 202 {scan_id} → laporan memuat campuran pada KODE HASIL FETCH:
 #   {rule:"XS001", location:"src/Comment.tsx:42", severity:"high", ...}
 #   {rule:"CY004", location:"api/invoices.py:18", severity:"high", ...}
+#   meta.repo.commit_sha → bukti reprodusibilitas
 ```
 
 ---
@@ -206,6 +220,7 @@ state machine, worker (temuan mengalir lewat jalur yang sama).
 | Versi | Perubahan |
 |-------|-----------|
 | 1.0 | Draft awal: 8 aturan XSS deterministik, pass kedua pada mesin statis, guard FP, test hermetik |
+| 2.0 | **Penyelarasan fokus produk**: konteks utama = kode hasil fetch repo GitHub orang lain (jalur utama per `github-repo-audit.md` v2.0); mode program lokal diturunkan jadi jalur sekunder; non-goal remediasi dirujuk ke PRD `xss-remediation.md`; contoh diperjelas sebagai audit repo remote |
 
 ---
 
