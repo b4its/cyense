@@ -133,8 +133,12 @@ class GithubEngine:
         # Update brain memory after successful scan
         if self.brain and sha:
             cache_key = f"github.com/{result.data['owner']}/{result.data['repo']}"
-            self.brain.remember_host(cache_key, "last_sha", sha)
-            self.brain.remember_host(cache_key, "last_ref", result.data.get("ref", ref))
+            self.brain.set_repo_scan_meta(
+                result.data["owner"],
+                result.data["repo"],
+                result.data.get("ref", ref),
+                sha,
+            )
         
         return result_data
     

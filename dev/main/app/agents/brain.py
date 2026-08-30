@@ -122,5 +122,38 @@ class Brain:
         entry = memory.setdefault(host, {})
         known: list[str] = entry.setdefault("valid_ids", [])
         merged = sorted(set(known) | set(ids))
+
         entry["valid_ids"] = merged[-200:]  # cap memory growth
         self.save()
+
+    # -- github-scan cache (feature PRD) -------------------------------------
+
+    def set_repo_scan_meta(
+        self,
+        owner: str,
+        repo: str,
+        ref: str,
+        sha: str,
+    ) -> None:
+        """Cache repo@sha scan result for future skip-check."""
+        key = f"github.com/{owner}/{repo}"
+        entry = self.data.setdefault("memory", {}).setdefault(key, {})
+        entry["ref"] = ref
+        entry["sha"] = sha[:8] if len(sha) >= 8 else sha
+        entry["scanned_at"] = _now_iso()
+        self.save()
+
+    def get_repo_cache(self, owner: str, repo: str, ref: str, sha: str) -> dict[str, Any]:
+        """Check cache hit for same repo+ref+sha combination."""
+        key = f"github.com/{owner}/{repo}"
+        cached = self.data.get("memory", {}).get(key, {})
+        if cached.get("ref") == ref and cached.get("sha", "") == sha[:8]:
+            return {"hit": True, "data": cached}
+        return {"hit": False, "data": {}}
+
+
+def _now_iso() -> str:
+    """ISO timestamp helper (same as core module)."""
+    import time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+

@@ -107,13 +107,13 @@ class FetcherAgent(BaseAgent):
             # Brain cache check (skip if already scanned at this sha)
             if not ctx.get("force", False) and self.brain:
                 cache_key = f"github.com/{owner}/{repo}"
-                cached = self.brain.recall_host(cache_key)
-                if cached.get("ref") == ref and cached.get("sha"):
+                cached_data = self.brain.get_repo_cache(owner, repo, ref, "")
+                if cached_data["hit"]:
                     self.trajectory.step("cache_hit", {"ref": ref})
-                    # Return cached result (handled by caller)
+                    # Return cached result info (sha from cache)
                     return AgentResult(agent=self.name, ok=True, data={
                         "cached": True,
-                        "sha": cached.get("sha"),
+                        "sha": cached_data["data"].get("sha", ""),
                         "url": url,
                         "owner": owner,
                         "repo": repo,
