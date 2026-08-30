@@ -88,6 +88,13 @@ Nalar konteks yang dibutuhkan (similarity difflib, PII regex, status code, kontr
 | CY010 | `Model::find($_GET[..])` | PHP | High |
 | IDOR-LINK | 200 + PII cross-account + kontrol-ID blocked | HTTP | **Critical** |
 
+**Kelas aturan kedua — XSS (XS001–XS008)** berjalan sebagai pass kedua pada mesin
+statis (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML`
+(JS), `eval` (critical), `v-html` (Vue), `echo $_GET` tanpa escape (PHP),
+`\|safe` Jinja2, dan komposisi HTML via f-string (Python) — masing-masing dengan
+guard anti false-positive (string statis, output ter-sanitasi, dan komentar tidak
+dilaporkan). Lihat `instruction/feature/xss-detection.md`.
+
 ---
 
 ## 4. Measured Improvement (Evaluasi Terukur)
