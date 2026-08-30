@@ -80,14 +80,6 @@ class ScanWorker:
             )
             await self.store.mark_stage(scan_id, stage, progress)
 
-        # GitHub-specific notification handler
-        async def _notify_github(scan_id: str, on_stage: Any) -> None:
-            """Github mode uses resolve/fetch/analyze/report stages."""
-            await on_stage("resolve")
-            await on_stage("fetch")
-            await on_stage("analyze")
-            await on_stage("report")
-
         try:
             if request_dict["mode"] == "link":
                 report = await run_link_scan(
@@ -99,8 +91,9 @@ class ScanWorker:
                     on_stage=on_stage,
                 )
             elif request_dict["mode"] == "github":
-                # github-scan mode (PRD feature)
-                await _notify_github(scan_id, on_stage)
+                # github-scan mode (PRD feature); the engine reports its own
+                # resolve/analyze/report stages via the on_stage callback —
+                # pre-firing all stages here made progress jump to 90% instantly
                 report = await run_github_scan(
                     scan_id=scan_id,
                     repo_url=request_dict["repo_url"],
