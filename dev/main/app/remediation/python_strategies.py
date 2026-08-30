@@ -80,7 +80,9 @@ def generate_ownership_filter(
                 new_args = ", ".join(new_kwargs + [patch_arg])
 
         before_src = ast.unparse(node)
-        after_src = f"{node.func.id}({new_args})" if node.args else f"{node.func.id}({new_args})"
+        # Use ast.unparse on the full call so we don't assume .func is a Name
+        func_src = ast.unparse(node.func)
+        after_src = f"{func_src}({new_args})"
 
         lines = source.split("\n")
         line_num = getattr(node, "lineno", 0)

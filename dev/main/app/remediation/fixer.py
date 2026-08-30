@@ -183,23 +183,22 @@ class FixerAgent(BaseAgent):
     @staticmethod
     def find_auth_context(tree: ast.AST) -> str:
         """Find auth variable reference in scope (e.g., 'request.user', 'current_user')."""
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Attribute, ast.Name)):
-                attrs = []
-                current = node
-                while hasattr(current, "id") or hasattr(current, "attr"):
-                    if hasattr(current, "id"):
-                        attrs.insert(0, current.id)
-                    elif hasattr(current, "attr"):
-                        attrs.insert(0, current.attr)
+        known_patterns = frozenset([
+            "request.user", "current_user", "g.user", "session.user",
+        ])
 
-                combined = ".".join(attrs)
-                if combined in ["request.user", "current_user", "g.user", "session.user"]:
-                    return combined
-
-        # Fallback: look for common patterns
         for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id.lower() in {"user", "auth"}:
+            # Check Name nodes for bare auth variable names
+            if isinstance(node, ast.Name) and node.id in {"current_user", "user"}:
                 return node.id
+
+            # Check Attribute chains like request.user
+            if isinstance(node, ast.Attribute):
+                try:
+                    expr = ast.unparse(node)
+                    if expr in known_patterns:
+                        return expr
+                except Exception:
+                    continue
 
         return "unknown"
