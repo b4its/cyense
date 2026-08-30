@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # enums
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -20,7 +20,7 @@ class Severity(str, Enum):
     INFO = "info"
 
 
-class ScanStatus(str, Enum):
+class ScanStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"

@@ -62,7 +62,11 @@ class ScanWorker:
         if job is None:
             return
         request = job.request
-        request_dict = request.model_dump(mode="json") if hasattr(request, "model_dump") else dict(request)
+        request_dict = (
+            request.model_dump(mode="json")
+            if hasattr(request, "model_dump")
+            else dict(request)
+        )
 
         await self.store.mark_running(scan_id, stage="recon")
         started = time.monotonic()

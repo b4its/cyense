@@ -63,11 +63,13 @@ class VerifierAgent(BaseAgent):
                     client, profile, hit, baseline_pii, baseline_body, threshold, retries
                 )
                 verdict["verification"]["control_id_blocked"] = control_blocked
-                # step 4 — control-id comparison (negative control):
-                # a candidate whose body is indistinguishable from the
-                # control-id response is a placeholder page, not an object.
+                # step 4 — control-id comparison (negative control): a
+                # candidate whose body is indistinguishable from the control-id
+                # response is a placeholder page, not an object.
                 sim_to_control = (
-                    similarity(hit.body, control.body) if not control_blocked and control.body else None
+                    similarity(hit.body, control.body)
+                    if not control_blocked and control.body
+                    else None
                 )
                 verdict["verification"]["similarity_to_control"] = (
                     round(sim_to_control, 3) if sim_to_control is not None else None

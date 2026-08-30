@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 from typing import Any
 
-from app.core.models import FileContext, Finding, Severity, VerificationEvidence
+from app.core.models import Finding, Severity, VerificationEvidence
 
 REQUEST_ATTRS = {"request", "self", "session"}
 OWNERSHIP_HINTS = {

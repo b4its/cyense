@@ -27,7 +27,10 @@ def test_pii_diff_other_account() -> None:
 
 
 def test_redact_headers_and_cookies() -> None:
-    red = redact_headers({"Authorization": "Bearer supersecretvalue123", "Accept": "application/json"})
+    red = redact_headers({
+        "Authorization": "Bearer supersecretvalue123",
+        "Accept": "application/json",
+    })
     assert red["Authorization"].endswith("[REDACTED]")
     assert "supersecret" not in red["Authorization"]
     assert red["Accept"] == "application/json"
