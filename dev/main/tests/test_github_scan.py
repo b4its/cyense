@@ -95,7 +95,7 @@ def test_sandbox_rejects_absolute_paths(tmp_path: Path) -> None:
 
 def test_sandbox_rejects_symlinks(tmp_path: Path) -> None:
     """Symlink entries rejected before extract."""
-    from app.utils.sandbox import SymlinkEntry
+    from app.utils.sandbox import SafeTarExtractor, SymlinkEntry
     
     tar_io = io.BytesIO()
     with tarfile.open(fileobj=tar_io, mode="w:gz") as tar:
@@ -120,7 +120,7 @@ def test_sandbox_rejects_symlinks(tmp_path: Path) -> None:
 
 def test_sandbox_enforces_size_cap(tmp_path: Path) -> None:
     """Large tarball rejected by size cap."""
-    from app.utils.sandbox import TooLargeArchive
+    from app.utils.sandbox import TooLargeArchive, SafeTarExtractor
     
     tar_io = io.BytesIO()
     with tarfile.open(fileobj=tar_io, mode="w:gz") as tar:

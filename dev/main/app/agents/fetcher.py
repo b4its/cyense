@@ -19,10 +19,15 @@ from app.utils.github_client import GithubClient, ALLOWED_HOSTS
 from app.utils.sandbox import SafeTarExtractor, sanitize_sandbox
 
 
-# Regex to parse common GitHub link formats
+# Regex to parse common GitHub link formats (strictly balanced)
+# Matches: owner/repo, owner/repo/tree/ref, owner/repo/blob/ref/path
 GITHUB_URL_RE = re.compile(
-    r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^]+)/"
-    r"(?:(?:tree|blob)/(?P<ref>[^/]+))?(?:/(?P<path>[^#]*))?"
+    r"https://github\.com/"
+    r"(?P<owner>[^/]+)"  # owner
+    r"/(?P<repo>[^/\?#]+)"  # repo (stop at ? or # for query/hash)
+    r"(?:/(?:(?:tree|blob)/(?P<ref>[^/\?#]+))?"  # optional tree/blob ref
+    r"(?:/(?P<path>[^#\?]*))?)?"  # optional path segment
+    r"[?\#]?.*"  # optional query/hash tail
 )
 TREE_RE = re.compile(r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^]+)/tree/(?P<ref>[^/]+)")
 
@@ -32,6 +37,10 @@ def parse_github_url(url: str) -> dict[str, str | None]:
     # Direct /owner/repo form
     if url.endswith(".git"):
         url = url[:-4]  # strip .git suffix
+    
+    # Ensure valid format (owner/repo required)
+    if not url.strip("/").count("/") >= 1:
+        raise ValueError(f"invalid github url format: {url}")
     
     match = GITHUB_URL_RE.match(url) or TREE_RE.match(url)
     if not match:
