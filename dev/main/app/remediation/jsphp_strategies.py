@@ -9,7 +9,7 @@ import re
 
 class LinePatchResult:
     """Hasil patch berbasis line."""
-    
+
     def __init__(
         self,
         old_line: str,
@@ -21,7 +21,7 @@ class LinePatchResult:
         self.new_line = new_line
         self.risk = risk
         self.notes = notes
-    
+
     def to_dict(self) -> dict[str, any]:
         return {
             "diff": f"- {self.old_line}\n+ {self.new_line}",
@@ -40,11 +40,11 @@ def find_auth_context_js(source: str) -> str:
         r"user\.id",
         r"context\.userId",
     ]
-    
+
     for pattern in patterns:
         if re.search(pattern, source):
             return "req.user.id"
-    
+
     return "unknown"
 
 
@@ -56,11 +56,11 @@ def find_auth_context_php(source: str) -> str:
         r"\Auth::id\(\)",
         r"\$_SESSION\[['\"]user_id['\"]\]",
     ]
-    
+
     for pattern in patterns:
         if re.search(pattern, source):
             return "$currentUserId"
-    
+
     return "unknown"
 
 
@@ -68,14 +68,12 @@ def find_auth_context_php(source: str) -> str:
 def cy007_strategy(finding, source, tree=None):
     """CY007: JS MongoDB findOne tanpa userId check."""
     auth_ctx = find_auth_context_js(source)
-    
+
     # Pattern: findOne({_id: <something>})
     pattern = r"findOne\s*\(\s*\{\s*_id:\s*(.+?)\s*\}\s*\)"
     match = re.search(pattern, source)
-    
+
     if match:
-        param_expr = match.group(1).strip()
-        
         if auth_ctx == "unknown":
             return {
                 "diff": "manual_required: cannot detect user context",
@@ -84,16 +82,16 @@ def cy007_strategy(finding, source, tree=None):
                 "risk": "HIGH",
                 "notes": "Tidak dapat mendeteksi context user untuk filtering",
             }
-        
+
         # Add owner check before query
         diff_lines = [
             f"- const doc = {match.group(0)};",
             f"+ const doc = await {match.group(0)}.orFail().then(d => {{",
-            f+">>  if (!d.owner.equals({auth_ctx})) throw new Error('Unauthorized');",
-            f">>  return d;",
-            f+">> }});",
+            f">>  if (!d.owner.equals({auth_ctx})) throw new Error('Unauthorized');",
+            ">>  return d;",
+            ">> }});",
         ]
-        
+
         return {
             "diff": "\n".join(diff_lines),
             "before_snippet": f"const doc = {match.group(0)};",
@@ -101,7 +99,7 @@ def cy007_strategy(finding, source, tree=None):
             "risk": "MEDIUM",
             "notes": "Added ownerId check with guard clause",
         }
-    
+
     return {
         "diff": "pattern_not_found",
         "before_snippet": "",
@@ -115,11 +113,11 @@ def cy007_strategy(finding, source, tree=None):
 def cy008_strategy(finding, source, tree=None):
     """CY008: JS findById tanpa ownership check."""
     auth_ctx = find_auth_context_js(source)
-    
+
     # Pattern: findById(<param>)
     pattern = r"findById\s*\(\s*(.+?)\s*\)"
     match = re.search(pattern, source)
-    
+
     if match:
         if auth_ctx == "unknown":
             return {
@@ -129,14 +127,15 @@ def cy008_strategy(finding, source, tree=None):
                 "risk": "HIGH",
                 "notes": "Perlu tambahkan validasi owner setelah fetch",
             }
-        
+
         # After-find validation
         diff_lines = [
             f"- const doc = Model.findById({match.group(1)});",
             f"+ const doc = await Model.findById({match.group(1)});",
-            f"+ if (!doc || !doc.owner.toString() === {auth_ctx}.toString()) return res.sendStatus(403);",
+            f"+ if (!doc || !doc.owner.toString() === {auth_ctx}.toString())",
+            f"+   return res.sendStatus(403);",
         ]
-        
+
         return {
             "diff": "\n".join(diff_lines),
             "before_snippet": f"const doc = Model.findById({match.group(1)});",
@@ -144,7 +143,7 @@ def cy008_strategy(finding, source, tree=None):
             "risk": "MEDIUM",
             "notes": "Post-fetch ownership guard added",
         }
-    
+
     return {
         "diff": "pattern_not_found",
         "before_snippet": "",
@@ -158,21 +157,21 @@ def cy008_strategy(finding, source, tree=None):
 def cy009_strategy(finding, source, tree=None):
     """CY009: PHP where('id', $_GET[id]) unscoped."""
     auth_ctx = find_auth_context_php(source)
-    
+
     # Pattern: ->where('id', $var)
     pattern = r"->where\s*\(\s*'id'\s*,\s*([^\)]+)\s*\)"
     match = re.search(pattern, source)
-    
+
     if match:
         var_name = match.group(1).strip()
-        
+
         # Add user scope
         diff_lines = [
             f"- ->where('id', {var_name})",
             f"+ ->where('id', {var_name})",
             f"+ ->where('user_id', {auth_ctx})",
         ]
-        
+
         return {
             "diff": "\n".join(diff_lines),
             "before_snippet": f"->where('id', {var_name})",
@@ -180,7 +179,7 @@ def cy009_strategy(finding, source, tree=None):
             "risk": "LOW",
             "notes": "User ID scoping added to query chain",
         }
-    
+
     return {
         "diff": "pattern_not_found",
         "before_snippet": "",
@@ -194,14 +193,14 @@ def cy009_strategy(finding, source, tree=None):
 def cy010_strategy(finding, source, tree=None):
     """CY010: PHP Model::find($_GET[id]) unscoped."""
     auth_ctx = find_auth_context_php(source)
-    
+
     # Pattern: ::find( or ->find(
     pattern = r"(?:Model|)\s*::?\s*find\s*\(\s*([^\)]+)\s*\)"
     match = re.search(pattern, source)
-    
+
     if match:
         param_expr = match.group(1).strip()
-        
+
         if auth_ctx == "unknown":
             return {
                 "diff": "manual_required: add owner check after fetch",
@@ -210,14 +209,14 @@ def cy010_strategy(finding, source, tree=None):
                 "risk": "HIGH",
                 "notes": "Perlu verifikasi owner setelah fetch",
             }
-        
+
         # After-find validation
         diff_lines = [
             f"- $model = Model::find({param_expr});",
             f"+ $model = Model::find({param_expr});",
             f"+ if (!$model || $model->user_id !== {auth_ctx}) abort(403);",
         ]
-        
+
         return {
             "diff": "\n".join(diff_lines),
             "before_snippet": f"$model = Model::find({param_expr});",
@@ -225,7 +224,7 @@ def cy010_strategy(finding, source, tree=None):
             "risk": "MEDIUM",
             "notes": "Ownership validation post-fetch",
         }
-    
+
     return {
         "diff": "pattern_not_found",
         "before_snippet": "",
