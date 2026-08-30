@@ -133,7 +133,7 @@ def cy008_strategy(finding, source, tree=None):
             f"- const doc = Model.findById({match.group(1)});",
             f"+ const doc = await Model.findById({match.group(1)});",
             f"+ if (!doc || !doc.owner.toString() === {auth_ctx}.toString())",
-            f"+   return res.sendStatus(403);",
+            "+   return res.sendStatus(403);",
         ]
 
         return {
