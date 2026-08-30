@@ -1,48 +1,62 @@
-"""Base agent untuk remediasi IDOR (PRD §4 - 🔧 Fixer Agent).
+"""🔧 Fixer agent — generate patch proposals dari scan findings (PRD §4).
 
-Fixer: kumpulkan temuan → generate proposals → trajectory logging + brain memory.
-Berikut strategi per rule (Phase 3-4 akan mengisi registri ini).
+Flow: collect findings → strategy lookup → generate patch → FixProposal models.
+Strategi didaftarkan dari python_strategies (AST) dan jsphp_strategies (regex).
 """
 
 from __future__ import annotations
 
 import ast
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from app.agents.base import AgentResult, BaseAgent
 from app.core.models import Finding
-from app.remediation.store import FixSession, FixStore
+from app.remediation.models import FixProposal, FixRisk
+from app.remediation.store import FixStore
 
 
-class PatchStrategy:
-    """Registry entry untuk transformasi kode per rule."""
+def find_auth_context(tree: ast.AST) -> str:
+    """Find auth variable reference in scope (e.g., 'request.user', 'current_user')."""
+    known_patterns = frozenset([
+        "request.user", "current_user", "g.user", "session.user",
+    ])
 
-    def __init__(self, name: str, risk: str):
-        self.name = name
-        self.risk = risk
+    for node in ast.walk(tree):
+        # Check Name nodes for bare auth variable names
+        if isinstance(node, ast.Name) and node.id in {"current_user", "user"}:
+            return node.id
 
-    def generate_patch(
-        self,
-        finding: Finding,
-        source: str,
-        tree: ast.AST,
-    ) -> dict[str, Any]:
-        """Generate patch proposal dictionary."""
-        raise NotImplementedError
+        # Check Attribute chains like request.user
+        if isinstance(node, ast.Attribute):
+            try:
+                expr = ast.unparse(node)
+                if expr in known_patterns:
+                    return expr
+            except Exception:
+                continue
+
+    return "unknown"
 
 
-# Registry: {rule_id -> PatchStrategy instance}
-STRATEGY_REGISTRY: dict[str, PatchStrategy] = {}
+# --- Strategy function registry (populated lazily) ---
+# Maps rule_id -> callable(finding, source, tree) -> dict with keys:
+#   diff, before_snippet, after_snippet, risk, notes
+STRATEGY_REGISTRY: dict[str, Any] = {}
 
 
-def register_strategy(rule_id: str) -> Callable[[PatchStrategy], None]:
-    """Decorator untuk mendaftarkan strategi ke registri."""
-    def decorator(strategy: PatchStrategy) -> None:
-        STRATEGY_REGISTRY[rule_id] = strategy
+def _load_strategies() -> None:
+    """Populate registry from strategy modules (idempotent)."""
+    if STRATEGY_REGISTRY:
+        return
 
-    return decorator
+    from app.remediation import jsphp_strategies, python_strategies
+
+    for rule_id, entry in python_strategies.STRATEGIES.items():
+        STRATEGY_REGISTRY[rule_id] = entry["strategy"]
+
+    for rule_id, entry in jsphp_strategies.JS_PHP_STRATEGIES.items():
+        STRATEGY_REGISTRY[rule_id] = entry["strategy"]
 
 
 class FixerAgent(BaseAgent):
@@ -65,27 +79,35 @@ class FixerAgent(BaseAgent):
         self.force = force
 
     async def run(self, findings: list[Finding]) -> AgentResult:
-        """Collect findings → generate proposals."""
-        session = await self._create_session()
+        """Collect findings → generate FixProposal models → save to store."""
+        _load_strategies()
+        session = self.store.create_session(self.scan_id)
+        self.trajectory.step("session_created", {"session_id": session.session_id})
 
-        proposals: list[Any] = []
-        applied_count = 0
+        proposals: list[FixProposal] = []
         failed_count = 0
 
         for finding in findings:
             try:
-                proposal = await self._generate_proposal(session.session_id, finding)
+                proposal = self._generate_proposal(session.session_id, finding)
                 if proposal:
                     proposals.append(proposal)
-                    applied_count += 1
-
             except Exception as exc:
-                self.log.error("Failed to generate proposal for %s: %s", finding.finding_id, exc)
+                self.log.error(
+                    "Failed to generate proposal for %s: %s",
+                    finding.finding_id, exc,
+                )
                 failed_count += 1
 
         # Save all proposals to store
         for prop in proposals:
             self.store.add_proposal(session.session_id, prop)
+
+        self.trajectory.step(
+            "proposals_done",
+            {"count": len(proposals), "failed": failed_count},
+        )
+        self.trajectory.save()
 
         return AgentResult(
             agent=self.name,
@@ -93,112 +115,111 @@ class FixerAgent(BaseAgent):
             data={
                 "session_id": session.session_id,
                 "proposals_count": len(proposals),
-                "applied_count": applied_count,
                 "failed_count": failed_count,
                 "session_status": session.status,
             },
         )
 
-    async def _create_session(self) -> FixSession:
-        session = self.store.create_session(self.scan_id)
-        self.trajectory.step("session_created", {"session_id": session.session_id})
-        return session
+    # -- internals -------------------------------------------------------------
 
-    async def _generate_proposal(
+    def _generate_proposal(
         self, session_id: str, finding: Finding
-    ) -> Any | None:
-        """Generate single proposal using registered strategy."""
+    ) -> FixProposal | None:
+        """Generate single FixProposal using registered strategy."""
         rule_id = finding.rule
-        if rule_id not in STRATEGY_REGISTRY:
-            # Cannot auto-fix this rule; skip but note it
-            return {
-                "fix_id": f"{finding.finding_id}-manual",
-                "session_id": session_id,
-                "scan_id": self.scan_id,
-                "finding_id": finding.finding_id,
-                "rule": finding.rule,
-                "risk": "HIGH",
-                "notes": "No automatic fix available; requires manual review",
-                "strategy": "manual_required",
-                "status": "manual_required",
-            }
 
-        # Load source file
+        # Extract file/line from finding location ("path.py:42")
         location = finding.location or ""
-        file_path = location.split(":")[0] if ":" in location else ""
-        try:
-            file_obj = Path(file_path)
-            source = file_obj.read_text()
-        except OSError:
-            return {
-                "fix_id": f"{finding.finding_id}-stale",
-                "session_id": session_id,
-                "scan_id": self.scan_id,
-                "finding_id": finding.finding_id,
-                "rule": finding.rule,
-                "risk": "MEDIUM",
-                "notes": "Source file not found or unreadable",
-                "status": "manual_required",
-            }
+        file_path = location.rsplit(":", 1)[0] if ":" in location else location
+        line = 0
+        if ":" in location:
+            try:
+                line = int(location.rsplit(":", 1)[1])
+            except ValueError:
+                line = finding.evidence.get("line", 0)
 
-        # Parse AST
-        try:
-            tree = ast.parse(source)
-        except SyntaxError:
-            return {
-                "fix_id": f"{finding.finding_id}-syntax-error",
-                "session_id": session_id,
-                "scan_id": self.scan_id,
-                "finding_id": finding.finding_id,
-                "rule": finding.rule,
-                "risk": "MEDIUM",
-                "notes": "Syntax error in target file; cannot apply patch",
-                "status": "manual_required",
-            }
-
-        # Get strategy
-        strategy = STRATEGY_REGISTRY[rule_id]
-
-        # Generate patch
-        try:
-            result = strategy.generate_patch(finding, source, tree)
-
-            proposal = Finding.model_validate({
-                **finding.model_dump(mode="json"),
-                "session_id": session_id,
-                **result,
-            })
-
-            self.trajectory.step(
-                "proposal_generated",
-                {"rule": finding.rule, "file": file_path, "line": finding.line},
+        # Helper to build a manual-required proposal
+        def manual(notes: str, risk: str = "medium") -> FixProposal:
+            return FixProposal(
+                fix_id=f"{finding.finding_id}-manual",
+                session_id=session_id,
+                scan_id=self.scan_id,
+                finding_id=finding.finding_id,
+                rule=finding.rule,
+                target_file=file_path,
+                line=line,
+                diff="",
+                before_snippet="",
+                after_snippet="",
+                risk=FixRisk(risk),
+                strategy="manual_required",
+                notes=notes,
             )
 
-            return proposal
+        if rule_id not in STRATEGY_REGISTRY:
+            return manual("No automatic fix available; requires manual review", "high")
 
+        # Load source file
+        if not file_path:
+            return manual("Finding has no file location", "medium")
+
+        try:
+            source = Path(file_path).read_text()
+        except OSError:
+            return manual("Source file not found or unreadable", "medium")
+
+        # Parse AST for python rules
+        tree = None
+        if file_path.endswith(".py"):
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                return manual("Syntax error in target file; cannot apply patch", "medium")
+
+        # Invoke strategy
+        strategy_fn = STRATEGY_REGISTRY[rule_id]
+        try:
+            if tree is not None:
+                result = strategy_fn(finding, source, tree)
+            else:
+                result = strategy_fn(finding, source)
         except Exception as exc:
             self.log.warning("Strategy %s failed: %s", rule_id, exc)
-            return None
+            return manual(f"Strategy error: {exc}", "medium")
 
-    @staticmethod
-    def find_auth_context(tree: ast.AST) -> str:
-        """Find auth variable reference in scope (e.g., 'request.user', 'current_user')."""
-        known_patterns = frozenset([
-            "request.user", "current_user", "g.user", "session.user",
-        ])
+        if not isinstance(result, dict):
+            return manual("Strategy returned unexpected result type", "medium")
 
-        for node in ast.walk(tree):
-            # Check Name nodes for bare auth variable names
-            if isinstance(node, ast.Name) and node.id in {"current_user", "user"}:
-                return node.id
+        risk_raw = result.get("risk", "medium").lower()
+        try:
+            risk = FixRisk(risk_raw)
+        except ValueError:
+            risk = FixRisk.MEDIUM
 
-            # Check Attribute chains like request.user
-            if isinstance(node, ast.Attribute):
-                try:
-                    expr = ast.unparse(node)
-                    if expr in known_patterns:
-                        return expr
-                except Exception:
-                    continue
+        is_manual = "manual_required" in result.get("diff", "")
 
-        return "unknown"
+        proposal = FixProposal(
+            fix_id=f"{finding.finding_id}-fix",
+            session_id=session_id,
+            scan_id=self.scan_id,
+            finding_id=finding.finding_id,
+            rule=finding.rule,
+            target_file=file_path,
+            line=line,
+            diff=result.get("diff", ""),
+            before_snippet=result.get("before_snippet", ""),
+            after_snippet=result.get("after_snippet", ""),
+            risk=risk,
+            strategy=rule_id.lower(),
+            notes=result.get("notes", ""),
+        )
+
+        if is_manual:
+            proposal.notes = "Manual review required: " + result.get("notes", "")
+
+        self.trajectory.step(
+            "proposal_generated",
+            {"rule": finding.rule, "file": file_path, "line": line,
+             "risk": risk.value},
+        )
+        return proposal

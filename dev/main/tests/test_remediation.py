@@ -350,8 +350,8 @@ def test_missing_auth_var_raises_manual_required():
     import ast
 
     unguarded_code = b"result = Obj.get(id=x)"
-    from app.remediation.fixer import FixerAgent
+    from app.remediation.fixer import find_auth_context
 
     # find_auth_context should return unknown when nothing found
-    auth_var = FixerAgent.find_auth_context(ast.parse(unguarded_code.decode()))
+    auth_var = find_auth_context(ast.parse(unguarded_code.decode()))
     assert auth_var == "unknown"

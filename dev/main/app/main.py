@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.agents.brain import Brain
-from app.api import reports, scans, system, remediations  # Add remediations router
+from app.api import remediations, reports, scans, system  # Add remediations router
 from app.core.config import settings
 from app.core.store import JobStore
 from app.remediation.store import FixStore
@@ -23,6 +23,7 @@ log = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.settings = settings
     app.state.store = JobStore(settings.reports_dir)
     app.state.fix_store = FixStore(settings.reports_dir)  # Add fix store for remediation
     app.state.brain = Brain(settings.brain_dir)

@@ -44,9 +44,23 @@ async def propose_fixes(
     if not report or "findings" not in report:
         raise HTTPException(status_code=404, detail="Scan not found or no findings")
 
-    findings = report["findings"]
-    if not findings:
+    findings_raw = report["findings"]
+    if not findings_raw:
         return {"message": "No findings to fix"}
+
+    # Reports store serialized dicts; rehydrate into Finding models so the
+    # fixer agent can use attribute access (finding.finding_id, finding.rule...)
+    from app.core.models import Finding
+
+    findings: list[Finding] = []
+    for raw in findings_raw:
+        try:
+            findings.append(Finding.model_validate(raw))
+        except Exception:
+            continue  # skip malformed entries rather than failing the batch
+
+    if not findings:
+        return {"message": "No valid findings to fix"}
 
     # Create fix session
     session = session_store.create_session(scan_id)

@@ -120,10 +120,10 @@ def generate_ownership_filter(
 
 def cy001_strategy(finding, source, tree):
     """CY001: Model.objects.get(id=X) unscoped."""
-    from app.remediation.fixer import FixerAgent
+    from app.remediation.fixer import find_auth_context
 
     # Find auth context
-    auth_var = FixerAgent.find_auth_context(tree)
+    auth_var = find_auth_context(tree)
 
     # Find the problematic .get() call
     for node in ast.walk(tree):
@@ -145,9 +145,9 @@ def cy001_strategy(finding, source, tree):
 
 def cy002_strategy(finding, source, tree):
     """CY002: Model.objects.filter(...).first() unscoped."""
-    from app.remediation.fixer import FixerAgent
+    from app.remediation.fixer import find_auth_context
 
-    auth_var = FixerAgent.find_auth_context(tree)
+    auth_var = find_auth_context(tree)
 
     # Find .filter().first() chain
     for node in ast.walk(tree):
@@ -171,9 +171,9 @@ def cy002_strategy(finding, source, tree):
 
 def cy003_strategy(finding, source, tree):
     """CY003: Flask route with <int:id> unscoped."""
-    from app.remediation.fixer import FixerAgent
+    from app.remediation.fixer import find_auth_context
 
-    auth_var = FixerAgent.find_auth_context(tree)
+    auth_var = find_auth_context(tree)
 
     # Find function body queries
     for node in ast.walk(tree):
@@ -197,9 +197,9 @@ def cy003_strategy(finding, source, tree):
 
 def cy004_strategy(finding, source, tree):
     """CY004: FastAPI path param → DB query."""
-    from app.remediation.fixer import FixerAgent
+    from app.remediation.fixer import find_auth_context
 
-    auth_var = FixerAgent.find_auth_context(tree)
+    auth_var = find_auth_context(tree)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
@@ -219,9 +219,9 @@ def cy004_strategy(finding, source, tree):
 
 def cy005_strategy(finding, source, tree):
     """CY005: get_object_or_404 without user kwarg."""
-    from app.remediation.fixer import FixerAgent
+    from app.remediation.fixer import find_auth_context
 
-    auth_var = FixerAgent.find_auth_context(tree)
+    auth_var = find_auth_context(tree)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
