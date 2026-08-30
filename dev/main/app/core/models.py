@@ -51,7 +51,7 @@ class LinkScanRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _permission_gate(self) -> "LinkScanRequest":
+    def _permission_gate(self) -> LinkScanRequest:
         # PRD §2.2 ethics note + §4.1: 422 unless explicitly granted.
         if not self.i_have_permission:
             raise ValueError(
@@ -68,7 +68,7 @@ class ProgramScanRequest(BaseModel):
     i_have_permission: bool = False
 
     @model_validator(mode="after")
-    def _permission_gate(self) -> "ProgramScanRequest":
+    def _permission_gate(self) -> ProgramScanRequest:
         if not self.i_have_permission:
             raise ValueError(
                 "i_have_permission must be true: only analyze code you are "

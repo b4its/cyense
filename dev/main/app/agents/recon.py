@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -58,7 +59,7 @@ class TargetProfile:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TargetProfile":
+    def from_dict(cls, data: dict[str, Any]) -> TargetProfile:
         """Rebuild from a to_dict() payload (ignores derived summary keys)."""
         known = {
             "url_template",

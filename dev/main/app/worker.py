@@ -13,7 +13,7 @@ from typing import Any
 from app.core.models import ScanJob
 from app.core.store import JobStore
 from app.engines.link_engine import run_link_scan
-from app.engines.program_engine import run_program_scan, resolve_source_dir
+from app.engines.program_engine import resolve_source_dir, run_program_scan
 from app.utils.logger import get_logger
 
 log = get_logger("worker")

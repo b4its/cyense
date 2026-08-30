@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
 
 from app.core.models import Finding, Severity, VerificationEvidence
 

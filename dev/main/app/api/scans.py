@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.core.models import LinkScanRequest, ProgramScanRequest, ScanRequest, ScanStatus
+from app.core.models import ScanRequest, ScanStatus
 
 router = APIRouter(tags=["scans"])
 

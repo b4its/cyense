@@ -45,7 +45,7 @@ class HttpClient:
         self._min_interval = 1.0 / max(self.rate_limit, 1)
         self._last_request = 0.0
 
-    async def __aenter__(self) -> "HttpClient":
+    async def __aenter__(self) -> HttpClient:
         self._client = httpx.AsyncClient(
             timeout=self.timeout,
             headers=self.headers,

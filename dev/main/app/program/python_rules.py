@@ -119,7 +119,6 @@ def _function_has_auth_guard(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bo
 
 
 def analyze_python_file(path: Any, source: str, scan_id: str) -> list[Finding]:
-    ctx = FileContext(path=str(path), lang="python", source=source)
     try:
         tree = ast.parse(source)
     except SyntaxError:
