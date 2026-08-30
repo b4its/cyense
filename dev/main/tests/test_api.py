@@ -37,6 +37,16 @@ def test_permission_gate_returns_422(client: TestClient) -> None:
     assert "i_have_permission" in resp.text
 
 
+def test_url_with_control_chars_rejected(client: TestClient) -> None:
+    """CRLF in url must be rejected 422 (header-injection hardening)."""
+    resp = client.post(
+        "/api/v1/scans",
+        json={"mode": "link", "url": "http://lab/invoice/{ID}\r\nX-Evil: 1",
+              "i_have_permission": True},
+    )
+    assert resp.status_code == 422
+
+
 def test_program_permission_gate_returns_422(client: TestClient) -> None:
     resp = client.post("/api/v1/scans", json={"mode": "program"})
     assert resp.status_code == 422

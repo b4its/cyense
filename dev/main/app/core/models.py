@@ -48,6 +48,9 @@ class LinkScanRequest(BaseModel):
     def _validate_url(cls, value: str) -> str:
         if not re.match(r"^https?://\S+$", value):
             raise ValueError("url must be a valid http(s) URL")
+        # reject control characters (CRLF/header injection attempts)
+        if any(ord(ch) < 0x20 or ch == "\x7f" for ch in value):
+            raise ValueError("url must not contain control characters")
         return value
 
     @model_validator(mode="after")
