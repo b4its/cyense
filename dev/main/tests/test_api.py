@@ -77,3 +77,24 @@ def test_program_scan_lifecycle_completes_with_findings(client: TestClient) -> N
 def test_scan_not_found_returns_404(client: TestClient) -> None:
     assert client.get("/api/v1/scans/doesnotexist").status_code == 404
     assert client.get("/api/v1/scans/doesnotexist/report").status_code == 404
+
+
+def test_link_scan_without_placeholder_fails_explicitly(client: TestClient) -> None:
+    """A recon-level error (no placeholder) must end as FAILED, not completed."""
+    resp = client.post(
+        "/api/v1/scans",
+        json={"mode": "link", "url": "http://lab/docs/plain",
+              "i_have_permission": True},
+    )
+    assert resp.status_code == 202
+    scan_id = resp.json()["scan_id"]
+
+    detail: dict = {}
+    for _ in range(200):
+        detail = client.get(f"/api/v1/scans/{scan_id}").json()
+        if detail["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.05)
+
+    assert detail["status"] == "failed", detail
+    assert "placeholder" in (detail.get("error") or "").lower()

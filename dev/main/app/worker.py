@@ -102,7 +102,12 @@ class ScanWorker:
 
             self._results[scan_id] = report
             self._dump_report(scan_id, report)
-            await self.store.mark_completed(scan_id)
+            if report.get("meta", {}).get("error"):
+                # recon-level controlled failure (e.g. no placeholder found):
+                # surface as FAILED, not silently completed-empty
+                await self.store.mark_failed(scan_id, report["meta"]["error"])
+            else:
+                await self.store.mark_completed(scan_id)
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
             raise
