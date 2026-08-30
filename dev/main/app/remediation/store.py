@@ -94,6 +94,21 @@ class FixStore:
         all_props = self.get_all_proposals(session_id)
         return next((p for p in all_props if p.get("fix_id") == fix_id), None)
 
+    def update_proposal(
+        self, session_id: str, fix_id: str, updates: dict[str, Any]
+    ) -> bool:
+        """Merge updates into a stored proposal (e.g. backup path, hashes)."""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return False
+            for prop in session["fixes"]:
+                if prop.get("fix_id") == fix_id:
+                    prop.update(updates)
+                    self._dump()
+                    return True
+        return False
+
     # -- update state ----------------------------------------------------------
 
     async def apply_proposals(
