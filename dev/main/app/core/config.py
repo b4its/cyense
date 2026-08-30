@@ -35,5 +35,11 @@ class Settings(BaseSettings):
     brain_dir: Path = Path("brain")
     workspace_dir: Path = Path("/workspace")
 
+    # github-scan feature config (instruction/feature/github-repo-audit.md PRD)
+    github_max_mb: int = 50
+    github_max_files: int = 3000
+    github_timeout: float = 60.0
+    github_cache: bool = True
+
 
 settings = Settings()
