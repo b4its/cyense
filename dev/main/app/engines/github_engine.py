@@ -97,13 +97,21 @@ class GithubEngine:
         # Stage 3: REPORT (merge metadata)
         await self._notify("report")
 
+        # Severity accessor: findings may be Pydantic Finding models or dicts
+        def _severity(f):
+            return (
+                getattr(f, "severity", None).value
+                if hasattr(f, "severity")
+                else f.get("severity")
+            )
+
         summary = {
             "total": len(findings),
-            "critical": sum(1 for f in findings if f.get("severity") == "critical"),
-            "high": sum(1 for f in findings if f.get("severity") == "high"),
-            "medium": sum(1 for f in findings if f.get("severity") == "medium"),
-            "low": sum(1 for f in findings if f.get("severity") == "low"),
-            "info": sum(1 for f in findings if f.get("severity") == "info"),
+            "critical": sum(1 for f in findings if _severity(f) == "critical"),
+            "high": sum(1 for f in findings if _severity(f) == "high"),
+            "medium": sum(1 for f in findings if _severity(f) == "medium"),
+            "low": sum(1 for f in findings if _severity(f) == "low"),
+            "info": sum(1 for f in findings if _severity(f) == "info"),
             "files_analyzed": analysis_result.get("files_scanned", len(findings)),
         }
 

@@ -149,7 +149,8 @@ class FetcherAgent(BaseAgent):
             # Create sandbox directory
             sandbox_path = Path(self.reports_dir) / self.scan_id / "src"
 
-            # Extract with guards
+            # Extract with guards (wrap bytes in BytesIO for tarfile)
+            import io as _io
             extractor = SafeTarExtractor(
                 dest=sandbox_path,
                 max_bytes=max_bytes,
@@ -157,7 +158,7 @@ class FetcherAgent(BaseAgent):
             )
 
             try:
-                extractor.extract_stream(tar_content)
+                extractor.extract_stream(_io.BytesIO(tar_content))
             except Exception:
                 sanitize_sandbox(sandbox_path)
                 raise  # re-raise with cleanup
