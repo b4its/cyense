@@ -61,7 +61,12 @@ class GithubClient:
         url = f"https://api.github.com/repos/{owner}/{repo}"
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
-            headers = {"Authorization": f"Bearer {self.redact_token(self._token)}"}
+            # Anonymous requests must NOT send Authorization at all; a token
+            # (when present) is sent verbatim and only to allowlisted hosts.
+            # (redact_token is for logs/reports, never for the wire.)
+            headers = {"Accept": "application/vnd.github+json", "User-Agent": "cyense"}
+            if self._token:
+                headers["Authorization"] = f"Bearer {self._token}"
             resp = await client.get(url, headers=headers)
 
             # Respect rate limits
@@ -69,6 +74,16 @@ class GithubClient:
             if remaining == 0:
                 retry_after = int(resp.headers.get("Retry-After", 60))
                 raise RuntimeError(f"github rate limit exhausted (retry after {retry_after}s)")
+
+            if resp.status_code in (401, 403, 404):
+                detail = (
+                    "repo not found or private "
+                    "(provide a read-only CYENSE_GITHUB_TOKEN)"
+                    if resp.status_code == 404
+                    else f"github rejected the request ({resp.status_code}); "
+                    "check CYENSE_GITHUB_TOKEN validity"
+                )
+                raise RuntimeError(detail)
 
             resp.raise_for_status()
             return resp.json()
@@ -83,7 +98,11 @@ class GithubClient:
         url = f"https://codeload.github.com/{owner}/{repo}/tar.gz/{ref}"
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.get(url)
+            # Token only ever goes to allowlisted github hosts, verbatim
+            headers = {"User-Agent": "cyense"}
+            if self._token:
+                headers["Authorization"] = f"Bearer {self._token}"
+            resp = await client.get(url, headers=headers)
             resp.raise_for_status()
 
             # Check redirect stays within allowed hosts
