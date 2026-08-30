@@ -2,7 +2,6 @@
 
 **Agentic IDOR, and XSS type vulnerability scanner** — menemukan *Insecure Direct Object Reference*, dan Jenis *Cross-Site Scripting* dengan routing dinamis, Agentic AI with Orchestration execution use specific agent indivudally, audit repo GitHub, hingga **usulan perbaikan sistem secara otomatis**.
 
-[![tests](https://img.shields.io/badge/tests-51%2F51%20passing-brightgreen)]() [![lint](https://img.shields.io/badge/ruff-0%20errors-brightgreen)]() [![commits](https://img.shields.io/badge/commits-50%20atomic-blue)]() [![license](https://img.shields.io/badge/license-MIT-lightgrey)]()
 
 ---
 
