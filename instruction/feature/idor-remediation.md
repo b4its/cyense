@@ -1,8 +1,11 @@
 # PRD Fitur — Remediasi IDOR (Auto-Fix Berbasis Hasil Analisa)
 
-> **Feature PRD** | Versi 1.0 | Status: draft untuk direview
+> **Feature PRD** | Versi 2.0 | Status: draft untuk direview
 > **Parent PRD:** `instruction/PRD.md` (v2.0) — addendum, bukan pengganti
-> **Fitur terkait:** `instruction/feature/github-repo-audit.md` (remediasi bekerja pada temuan dari mode `program`, `github`, dan `link`)
+> **Fitur terkait:** `instruction/feature/github-repo-audit.md` — **jalur input utama**:
+> temuan yang diremediasi umumnya berasal dari **fetch repo GitHub orang lain**
+> (sandbox `reports/<scan_id>/src/`); mode `program` (kode lokal) adalah sumber
+> sekunder; mode `link` tidak di-patch (server jarak jauh)
 > **Nama fitur:** IDOR Remediation (patch & verify)
 > **Lokasi implementasi (rencana):** `dev/main/app/remediation/`, agent baru **🔧 Fixer**
 
@@ -217,12 +220,17 @@ scan. Fitur ini *ortogonal* dan hanya konsumen laporan.
    `/apply` dengan `confirm: true` eksplisit (bukan default).
 2. **Backup wajib sebelum tulis** (`<file>.bak-cyense`); `/revert` selalu
    tersedia dan diuji.
-3. **Sandbox same-origin**: hanya file yang berada di bawah direktori source
-   milik scan itu (mode program: `/workspace`-scope; mode github: sandbox
-   `reports/<id>/src/`) yang boleh dipatch — path traversal ditolak (guard
-   `Path.resolve().is_relative_to(root)`).
-4. **No-auto-commit**: Cyense tidak pernah menjalankan `git commit` / push.
-   Repo adalah milik user; Cyense hanya mengubah working file saat approval.
+3. **Sandbox same-origin**: hanya file di bawah source root milik scan yang
+   boleh dipatch — untuk **jalur utama (mode github): sandbox
+   `reports/<id>/src/`** berisi salinan repo hasil fetch; untuk jalur
+   sekunder (mode program): scope `/workspace` — path traversal ditolak
+   (guard `Path.resolve().is_relative_to(root)`).
+4. **No-auto-commit, no-push — khususnya pada repo milik orang lain.**
+   Cyense tidak pernah menjalankan `git commit`/push dan tidak pernah
+   menulis apa pun ke GitHub. Patch pada kode hasil fetch diterapkan pada
+   **salinan sandbox milik sistem**; output untuk user adalah **diff
+   (`/fixes/{id}/diff`) siap-paste ke PR/clone miliknya sendiri** — repo
+   asli pemilik tidak pernah disentuh.
 5. **Re-scan sebelum klaim**: proposal hanya berstatus `verified` setelah
    re-scan membuktikan temuan hilang. Tidak ada klaim tanpa bukti (ground
    rule kompetisi).
@@ -309,6 +317,7 @@ scan. Fitur ini *ortogonal* dan hanya konsumen laporan.
 | Versi | Perubahan |
 |-------|-----------|
 | 1.0 | Draft awal: Fixer agent, fix matrix CY001–CY010, dry-run→apply→verify→(revert), backup wajib, same-origin guard, bukti re-scan, tanpa LLM, tanpa auto-commit |
+| 2.0 | **Penyelarasan fokus produk**: sumber temuan utama = repo GitHub orang lain hasil fetch (sandbox `reports/<id>/src/`); mode program diturunkan jadi sumber sekunder; diperjelas bahwa patch pada kode hasil fetch terjadi di salinan sandbox dan output user berupa diff (repo pemilik tidak pernah disentuh) |
 
 ---
 
