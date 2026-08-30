@@ -92,22 +92,17 @@ def api_user(uid: str):
     return jsonify(user)
 
 
+_FLAKY_N = 0
+
+
 @app.get("/flaky/<int:obj_id>")
 def flaky(obj_id: int):
-    # AMBIGUOUS (eval case 6): every other request succeeds (inconsistent)
+    # AMBIGUOUS (eval case 6): every other request fails (inconsistent retry)
+    global _FLAKY_N
     obj = INVOICES.get(obj_id)
     if obj is None:
         return jsonify(error="not found"), 404
-    state = {"n": 0}
-
-    def _counter():
-        state["n"] += 1
-        return state["n"]
-
-    # module-level counter instead (function state is per-request)
-    global _FLAKY_N
-    _FLAKY_N = getattr(_flaky, "_n", 0) + 1
-    _flaky._n = _FLAKY_N
+    _FLAKY_N += 1
     if _FLAKY_N % 2 == 0:
         return jsonify(error="temporary failure"), 500
     return jsonify(obj)
