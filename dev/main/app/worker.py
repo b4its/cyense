@@ -238,13 +238,31 @@ class ScanWorker:
         """Get cached scan result by scan_id."""
         return self._results.get(scan_id)
 
+    def _reports_dir_for(self, scan_id: str) -> Path | None:
+        """Resolve and validate a per-scan reports directory.
+
+        Returns ``None`` if the resolved path escapes reports_dir (defense-in-
+        depth against malicious scan_id values). Scan IDs are normally server-
+        generated, but we validate anyway to prevent any future injection.
+        """
+        target = (self.settings.reports_dir / scan_id).resolve()
+        try:
+            target.relative_to(self.settings.reports_dir.resolve())
+        except ValueError:
+            log.warning("scan_id %r escapes reports_dir", scan_id)
+            return None
+        return target
+
     def discard(self, scan_id: str) -> None:
         """Drop in-memory result and on-disk artifacts (PRD §4.3 DELETE)."""
         self._results.pop(scan_id, None)
         import shutil
 
         try:
-            shutil.rmtree(self.settings.reports_dir / scan_id, ignore_errors=True)
+            target = self._reports_dir_for(scan_id)
+            if target is None:
+                return
+            shutil.rmtree(target, ignore_errors=True)
         except OSError:
             log.warning("failed to remove artifacts for %s", scan_id)
 
@@ -294,7 +312,9 @@ class ScanWorker:
         import json
 
         try:
-            out_dir = self.settings.reports_dir / scan_id
+            out_dir = self._reports_dir_for(scan_id)
+            if out_dir is None:
+                return
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
         except OSError:
@@ -312,7 +332,9 @@ class ScanWorker:
         from pathlib import Path
         
         try:
-            out_dir = self.settings.reports_dir / scan_id
+            out_dir = self._reports_dir_for(scan_id)
+            if out_dir is None:
+                return
             
             # Write SARIF report
             sarif_path = out_dir / "findings.sarif"
