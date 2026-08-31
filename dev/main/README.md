@@ -197,6 +197,150 @@ Global options / Opsi global: `--api-url`, `--no-color`, `--ascii`, `--quiet`, `
 
 ---
 
+## CLI Usage Tutorial / Tutorial Penggunaan CLI
+
+> **EN:** This section shows how to run the CLI from inside the API container (`make cli-shell`) or via `make cli ARGS="..."`. All commands assume `make up` has been run first.
+>
+> **ID:** Bagian ini menunjukkan cara menjalankan CLI dari dalam container API (`make cli-shell`) atau via `make cli ARGS="..."`. Semua perintah diasumsikan `make up` sudah dijalankan.
+
+### ⚠️ Common Mistakes / Kesalahan Umum
+
+| ❌ Wrong / Salah | ✅ Correct / Benar | Why / Kenapa |
+|---|---|---|
+| `python -m app.cli.main --https://example.com` | `python -m app.cli.main scan link "http://example.com/{ID}" --i-have-permission` | `--` prefix is for options, not commands / prefix `--` untuk option, bukan perintah |
+| `python -m app.cli.main --api-url https://github.com/owner/repo` | `python -m app.cli.main scan github https://github.com/owner/repo --i-have-permission` | `--api-url` is the Cyense service URL (default `localhost:8000`), not the scan target / `--api-url` adalah URL service Cyense, bukan target scan |
+| `python -m app.cli.main github ...` | `python -m app.cli.main scan github ...` | Missing `scan` subcommand group / subcommand `scan` kurang |
+| `python -m app.cli.main scan github URL` | `python -m app.cli.main scan github URL --i-have-permission` | `--i-have-permission` is mandatory (422 otherwise) / `--i-have-permission` wajib (422 jika tidak) |
+
+### 1️⃣ Audit a GitHub Repository / Audit Repositori GitHub
+
+**EN:** Scan any public (or private with token) GitHub repo for IDOR & XSS.
+
+**ID:** Scan repo GitHub publik (atau privat dengan token) untuk IDOR & XSS.
+
+```bash
+# From host / Dari host:
+make cli ARGS="scan github https://github.com/b4its/finready-latest --i-have-permission"
+
+# Inside make cli-shell:
+python -m app.cli.main scan github https://github.com/b4its/finready-latest --i-have-permission
+
+# With GitHub token for private repos / Dengan token untuk repo privat:
+make cli ARGS="scan github https://github.com/owner/private-repo --i-have-permission --token ghp_xxx"
+
+# Limit scope to a subfolder / Batasi ke subfolder:
+make cli ARGS="scan github https://github.com/owner/repo --i-have-permission --subdir src/"
+
+# Force diff-scope against main branch / Paksa diff-scope terhadap branch main:
+make cli ARGS="scan github https://github.com/owner/repo --i-have-permission --scope-mode diff --diff-base origin/main"
+```
+
+### 2️⃣ Scan a URL / Link (Dynamic IDOR Probing) / Scan URL/Link (Probing IDOR Dinamis)
+
+**EN:** Probe a live endpoint with placeholder `{ID}`. The agent substitutes the placeholder with candidate IDs and verifies which return cross-account data.
+
+**ID:** Probe endpoint live dengan placeholder `{ID}`. Agent mengganti placeholder dengan ID kandidat dan memverifikasi mana yang mengembalikan data lintas akun.
+
+```bash
+# Basic example with example.com / Contoh dasar dengan example.com:
+make cli ARGS='scan link "http://example.com/api/users/{ID}" --i-have-permission'
+
+# With auth credentials / Dengan kredensial auth:
+make cli ARGS='scan link "http://example.com/api/invoice/{ID}" --i-have-permission --baseline-id 101 --probe-ids 102,103'
+
+# Inside make cli-shell:
+python -m app.cli.main scan link "http://example.com/users/{ID}" \
+    --i-have-permission \
+    --baseline-id 1 \
+    --probe-ids 2,3,4
+```
+
+**EN — Placeholders supported:** `{ID}`, `{UID}`, `{GUID}`, `{EMAIL}`. At least one must appear in the URL.
+
+**ID — Placeholder yang didukung:** `{ID}`, `{UID}`, `{GUID}`, `{EMAIL}`. Minimal satu harus ada di URL.
+
+### 3️⃣ Analyze Local Source Code / Analisis Source Code Lokal
+
+**EN:** Scan Python/JS/PHP files mounted at `/workspace` (or the built-in sample).
+
+**ID:** Scan file Python/JS/PHP yang di-mount di `/workspace` (atau sample bawaan).
+
+```bash
+# Built-in sample / Sample bawaan:
+make cli ARGS="scan program --i-have-permission --source-type sample"
+
+# With language override / Dengan override bahasa:
+make cli ARGS="scan program --i-have-permission --lang js"
+```
+
+### 4️⃣ View Results / Lihat Hasil
+
+```bash
+# List all scans / Daftar semua scan:
+make cli ARGS="list"
+
+# Show detailed report / Tampilkan laporan detail:
+make cli ARGS="report <scan_id>"
+
+# Open web viewer in browser / Buka web viewer di browser:
+make cli ARGS="view <scan_id>"
+# Or latest scan / Atau scan terbaru:
+make cli ARGS="view --latest"
+
+# Export findings as CSV / Ekspor temuan sebagai CSV:
+make cli ARGS="export csv <scan_id> --out findings.csv"
+
+# Export as PDF (compliance report) / Ekspor sebagai PDF (laporan compliance):
+make cli ARGS="export pdf <scan_id> --out report.pdf"
+
+# Compare two scans / Bandingkan dua scan:
+make cli ARGS="compare <old_scan_id> <new_scan_id>"
+
+# History with filter / Riwayat dengan filter:
+make cli ARGS="history --status completed --limit 10"
+```
+
+### 5️⃣ Remediation / Remediasi
+
+```bash
+# Generate patch proposals (dry-run, does not write) / Generate usulan patch (dry-run):
+make cli ARGS="fix <scan_id>"
+
+# Inside cli-shell, apply patches via API / Di dalam cli-shell, apply patch via API:
+python -m app.cli.main fix <scan_id>
+# Then call POST /api/v1/fixes/<session_id>/apply with confirm=true
+```
+
+### 6️⃣ Full Workflow Example / Contoh Workflow Lengkap
+
+```bash
+# Step 1: Start services / Mulai services
+make up
+
+# Step 2: Scan a public GitHub repo / Scan repo GitHub publik
+make cli ARGS="scan github https://github.com/octocat/Hello-World --i-have-permission"
+# Note the scan_id from the output / Catat scan_id dari output
+
+# Step 3: View findings / Lihat temuan
+make cli ARGS="list"
+make cli ARGS="report <scan_id>"
+
+# Step 4: Open interactive dashboard / Buka dashboard interaktif
+make cli ARGS="view <scan_id>"
+
+# Step 5: Export for compliance / Ekspor untuk compliance
+make cli ARGS="export csv <scan_id> --out findings.csv"
+make cli ARGS="export pdf <scan_id> --out compliance.pdf"
+
+# Step 6: Propose fixes / Usulkan perbaikan
+make cli ARGS="fix <scan_id>"
+
+# Step 7: Cleanup / Bersihkan
+make down
+```
+
+---
+
 ## Evaluation / Evaluasi (PRD §7)
 
 **EN:** Eval set: 9 link cases on the vulnerable lab app (from 11 PRD §7.3 cases; flaky/timeout cases excluded below), identical task for both engines, same rate limit & concurrency.
