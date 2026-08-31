@@ -101,7 +101,8 @@ def apply_patch(
 
     # Apply replacements to file content
     try:
-        original_lines = file_path.read_text().splitlines()
+        original_text = file_path.read_text()
+        original_lines = original_text.splitlines()
     except OSError as exc:
         return False, f"Failed to read file: {exc}", backup
 
@@ -121,9 +122,7 @@ def apply_patch(
     try:
         patched_content = "\n".join(patched_lines)
         # Preserve trailing newline if original had one
-        if original_lines and original_lines[-1].endswith("\n"):
-            patched_content += "\n"
-        elif file_path.read_text().endswith("\n"):
+        if original_text.endswith("\n"):
             patched_content += "\n"
 
         tmp_path = Path(str(file_path) + ".tmp-cyense")
