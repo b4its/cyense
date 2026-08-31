@@ -6,11 +6,11 @@ Also serves SARIF and coverage artifacts (ci-compliance-reporting.md §3.7).
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.report.coverage import build_coverage_document
 from app.report.html_report import render_html_report
 from app.report.sarif import build_sarif_report
-from app.report.coverage import build_coverage_document
 
 router = APIRouter(tags=["reports"])
 

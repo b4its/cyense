@@ -4,14 +4,13 @@ Defines quick|standard|deep modes as combinations of rule set, scope mode, and f
 """
 
 from dataclasses import dataclass
-from typing import Tuple
 
 
 @dataclass
 class ScanModeProfile:
     """Configuration preset for a scan mode."""
     name: str
-    scan_types: Tuple[str, ...]
+    scan_types: tuple[str, ...]
     default_scope_mode: str
     max_files: int
     description: str
@@ -58,16 +57,16 @@ def resolve_config(
     cli_scope_mode: str | None = None,
 ) -> tuple[list[str], str]:
     """Resolve final configuration from CLI args + presets."""
-    
+
     # Start with preset or default
     mode = cli_mode or "standard"
     profile = get_profile(mode)
-    
+
     if not profile:
         raise ValueError(f"Invalid scan mode: {mode}")
-    
+
     # CLI flags override presets (explicit always wins)
     scan_types = tuple(cli_scan_types) if cli_scan_types else profile.scan_types
     scope_mode = cli_scope_mode or profile.default_scope_mode
-    
+
     return list(scan_types), scope_mode

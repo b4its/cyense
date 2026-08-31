@@ -1,0 +1,2 @@
+[console_scripts]
+cyense = app.cli.main:app

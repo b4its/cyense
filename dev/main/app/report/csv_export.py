@@ -12,19 +12,19 @@ from typing import Any
 def export_csv(findings: list[dict[str, Any]], include_remediation: bool = True) -> str:
     """
     Export findings to CSV format.
-    
+
     Args:
         findings: List of finding dictionaries
         include_remediation: Whether to include remediation column
-        
+
     Returns:
         CSV string with UTF-8 BOM for Excel compatibility
     """
     output = io.StringIO()
-    
+
     # Write UTF-8 BOM for Excel compatibility
     output.write('\ufeff')
-    
+
     # Define columns
     fieldnames = [
         'finding_id',
@@ -39,15 +39,15 @@ def export_csv(findings: list[dict[str, Any]], include_remediation: bool = True)
         'snippet',
         'confidence',
     ]
-    
+
     if include_remediation:
         fieldnames.append('remediation')
-    
+
     fieldnames.append('verified_at')
-    
+
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
-    
+
     for finding in findings:
         # Prepare row data
         row = {
@@ -64,10 +64,10 @@ def export_csv(findings: list[dict[str, Any]], include_remediation: bool = True)
             'confidence': finding.get('confidence', ''),
             'verified_at': finding.get('verified_at', ''),
         }
-        
+
         if include_remediation:
             row['remediation'] = finding.get('remediation', '')
-        
+
         writer.writerow(row)
-    
+
     return output.getvalue()

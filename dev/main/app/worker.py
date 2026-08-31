@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Any
 
 from app.core.models import ScanJob
@@ -15,18 +16,18 @@ from app.core.store import JobStore
 from app.engines.github_engine import GithubEngine
 from app.engines.link_engine import run_link_scan
 from app.engines.program_engine import resolve_source_dir, run_program_scan
-from app.utils.logger import get_logger
+from app.report.coverage import build_coverage_document, write_coverage
 
 # CI/Compliance Reporting modules (ci-compliance-reporting.md)
 from app.report.cvss import enrich_finding
-from app.report.sarif import build_sarif_report, dump_sarif_report
-from app.report.coverage import build_coverage_document, write_coverage
 from app.report.dedupe import deduplicate_findings
+from app.report.sarif import dump_sarif_report
 from app.services.scan_resume import (
     load_checkpoint,
     remove_checkpoint,
     save_checkpoint,
 )
+from app.utils.logger import get_logger
 
 log = get_logger("worker")
 
@@ -196,7 +197,7 @@ class ScanWorker:
 
             # Enrich findings with CVSS data (ci-compliance-reporting.md §3.1)
             self._enrich_report(report)
-            
+
             # Preserve custom instruction in report meta (Strix-style audit context)
             instruction = request_dict.get("instruction")
             if instruction:
@@ -204,10 +205,10 @@ class ScanWorker:
 
             self._results[scan_id] = report
             self._dump_report(scan_id, report)
-            
+
             # Write SARIF and coverage reports (ci-compliance-reporting.md §3.2, §3.5)
             self._write_compliance_artifacts(scan_id, report)
-            
+
             if report.get("meta", {}).get("error"):
                 # recon-level controlled failure (e.g. no placeholder found):
                 # surface as FAILED, not silently completed-empty
@@ -277,10 +278,10 @@ class ScanWorker:
             f.model_dump(mode="json") if hasattr(f, "model_dump") else f
             for f in finding_models
         ]
-        
+
         # Deduplicate findings (ci-compliance-reporting.md §3.6)
         findings = deduplicate_findings(findings)
-        
+
         summary = {
             "critical": sum(1 for f in findings if f["severity"] == "critical"),
             "high": sum(1 for f in findings if f["severity"] == "high"),
@@ -328,22 +329,20 @@ class ScanWorker:
 
     def _write_compliance_artifacts(self, scan_id: str, report: dict[str, Any]) -> None:
         """Write SARIF and coverage reports (ci-compliance-reporting.md §3.2, §3.5)."""
-        import json
-        from pathlib import Path
-        
+
         try:
             out_dir = self._reports_dir_for(scan_id)
             if out_dir is None:
                 return
-            
+
             # Write SARIF report
             sarif_path = out_dir / "findings.sarif"
             dump_sarif_report(report, sarif_path)
-            
+
             # Write coverage report
             coverage_doc = build_coverage_document(report)
             write_coverage(out_dir, coverage_doc)
-            
+
         except Exception as exc:
             log.warning("failed to write compliance artifacts for %s: %s", scan_id, exc)
 

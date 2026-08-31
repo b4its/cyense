@@ -17,8 +17,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.cli.models import (
-    Recommendation,
     SEVERITY_WEIGHT,
+    Recommendation,
     classify_recommendation,
     get_finding_dict,
     score_group,

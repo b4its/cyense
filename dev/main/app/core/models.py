@@ -131,7 +131,7 @@ class WebsiteScanRequest(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _permission_gate(self) -> "WebsiteScanRequest":
+    def _permission_gate(self) -> WebsiteScanRequest:
         if not self.i_have_permission:
             raise ValueError(
                 "i_have_permission must be true: only scan websites "

@@ -26,7 +26,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 # Rules grouped by minimum level required.
 # A rule listed under "high" runs at "high" AND "max" levels.
 # A rule listed under "max" runs ONLY at "max" level.

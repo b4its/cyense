@@ -138,35 +138,35 @@ class GithubClient:
         self, owner: str, repo: str, base: str, head: str | None = None
     ) -> dict[str, Any]:
         """Compare two refs via GitHub Compare API. Returns list of changed files."""
-        
+
         # Default head to HEAD if not provided
         if head is None:
             head = "HEAD"
-        
+
         url = f"https://api.github.com/repos/{owner}/{repo}/compare/{base}...{head}"
-        
+
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             headers = {"Accept": "application/vnd.github+json", "User-Agent": "cyense"}
             if self._token:
                 headers["Authorization"] = f"Bearer {self._token}"
-            
+
             resp = await client.get(url, headers=headers)
-            
+
             # Check rate limits
             remaining = int(resp.headers.get("X-RateLimit-Remaining", 999))
             if remaining == 0:
                 retry_after = int(resp.headers.get("Retry-After", 60))
                 raise RuntimeError(f"github rate limit exhausted (retry after {retry_after}s)")
-            
+
             if resp.status_code not in (200, 201):
                 detail = f"github compare failed ({resp.status_code})"
                 raise RuntimeError(detail)
-            
+
             data = resp.json()
-            
+
             # Extract filename from each file entry
             files = [f.get("filename", "") for f in data.get("files", [])]
-            
+
             # Return metadata too
             return {
                 "success": True,

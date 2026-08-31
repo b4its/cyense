@@ -10,8 +10,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.utils.redact import redact_url_credentials
-
 # SARIF constants
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 VERSION = "2.1.0"
@@ -51,11 +49,11 @@ def _normalize_path(path: str | None, tree_root: str | None = None) -> str | Non
     """Convert path to repo-relative POSIX. Return synthetic anchor if invalid."""
     if not path:
         return None
-    
+
     # Clean up - remove sandbox prefix like reports/<id>/src/
-    from pathlib import PurePath, PurePosixPath
+    from pathlib import PurePosixPath
     p = PurePosixPath(path)
-    
+
     # Check if it's an absolute path or contains traversal
     if p.is_absolute() or ".." in p.parts:
         # Try to strip common prefixes first
@@ -63,7 +61,7 @@ def _normalize_path(path: str | None, tree_root: str | None = None) -> str | Non
             "reports/", f"reports/{p.parts[1]}/" if len(p.parts) > 1 else "",
             f"reports/{p.parts[1]}/{p.parts[2]}/" if len(p.parts) > 2 else "",
         ]
-        
+
         cleaned = str(p)
         for prefix in prefixes:
             if prefix and cleaned.startswith(prefix):
@@ -75,16 +73,16 @@ def _normalize_path(path: str | None, tree_root: str | None = None) -> str | Non
                         break
                 except ValueError:
                     pass
-        
+
         # If still invalid, use synthetic location
         if "/" not in path or ".." in path.split("/"):
             return "SECURITY.md"  # Synthetic anchor as per Strix design
-    
+
     # Validate final path
     p_final = PurePosixPath(path)
     if p_final.is_absolute() or ".." in p_final.parts:
         return "SECURITY.md"
-    
+
     return str(p)
 
 
@@ -102,11 +100,10 @@ def build_sarif_report(
     findings: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Build complete SARIF document from Cyense report."""
-    
+
     meta = report.get("meta", {})
-    scan_id = meta.get("scan_id", "")
     repo_meta = meta.get("repo", {})
-    
+
     # Build rule definitions
     rules = []
     seen_cwes = set()
@@ -117,11 +114,11 @@ def build_sarif_report(
             rule_id = cwe
             name = f"Cyense {cwe}"
             short_desc = finding.get("title", "")[:100]
-            
+
             # Get severity info
             base_sev = finding.get("severity", "info").lower()
             cvss_score = finding.get("cvss_score")
-            
+
             result = {
                 "id": rule_id,
                 "name": name,
@@ -130,35 +127,31 @@ def build_sarif_report(
                     "tags": ["security"] + _cwe_to_tags(cwe),
                 }
             }
-            
+
             # Add security-severity (prefer CVSS, fallback to label)
             if cvss_score is not None:
                 result["properties"]["security-severity"] = f"{float(cvss_score):.1f}"
             else:
                 result["properties"]["security-severity"] = _SEVERITY_TO_SCORE.get(base_sev, "1.0")
-            
+
             rules.append(result)
-    
+
     # Build results
     results = []
-    for idx, finding in enumerate(findings):
+    for finding in findings:
         rule = finding.get("rule", "UNKNOWN")
         cwe = finding.get("cwe", "CWE-Unknown")
         sev = finding.get("severity", "info").lower()
-        
+
         level = _SEVERITY_TO_LEVEL.get(sev, "note")
-        
+
         # Normalize location
         loc = finding.get("location", "")
         repo_rel_loc = _normalize_path(loc)
-        
+
         # Determine rule ID (prioritize CWE)
         rule_id = cwe if cwe != "CWE-Unknown" else rule
-        
-        # Find matching rule definition
-        rule_def = next((r for r in rules if r["id"] == rule_id), 
-                       {"id": rule_id, "shortDescription": {"text": finding.get("title", "")}})
-        
+
         # Build location(s)
         locations = []
         if repo_rel_loc:
@@ -188,7 +181,7 @@ def build_sarif_report(
                     "kind": "url"
                 }]
             }]
-        
+
         # Result object
         result_obj = {
             "ruleId": rule_id,
@@ -210,9 +203,9 @@ def build_sarif_report(
                 }
             }
         }
-        
+
         results.append(result_obj)
-    
+
     # Version control provenance
     vcp = None
     if repo_meta.get("url") or repo_meta.get("commit_sha"):
@@ -221,7 +214,7 @@ def build_sarif_report(
             "revisionId": repo_meta.get("commit_sha", "")[:40] or "",
             "branch": repo_meta.get("ref", ""),
         }]
-    
+
     # Build root SARIF structure
     run = {
         "tool": {
@@ -241,7 +234,7 @@ def build_sarif_report(
             }
         }]
     }
-    
+
     # Wrap in runs array
     return {
         "$schema": SCHEMA,
@@ -254,7 +247,7 @@ def dump_sarif_report(report: dict[str, Any], path: Path) -> Path:
     """Write SARIF report to disk atomically."""
     findings = report.get("findings", [])
     sarif_doc = build_sarif_report(report, findings)
-    
+
     # Atomic write
     tmp = path.with_suffix(".tmp")
     try:
@@ -264,5 +257,5 @@ def dump_sarif_report(report: dict[str, Any], path: Path) -> Path:
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
-    
+
     return path

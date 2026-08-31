@@ -8,11 +8,11 @@ import io
 from typing import Any
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
 def generate_pdf_report(
@@ -23,13 +23,13 @@ def generate_pdf_report(
 ) -> bytes:
     """
     Generate PDF report for scan findings.
-    
+
     Args:
         findings: List of finding dictionaries
         summary: Summary dictionary with counts by severity
         scan_id: Scan identifier
         title: Report title
-        
+
     Returns:
         PDF as bytes
     """
@@ -42,10 +42,10 @@ def generate_pdf_report(
         topMargin=0.75 * inch,
         bottomMargin=0.75 * inch,
     )
-    
+
     # Create document elements
     elements = []
-    
+
     # Title
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
@@ -57,14 +57,14 @@ def generate_pdf_report(
         alignment=TA_CENTER,
     )
     elements.append(Paragraph(title, title_style))
-    
+
     # Meta info table
     meta_data = [
         ["Scan ID:", scan_id],
         ["Generated At:", "Current timestamp"],
         ["Severity Breakdown:", f"Critical: {summary.get('critical', 0)}, High: {summary.get('high', 0)}, Medium: {summary.get('medium', 0)}, Low: {summary.get('low', 0)}"],
     ]
-    
+
     meta_table = Table(meta_data, colWidths=[1.5 * inch, 4.5 * inch])
     meta_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e0e6ed')),
@@ -78,11 +78,11 @@ def generate_pdf_report(
     ]))
     elements.append(meta_table)
     elements.append(Spacer(1, 0.3 * inch))
-    
+
     # Severity breakdown
     elements.append(Paragraph("Findings Overview", ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14)))
     elements.append(Spacer(1, 0.1 * inch))
-    
+
     severity_data = [
         ['Severity', 'Count', 'Percentage'],
         ['Critical', str(summary.get('critical', 0)), f"{(summary.get('critical', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
@@ -90,7 +90,7 @@ def generate_pdf_report(
         ['Medium', str(summary.get('medium', 0)), f"{(summary.get('medium', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
         ['Low', str(summary.get('low', 0)), f"{(summary.get('low', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
     ]
-    
+
     severity_table = Table(severity_data, colWidths=[3*inch, 1.2*inch, 1.3*inch])
     severity_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0a1628')),
@@ -104,17 +104,17 @@ def generate_pdf_report(
     ]))
     elements.append(severity_table)
     elements.append(PageBreak())
-    
+
     # Detailed findings
     elements.append(Paragraph("Detailed Findings", ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14)))
     elements.append(Spacer(1, 0.1 * inch))
-    
+
     for idx, finding in enumerate(findings, 1):
         # Finding header
         finding_title = f"{idx}. {finding.get('rule', '')}: {finding.get('title', '')}"
         elements.append(Paragraph(finding_title, ParagraphStyle('FindingTitle', parent=styles['Heading3'], fontSize=11, textColor=colors.HexColor('#1a2332'))))
         elements.append(Spacer(1, 0.1 * inch))
-        
+
         # Finding details
         details = [
             ['Severity:', severity_badge(finding.get('severity', ''))],
@@ -123,7 +123,7 @@ def generate_pdf_report(
             ['Location:', str(finding.get('location', 'N/A'))],
             ['Confidence:', f"{finding.get('confidence', 0) * 100:.0f}%"],
         ]
-        
+
         details_table = Table(details, colWidths=[1.5 * inch, 5 * inch])
         details_table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
@@ -135,23 +135,23 @@ def generate_pdf_report(
         ]))
         elements.append(details_table)
         elements.append(Spacer(1, 0.2 * inch))
-        
+
         # Description if available
         if finding.get('description'):
             desc_style = ParagraphStyle('Description', parent=styles['Normal'], fontSize=9, leading=10)
             elements.append(Paragraph('Description:', desc_style))
             elements.append(Paragraph(str(finding.get('description', '')), desc_style))
             elements.append(Spacer(1, 0.2 * inch))
-        
+
         # Remediation if available
         if finding.get('remediation'):
             rem_style = ParagraphStyle('Remediation', parent=styles['Normal'], fontSize=9, leading=10, textColor=colors.HexColor('#0066cc'))
             elements.append(Paragraph('Remediation:', rem_style))
             elements.append(Paragraph(str(finding.get('remediation', '')), rem_style))
             elements.append(Spacer(1, 0.3 * inch))
-        
+
         elements.append(PageBreak())
-    
+
     # Build PDF
     doc.build(elements)
     buffer.seek(0)

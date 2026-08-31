@@ -48,12 +48,12 @@ def _finding(
     remediation: str,
 ) -> Finding:
     """Create finding with unique ID including lineno (fixes collision bug)."""
-    
+
     lineno = getattr(node, "lineno", 0)
-    
+
     # Fix: include line number in finding_id for uniqueness (ci-compliance-reporting.md §3.6)
     finding_id = f"{scan_id}-{rule}-{lineno}" if lineno else f"{scan_id}-{rule}"
-    
+
     return Finding(
         finding_id=finding_id,
         rule=rule,

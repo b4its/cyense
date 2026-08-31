@@ -63,27 +63,25 @@ def enrich_finding(finding: dict[str, Any]) -> dict[str, Any]:
     if not profile:
         # No CVSS profile available; leave fields as-is
         return finding
-    
+
     # Calculate actual CVSS score using cvss library
     try:
         from cvss import CVSS3
-        
+
         vec = f"CVSS:3.1/{profile['vector']}"
         c = CVSS3(vec)
         score = c.scores()[0]
-        base = c.severities()[0].lower()
-        severity_label = "info" if base == "none" else base
-        
+
         # Add fields — non-breaking: optional, backward-compatible
         finding["cwe"] = profile["cwe"]
         finding["cvss_score"] = round(score, 1)
         finding["cvss_vector"] = vec
-        
+
     except ImportError:
         # cvss library not installed; add basic info only
         finding["cwe"] = profile["cwe"]
         finding["cvss_vector"] = f"CVSS:3.1/{profile['vector']}"
-    
+
     return finding
 
 
@@ -92,7 +90,7 @@ def get_rule_metadata(rule: str) -> dict[str, Any] | None:
     profile = get_profile(rule)
     if not profile:
         return None
-    
+
     # Try to calculate CVSS score
     cvss_score = None
     try:
@@ -101,13 +99,13 @@ def get_rule_metadata(rule: str) -> dict[str, Any] | None:
         cvss_score = cvss.scores()[0]
     except (ImportError, Exception):
         pass
-    
+
     result = {
         "cwe": profile["cwe"],
         "cvss_vector": profile["vector"],
         "cvss_score": cvss_score,
     }
-    
+
     return result
 
 
@@ -116,7 +114,7 @@ def get_cvss_for_rule(rule: str) -> dict[str, Any]:
     profile = get_profile(rule)
     if not profile:
         return {"score": None, "vector": None}
-    
+
     # Try to calculate score
     try:
         from cvss import CVSS3
@@ -124,7 +122,7 @@ def get_cvss_for_rule(rule: str) -> dict[str, Any]:
         score = cvss.scores()[0]
     except (ImportError, Exception):
         score = None
-    
+
     return {
         "score": round(score, 1) if score else None,
         "vector": profile["vector"],

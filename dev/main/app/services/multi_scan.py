@@ -93,7 +93,7 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
 class MultiTargetScanner:
     """Batch-submits targets through the existing worker queue + aggregates."""
 
-    def __init__(self, store: JobStore, worker: "ScanWorker"):
+    def __init__(self, store: JobStore, worker: ScanWorker):
         self.store = store
         self.worker = worker
 

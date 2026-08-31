@@ -18,18 +18,15 @@ import time
 from typing import Any
 
 from rich.console import Console  # type: ignore[import-untyped]
-from rich.progress import BarColumn, Progress, TextColumn  # type: ignore[import-untyped]
 from rich.table import Table  # type: ignore[import-untyped]
 from rich.text import Text  # type: ignore[import-untyped]
 
 from app.cli.models import (
-    MODE_STAGES,
-    RenderContext,
     Recommendation,
+    RenderContext,
     StageInfo,
 )
 from app.cli.theme import PALETTE, TermCaps
-
 
 # ---------------------------------------------------------------------------
 # Sanitasi: buang karakter kontrol dari data eksternal (§6.4)
@@ -412,10 +409,10 @@ def render_scope_warning(
     """Render warning for diff-scope (ci-compliance-reporting.md §3.7.2)."""
     if scope_mode not in ("diff", "auto"):
         return
-    
+
     p = PALETTE
     g = caps.g()
-    
+
     if files_excluded > 0:
         console.print(
             f"  [{p.sev_medium}]{g.warn} Scan dibatasi pada {files_scanned} file yang berubah. "

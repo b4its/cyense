@@ -52,7 +52,7 @@ def run_program_scan(
     level: str = "medium",
 ) -> dict[str, Any]:
     """Walk source tree and apply rules; returns report-shaped dict.
-    
+
     Args:
         lang: Language to analyze (python, js, php, auto)
         source_dir: Root directory to scan
@@ -65,11 +65,11 @@ def run_program_scan(
         level: Analysis depth (low|medium|high|max). Controls which rules
             run (high/max-only rules are gated) and, when ``max_files`` is
             not provided explicitly, the file cap.
-    
+
     Returns:
         Dict with files_scanned, findings list, level, and files_read_errors
     """
-    from app.engines.scan_levels import get_level, rules_for_level
+    from app.engines.scan_levels import get_level
 
     level_profile = get_level(level)
 

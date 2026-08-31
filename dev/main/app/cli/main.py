@@ -34,18 +34,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import shutil
 import signal
 import sys
 import time
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console  # type: ignore[import-untyped]
 
-from app.cli.client import CyenseClient, load_report_from_disk, open_client, poll_scan
+from app.cli.client import load_report_from_disk, open_client, poll_scan
 from app.cli.models import MODE_STAGES, RenderContext, StageInfo
 from app.cli.recommend import build_recommendations
 from app.cli.renderer import (
@@ -152,15 +151,15 @@ def _run(coro) -> None:
 @scan_app.command("github")
 def scan_github(
     repo_url: Annotated[str, typer.Argument(help="URL repository GitHub (https://github.com/...)")],
-    ref: Annotated[Optional[str], typer.Option("--ref", help="Branch / tag / commit SHA.")] = None,
+    ref: Annotated[str | None, typer.Option("--ref", help="Branch / tag / commit SHA.")] = None,
     subdir: Annotated[
-        Optional[str], typer.Option("--subdir", help="Batasi analisis ke subfolder.")
+        str | None, typer.Option("--subdir", help="Batasi analisis ke subfolder.")
     ] = None,
     lang: Annotated[
         str, typer.Option("--lang", help="Bahasa: python|js|php|auto.")
     ] = "auto",
     token: Annotated[
-        Optional[str], typer.Option("--token", envvar="CYENSE_GITHUB_TOKEN", help="GitHub token.")
+        str | None, typer.Option("--token", envvar="CYENSE_GITHUB_TOKEN", help="GitHub token.")
     ] = None,
     force: Annotated[bool, typer.Option("--force", help="Abaikan cache Brain.")] = False,
     i_have_permission: Annotated[
@@ -171,7 +170,7 @@ def scan_github(
         ),
     ] = False,
     out: Annotated[
-        Optional[str], typer.Option("--out", help="Path output .md.")
+        str | None, typer.Option("--out", help="Path output .md.")
     ] = None,
     no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
     fail_on: Annotated[
@@ -209,17 +208,17 @@ def scan_github(
     ] = "medium",
     # Strix-derived features:
     instruction: Annotated[
-        Optional[str], typer.Option("--instruction", help="Fokus testing khusus (mis. 'Focus on IDOR').")
+        str | None, typer.Option("--instruction", help="Fokus testing khusus (mis. 'Focus on IDOR').")
     ] = None,
     instruction_file: Annotated[
-        Optional[str], typer.Option("--instruction-file", help="Path file berisi instruksi testing.")
+        str | None, typer.Option("--instruction-file", help="Path file berisi instruksi testing.")
     ] = None,
     diff_base: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--diff-base", help="Override base branch/commit untuk diff-scope (mis. origin/main)."),
     ] = None,
     resume: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--resume", help="Lanjutkan scan yang terinterupsi dari scan_id ini."),
     ] = None,
 ) -> None:
@@ -295,7 +294,7 @@ def scan_program(
     i_have_permission: Annotated[
         bool, typer.Option("--i-have-permission", help="[wajib] Konfirmasi izin audit.")
     ] = False,
-    out: Annotated[Optional[str], typer.Option("--out")] = None,
+    out: Annotated[str | None, typer.Option("--out")] = None,
     no_md: Annotated[bool, typer.Option("--no-md")] = False,
     fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
     min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
@@ -323,13 +322,13 @@ def scan_program(
     ] = "medium",
     # Strix-derived features:
     instruction: Annotated[
-        Optional[str], typer.Option("--instruction", help="Fokus testing khusus.")
+        str | None, typer.Option("--instruction", help="Fokus testing khusus.")
     ] = None,
     instruction_file: Annotated[
-        Optional[str], typer.Option("--instruction-file", help="Path file instruksi testing.")
+        str | None, typer.Option("--instruction-file", help="Path file instruksi testing.")
     ] = None,
     resume: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--resume", help="Lanjutkan scan yang terinterupsi dari scan_id ini."),
     ] = None,
 ) -> None:
@@ -384,7 +383,7 @@ def scan_link(
     ] = False,
     fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
     min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
-    out: Annotated[Optional[str], typer.Option("--out")] = None,
+    out: Annotated[str | None, typer.Option("--out")] = None,
     no_md: Annotated[bool, typer.Option("--no-md")] = False,
     scan_mode: Annotated[
         str,
@@ -402,13 +401,13 @@ def scan_link(
     ] = "auto",
     # Strix-derived features:
     instruction: Annotated[
-        Optional[str], typer.Option("--instruction", help="Fokus testing khusus.")
+        str | None, typer.Option("--instruction", help="Fokus testing khusus.")
     ] = None,
     instruction_file: Annotated[
-        Optional[str], typer.Option("--instruction-file", help="Path file instruksi testing.")
+        str | None, typer.Option("--instruction-file", help="Path file instruksi testing.")
     ] = None,
     resume: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--resume", help="Lanjutkan scan yang terinterupsi dari scan_id ini."),
     ] = None,
 ) -> None:
@@ -481,7 +480,7 @@ def scan_website(
             help="[mandatory] Confirm you have explicit permission to scan this website.",
         ),
     ] = False,
-    out: Annotated[Optional[str], typer.Option("--out", help="Path output .md.")] = None,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
     no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
     fail_on: Annotated[
         str,
@@ -527,9 +526,9 @@ def scan_website(
 def scan_resume(
     scan_id: Annotated[str, typer.Argument(help="Scan ID untuk dilanjutkan (--resume <id>).")],
     instruction: Annotated[
-        Optional[str], typer.Option("--instruction", help="Instruksi tambahan untuk resumed scan.")
+        str | None, typer.Option("--instruction", help="Instruksi tambahan untuk resumed scan.")
     ] = None,
-    out: Annotated[Optional[str], typer.Option("--out")] = None,
+    out: Annotated[str | None, typer.Option("--out")] = None,
     no_md: Annotated[bool, typer.Option("--no-md")] = False,
     fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
     min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
@@ -989,7 +988,7 @@ async def _run_scan(
 @app.command("report")
 def report_cmd(
     scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
-    out: Annotated[Optional[str], typer.Option("--out")] = None,
+    out: Annotated[str | None, typer.Option("--out")] = None,
     no_md: Annotated[bool, typer.Option("--no-md")] = False,
 ) -> None:
     """Render ulang laporan scan yang sudah selesai."""
@@ -1208,7 +1207,7 @@ def fix_cmd(
 @app.command("view")
 def view_cmd(
     scan_id: Annotated[
-        Optional[str], typer.Argument(help="Scan ID (atau gunakan --latest).")
+        str | None, typer.Argument(help="Scan ID (atau gunakan --latest).")
     ] = None,
     latest: Annotated[bool, typer.Option("--latest", help="Buka scan terbaru.")] = False,
     no_browser: Annotated[
@@ -1267,7 +1266,7 @@ def view_cmd(
 def history_cmd(
     limit: Annotated[int, typer.Option("--limit", help="Jumlah maksimum baris.")] = 20,
     status_filter: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--status", help="Filter: completed|failed|running|queued."),
     ] = None,
     format: Annotated[str, typer.Option("--format", help="table|json")] = "table",
@@ -1295,6 +1294,7 @@ def history_cmd(
             return
 
         from rich.table import Table  # type: ignore[import-untyped]
+
         from app.cli.theme import PALETTE as PAL
 
         status_color = {
@@ -1377,6 +1377,7 @@ def compare_cmd(
             return
 
         from rich.table import Table  # type: ignore[import-untyped]
+
         from app.cli.theme import PALETTE as PAL
         from app.cli.theme import SEVERITY_BADGE_COLOR
 
@@ -1456,7 +1457,7 @@ app.add_typer(export_app, name="export")
 @export_app.command("csv")
 def export_csv_cmd(
     scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
-    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Path output .csv.")] = None,
+    out: Annotated[str | None, typer.Option("--out", "-o", help="Path output .csv.")] = None,
     no_remediation: Annotated[
         bool, typer.Option("--no-remediation", help="Tanpa kolom remediation.")
     ] = False,
@@ -1485,7 +1486,7 @@ def export_csv_cmd(
 @export_app.command("pdf")
 def export_pdf_cmd(
     scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
-    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Path output .pdf.")] = None,
+    out: Annotated[str | None, typer.Option("--out", "-o", help="Path output .pdf.")] = None,
 ) -> None:
     """Unduh laporan compliance PDF."""
 
@@ -1573,8 +1574,8 @@ def config_reset_cmd(
     confirm: Annotated[bool, typer.Option("--confirm", help="Wajib untuk benar-benar reset.")] = False,
 ) -> None:
     """Kembalikan seluruh konfigurasi ke default."""
-    from app.core.config_store import reset_config
     from app.cli.theme import PALETTE as PAL
+    from app.core.config_store import reset_config
 
     if not confirm:
         _state.console.print(

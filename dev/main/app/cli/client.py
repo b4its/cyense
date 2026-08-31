@@ -27,7 +27,6 @@ from typing import Any
 
 import httpx
 
-
 # ---------------------------------------------------------------------------
 # Konstanta
 
@@ -57,7 +56,7 @@ class CyenseClient:
         self._timeout = timeout
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> "CyenseClient":
+    async def __aenter__(self) -> CyenseClient:
         self._client = httpx.AsyncClient(
             base_url=self._base,
             timeout=self._timeout,

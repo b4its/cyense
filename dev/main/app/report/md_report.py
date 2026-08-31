@@ -62,7 +62,7 @@ def _frontmatter(report: dict[str, Any]) -> str:
 
     lines = [
         "---",
-        f"tool: cyense",
+        "tool: cyense",
         f"version: {_VERSION}",
         f"scan_id: {scan_id}",
         f"mode: {mode}",
@@ -240,8 +240,8 @@ def _finding_section(idx: int, f: dict[str, Any]) -> str:
     lines = [
         f"### {idx}. [{sev}] `{rule}` — {title}",
         "",
-        f"| Field | Nilai |",
-        f"|---|---|",
+        "| Field | Nilai |",
+        "|---|---|",
         f"| **Finding ID** | `{finding_id}` |",
         f"| **Rule** | `{rule}` |",
         f"| **Severity** | {sev} |",
@@ -278,7 +278,7 @@ def _finding_section(idx: int, f: dict[str, Any]) -> str:
                 lines.append(f"- `{vk}`: {_esc(str(vv))}")
 
     if remediation:
-        lines += ["", f"**Remediasi:**", "", f"> {remediation}"]
+        lines += ["", "**Remediasi:**", "", f"> {remediation}"]
 
     lines.append("")
     return "\n".join(lines)
@@ -327,7 +327,7 @@ def _detect_lang(filename: str) -> str:
 # ---------------------------------------------------------------------------
 # 6. Rekomendasi perbaikan
 
-def _recommendations_section(recs: list["Recommendation"]) -> str:
+def _recommendations_section(recs: list[Recommendation]) -> str:
     if not recs:
         return "_Tidak ada rekomendasi — tidak ada temuan._"
 
@@ -391,7 +391,7 @@ def _rules_appendix(findings: list[dict[str, Any]]) -> str:
 
 def render_markdown_report(
     report: dict[str, Any],
-    recs: "list[Recommendation] | None" = None,
+    recs: list[Recommendation] | None = None,
 ) -> str:
     """
     Render report dict menjadi string Markdown GitHub-flavored.
@@ -473,7 +473,7 @@ def render_markdown_report(
 def dump_markdown_report(
     report: dict[str, Any],
     path: Path,
-    recs: "list[Recommendation] | None" = None,
+    recs: list[Recommendation] | None = None,
 ) -> Path:
     """
     Tulis markdown report ke path (parent dir dibuat bila perlu).

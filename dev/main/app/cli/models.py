@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 # (cli-experience.md §4: "Severity diimpor dari app/core/models.py:15")
 from app.core.models import Severity  # noqa: F401 — re-export
 
-
 # ---------------------------------------------------------------------------
 # Konfigurasi CLI
 

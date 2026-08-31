@@ -258,7 +258,7 @@ def _find_reflected_params(page: dict[str, Any]) -> list[tuple[str, str]]:
     We only flag params whose raw value is >= 4 chars and appears in the body
     without the standard HTML entities (&lt; &gt; &quot; &#39; &amp;).
     """
-    from urllib.parse import urlparse, parse_qs
+    from urllib.parse import parse_qs, urlparse
 
     results: list[tuple[str, str]] = []
     body = page.get("body", "") or ""
