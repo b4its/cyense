@@ -5,6 +5,7 @@ Subcommand:
    scan program             — audit source lokal
    scan link <url>          — probing IDOR dinamis
    scan website <url>       — crawl website, cari IDOR + XSS live
+   scan api <spec>          — parse OpenAPI/Swagger spec, scan endpoints (Strix)
    scan resume <scan_id>    — lanjutkan scan yang terinterupsi (Strix --resume)
    scan multi <targets>     — scan multiple targets dari file (Strix --target-list)
    report <scan_id>         — render ulang laporan lama
@@ -16,6 +17,8 @@ Subcommand:
    config get|set|list|reset— preferensi CLI (~/.cyense/config.json, 0o600)
    rules                    — katalog aturan aktif
    fix <scan_id>            — usulan patch remediasi
+   auth login|status|logout — kelola kredensial (GitHub token) (Strix)
+   ci junit|check           — CI/CD helpers: JUnit XML export + quality gate (Strix)
    version                  — versi CLI + service
 
 Arsitektur: CLI HANYA bicara ke API lewat HTTP (app/cli/client.py).
@@ -517,6 +520,288 @@ def scan_website(
         fail_on=fail_on,
         min_severity=min_severity,
     ))
+
+
+# ---------------------------------------------------------------------------
+# scan api — parse OpenAPI/Swagger spec and scan declared endpoints (Strix pattern)
+
+@scan_app.command("api")
+def scan_api(
+    spec: Annotated[
+        str,
+        typer.Argument(
+            help="OpenAPI/Swagger spec: file path (.json/.yaml), URL, or raw JSON/YAML string.",
+        ),
+    ],
+    base_url: Annotated[
+        str | None,
+        typer.Option(
+            "--base-url",
+            help="Override base URL (e.g. http://localhost:8080). If omitted, uses spec servers[].url.",
+        ),
+    ] = None,
+    include_all: Annotated[
+        bool,
+        typer.Option(
+            "--include-all",
+            help="Include endpoints without path parameters too (default: only ID-bearing endpoints).",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Parse and display endpoints without submitting scans.",
+        ),
+    ] = False,
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[mandatory] Confirm you have explicit permission to test the target API.",
+        ),
+    ] = False,
+    fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
+    min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
+    max_targets: Annotated[
+        int,
+        typer.Option(
+            "--max-targets",
+            help="Maximum number of endpoints to scan (0 = unlimited).",
+        ),
+    ] = 50,
+) -> None:
+    """Scan an API using an OpenAPI/Swagger spec.
+
+    Parses the spec to discover endpoints with ID-like path parameters
+    (e.g. /users/{userId}, /invoices/{id}), then submits link scans for each
+    one against the live base URL. Inspired by Strix's API contract scanning.
+
+    \b
+    Examples:
+      cyense scan api ./openapi.yaml --base-url http://localhost:8080 --i-have-permission
+      cyense scan api https://api.example.com/openapi.json --i-have-permission
+      cyense scan api ./swagger.json --dry-run  # just list endpoints
+    """
+    from app.services.openapi_parser import get_spec_info, parse_openapi_spec
+
+    caps = _state.caps
+    console = _state.console
+
+    if not caps.quiet:
+        render_banner(console, caps, _VERSION)
+
+    # Parse spec info for display
+    try:
+        info = get_spec_info(spec)
+    except Exception as e:
+        render_error_panel(console, caps, f"Failed to parse OpenAPI spec: {e}")
+        raise typer.Exit(3)
+
+    if not caps.quiet:
+        from app.cli.theme import PALETTE as PAL
+        console.print(f"\n  [{PAL.blue_soft}]API Spec:[/]  [{PAL.ink}]{info['title']} v{info['version']}[/]")
+        console.print(f"  [{PAL.blue_soft}]OpenAPI:[/]   [{PAL.ink}]{info['openapi_version']}[/]")
+        console.print(f"  [{PAL.blue_soft}]Base URL:[/]  [{PAL.ink}]{info['base_url'] or '(none — use --base-url)'}[/]")
+        console.print(
+            f"  [{PAL.blue_soft}]Endpoints:[/] [{PAL.ink}]{info['total_endpoints']} total, "
+            f"{info['idor_candidates']} IDOR candidates[/]"
+        )
+        if info["security_schemes"]:
+            console.print(
+                f"  [{PAL.blue_soft}]Auth:[/]      [{PAL.ink}]{', '.join(info['security_schemes'])}[/]"
+            )
+        console.print()
+
+    # Parse endpoints
+    try:
+        endpoints = parse_openapi_spec(spec, base_url=base_url, include_all=include_all)
+    except Exception as e:
+        render_error_panel(console, caps, f"Failed to parse endpoints: {e}")
+        raise typer.Exit(3)
+
+    if not endpoints:
+        render_error_panel(
+            console, caps,
+            "No IDOR-candidate endpoints found in spec.",
+            "Try --include-all to scan all endpoints, or check that paths use {id}-style parameters.",
+        )
+        raise typer.Exit(3)
+
+    if max_targets > 0:
+        endpoints = endpoints[:max_targets]
+
+    # Display endpoints table
+    from rich.table import Table  # type: ignore[import-untyped]
+    from app.cli.theme import PALETTE as PAL
+
+    table = Table(
+        show_header=True,
+        header_style=f"bold {PAL.blue_primary}",
+        border_style=PAL.rule_line,
+        padding=(0, 1),
+    )
+    table.add_column("METHOD", style=PAL.blue_soft, width=8)
+    table.add_column("PATH", style=PAL.blue_mist, max_width=50)
+    table.add_column("ID PARAMS", width=20)
+    table.add_column("AUTH", width=6)
+    table.add_column("SUMMARY", max_width=40)
+
+    for ep in endpoints:
+        auth_badge = "🔒" if ep["has_auth"] else "—"
+        table.add_row(
+            ep["method"],
+            ep["path"],
+            ", ".join(ep["id_params"]) or "—",
+            auth_badge,
+            ep["summary"][:40] if ep["summary"] else "—",
+        )
+
+    if not caps.quiet:
+        console.print(table)
+        console.print(f"\n  [{PAL.muted}]{len(endpoints)} endpoint(s) selected for scanning[/]")
+
+    if dry_run:
+        if not caps.quiet:
+            console.print(f"\n  [{PAL.ok}]Dry run complete. No scans submitted.[/]")
+        raise typer.Exit(0)
+
+    # Validate base URL
+    effective_base = base_url or info.get("base_url", "")
+    if not effective_base:
+        render_error_panel(
+            console, caps,
+            "No base URL available. Spec has no servers[].url — use --base-url.",
+        )
+        raise typer.Exit(3)
+
+    if not i_have_permission:
+        render_error_panel(
+            console, caps,
+            "i_have_permission is required to scan live APIs.",
+            "Re-run with --i-have-permission to confirm authorization.",
+        )
+        raise typer.Exit(3)
+
+    # Submit link scans for each endpoint
+    scan_ids: list[tuple[str, str]] = []  # (scan_id, label)
+    for ep in endpoints:
+        url_template = ep["url_template"]
+        # Replace path params with {ID} placeholder for link scan
+        # Only replace the first ID-like param with {ID}; others stay literal
+        url_for_scan = url_template
+        for param in ep["id_params"]:
+            url_for_scan = url_for_scan.replace(f"{{{param}}}", "{ID}", 1)
+            break  # only replace the first one
+
+        label = f"{ep['method']} {ep['path']}"
+        payload = {
+            "mode": "link",
+            "url": url_for_scan,
+            "i_have_permission": True,
+        }
+
+        try:
+            async def _submit():
+                async with open_client(_state.api_url, timeout=30) as c:
+                    return await c.submit_scan(payload)
+
+            result = asyncio.run(_submit())
+            sid = result["scan_id"]
+            scan_ids.append((sid, label))
+            if not caps.quiet:
+                console.print(f"  [{PAL.blue_soft}]  → {sid}[/]  [{PAL.muted}]{label}[/]")
+        except Exception as e:
+            if not caps.quiet:
+                console.print(f"  [{PAL.error}]  ✗ failed:[/] {label}: {e}")
+
+    if not scan_ids:
+        render_error_panel(console, caps, "No scans were submitted successfully.")
+        raise typer.Exit(3)
+
+    # Wait for all scans to complete
+    if not caps.quiet:
+        console.print(f"\n  [{PAL.blue_soft}]Waiting for {len(scan_ids)} scan(s) to complete...[/]")
+
+    pending = {sid for sid, _ in scan_ids}
+    deadline = time.monotonic() + _state.timeout
+    while pending and time.monotonic() < deadline:
+        for sid in list(pending):
+            try:
+                async def _check(sid=sid):
+                    async with open_client(_state.api_url, timeout=10) as c:
+                        return await c.get_scan(sid)
+
+                data = asyncio.run(_check())
+                if data.get("status") in ("completed", "failed"):
+                    pending.discard(sid)
+            except Exception:
+                pass
+        if pending:
+            time.sleep(2.0)
+
+    # Summary table
+    if not caps.quiet:
+        result_table = Table(
+            show_header=True,
+            header_style=f"bold {PAL.blue_primary}",
+            border_style=PAL.rule_line,
+            padding=(0, 1),
+        )
+        result_table.add_column("SCAN ID", style=PAL.blue_soft, width=14)
+        result_table.add_column("ENDPOINT", style=PAL.blue_mist, max_width=40)
+        result_table.add_column("STATUS", width=12)
+        result_table.add_column("FINDINGS", justify="right", width=10)
+
+        status_color = {
+            "completed": PAL.ok,
+            "failed": PAL.error,
+            "running": PAL.blue_accent,
+            "queued": PAL.muted,
+        }
+        total_findings = 0
+        for sid, label in scan_ids:
+            try:
+                async def _get(sid=sid):
+                    async with open_client(_state.api_url, timeout=10) as c:
+                        return await c.get_scan(sid)
+
+                data = asyncio.run(_get())
+                st = data.get("status", "unknown")
+                findings = data.get("summary", {}).get("total", 0)
+                total_findings += findings
+            except Exception:
+                st = "unknown"
+                findings = 0
+            sc = status_color.get(st, PAL.muted)
+            result_table.add_row(sid, label, f"[{sc}]{st}[/]", str(findings))
+
+        console.print(result_table)
+        console.print(f"\n  [{PAL.blue_soft}]Total findings:[/] {total_findings}")
+
+    # Exit code
+    _sev_order = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
+    fail_sev_val = _sev_order.get(fail_on, 0)
+    exit_code = 0
+    if fail_sev_val > 0:
+        for sid, _ in scan_ids:
+            try:
+                async def _report(sid=sid):
+                    async with open_client(_state.api_url, timeout=10) as c:
+                        return await c.get_report(sid)
+
+                report = asyncio.run(_report())
+                if report:
+                    for f in report.get("findings", []):
+                        if _sev_order.get(f.get("severity", "info"), 0) >= fail_sev_val:
+                            exit_code = 1
+                            break
+            except Exception:
+                pass
+            if exit_code:
+                break
+
+    raise typer.Exit(exit_code)
 
 
 # ---------------------------------------------------------------------------
@@ -1612,6 +1897,333 @@ def version_cmd() -> None:
                 f"  [{PAL.blue_soft}]service   [/]  "
                 f"[{PAL.error}]offline — {_state.api_url}[/]"
             )
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# auth — credential management (Strix-inspired `strix auth login/status/logout`)
+
+auth_app = typer.Typer(help="Kelola kredensial (GitHub token, dll).", no_args_is_help=True)
+app.add_typer(auth_app, name="auth")
+
+
+@auth_app.command("login")
+def auth_login(
+    provider: Annotated[
+        str,
+        typer.Argument(help="Provider: github"),
+    ],
+    token: Annotated[
+        str | None,
+        typer.Option(
+            "--token",
+            envvar="CYENSE_GITHUB_TOKEN",
+            help="Token value. If omitted, reads from CYENSE_GITHUB_TOKEN env var.",
+        ),
+    ] = None,
+) -> None:
+    """Save a provider token to local config (0o600, atomic write).
+
+    \b
+    Examples:
+      cyense auth login github --token ghp_xxxx
+      export CYENSE_GITHUB_TOKEN=ghp_xxxx && cyense auth login github
+    """
+    from app.core.config_store import load_config, save_config
+    from app.cli.theme import PALETTE as PAL
+
+    if provider.lower() != "github":
+        render_error_panel(
+            _state.console, _state.caps,
+            f"Unknown provider: {provider}. Currently supported: github.",
+        )
+        raise typer.Exit(3)
+
+    if not token:
+        render_error_panel(
+            _state.console, _state.caps,
+            "No token provided. Use --token or set CYENSE_GITHUB_TOKEN env var.",
+        )
+        raise typer.Exit(3)
+
+    # Validate GitHub token format (basic check)
+    if not token.startswith(("ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_")):
+        _state.console.print(
+            f"  [{_state.caps.g().warn}] Warning: token tidak dimulai dengan prefix GitHub "
+            f"(ghp_/gho_/ghu_/ghs_/ghr_/github_pat_). Mungkin bukan token GitHub yang valid."
+        )
+
+    config = load_config()
+    config["github_token"] = token
+    path = save_config(config)
+
+    masked = f"{token[:4]}...{token[-4:]}" if len(token) > 8 else "[REDACTED]"
+    _state.console.print(
+        f"  [{PAL.ok}]✓ GitHub token tersimpan.[/]  "
+        f"[{PAL.blue_soft}]{masked}[/]  [{PAL.muted}]→ {path}[/]"
+    )
+    _state.console.print(
+        f"  [{PAL.muted}]Token akan otomatis dipakai oleh `cyense scan github`.[/]"
+    )
+
+
+@auth_app.command("status")
+def auth_status() -> None:
+    """Show current authentication status."""
+    from app.core.config_store import load_config
+    from app.cli.theme import PALETTE as PAL
+
+    config = load_config()
+    github_token = config.get("github_token")
+
+    _state.console.print(f"\n  [{PAL.blue_primary}]Authentication Status[/]")
+    _state.console.print(f"  {'─' * 40}")
+
+    if github_token:
+        masked = f"{github_token[:4]}...{github_token[-4:]}" if len(github_token) > 8 else "[REDACTED]"
+        _state.console.print(
+            f"  [{PAL.ok}]✓ GitHub[/]    [{PAL.blue_soft}]{masked}[/]"
+        )
+    else:
+        _state.console.print(
+            f"  [{PAL.muted}]✗ GitHub[/]    [{PAL.muted}]not configured[/]"
+        )
+        _state.console.print(
+            f"  [{PAL.muted}]  Run `cyense auth login github --token <token>` to set up.[/]"
+        )
+
+    _state.console.print()
+
+
+@auth_app.command("logout")
+def auth_logout(
+    provider: Annotated[
+        str,
+        typer.Argument(help="Provider: github"),
+    ],
+    confirm: Annotated[
+        bool,
+        typer.Option("--confirm", help="Required to actually remove the token."),
+    ] = False,
+) -> None:
+    """Remove a provider token from local config.
+
+    Requires --confirm to prevent accidental removal.
+    """
+    from app.core.config_store import load_config, save_config
+    from app.cli.theme import PALETTE as PAL
+
+    if provider.lower() != "github":
+        render_error_panel(
+            _state.console, _state.caps,
+            f"Unknown provider: {provider}. Currently supported: github.",
+        )
+        raise typer.Exit(3)
+
+    if not confirm:
+        _state.console.print(
+            f"  [{_state.caps.g().warn}] Use --confirm to remove the GitHub token."
+        )
+        raise typer.Exit(3)
+
+    config = load_config()
+    had_token = config.get("github_token") is not None
+    config["github_token"] = None
+    save_config(config)
+
+    if had_token:
+        _state.console.print(f"  [{PAL.ok}]✓ GitHub token removed from config.[/]")
+    else:
+        _state.console.print(f"  [{PAL.muted}]No GitHub token was configured.[/]")
+
+
+# ---------------------------------------------------------------------------
+# ci — CI/CD integration helpers (Strix-inspired CI workflow)
+
+ci_app = typer.Typer(help="CI/CD integration helpers.", no_args_is_help=True)
+app.add_typer(ci_app, name="ci")
+
+
+@ci_app.command("junit")
+def ci_junit(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID to export as JUnit XML.")],
+    out: Annotated[
+        str | None,
+        typer.Option("--out", "-o", help="Output file path (default: stdout)."),
+    ] = None,
+) -> None:
+    """Export scan findings as JUnit XML for CI/CD integration.
+
+    Each finding becomes a test failure; clean scans produce a passing test suite.
+    Compatible with GitHub Actions, GitLab CI, Jenkins, etc.
+
+    \b
+    Examples:
+      cyense ci junit <scan_id> --out results.xml
+      cyense ci junit <scan_id> > results.xml
+    """
+    import xml.etree.ElementTree as ET
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                report = await c.get_report(scan_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3)
+
+        if report is None:
+            report = load_report_from_disk(scan_id)
+
+        if report is None:
+            render_error_panel(
+                _state.console, _state.caps,
+                f"Report not found: {scan_id}",
+            )
+            raise typer.Exit(3)
+
+        findings = report.get("findings", [])
+        summary = report.get("summary", {})
+        meta = report.get("meta", {})
+
+        # Build JUnit XML
+        testsuite = ET.Element("testsuite")
+        testsuite.set("name", f"cyense-{meta.get('mode', 'scan')}")
+        testsuite.set("tests", str(max(1, len(findings) + 1)))
+        testsuite.set("failures", str(len(findings)))
+        testsuite.set("errors", "0")
+        testsuite.set("time", f"{summary.get('duration_ms', 0) / 1000:.2f}")
+        testsuite.set("timestamp", meta.get("created_at", ""))
+
+        if not findings:
+            # Clean scan — one passing test
+            testcase = ET.SubElement(testsuite, "testcase")
+            testcase.set("name", "cyense-scan-clean")
+            testcase.set("classname", f"cyense.{meta.get('mode', 'scan')}")
+            testcase.set("time", f"{summary.get('duration_ms', 0) / 1000:.2f}")
+        else:
+            for f in findings:
+                testcase = ET.SubElement(testsuite, "testcase")
+                rule = f.get("rule", "unknown")
+                location = f.get("location", "unknown")
+                testcase.set("name", f"{rule}@{location}")
+                testcase.set("classname", f"cyense.{meta.get('mode', 'scan')}.{rule}")
+                testcase.set("time", "0.00")
+
+                failure = ET.SubElement(testcase, "failure")
+                severity = f.get("severity", "info").upper()
+                cvss = f.get("cvss_score")
+                cvss_str = f" (CVSS {cvss:.1f})" if cvss else ""
+                failure.set("message", f"[{severity}{cvss_str}] {f.get('title', rule)}")
+                failure.set("type", rule)
+
+                # Build failure text with details
+                parts = [
+                    f"Severity: {severity}{cvss_str}",
+                    f"Rule: {rule}",
+                    f"Location: {location}",
+                    f"Title: {f.get('title', '')}",
+                    f"Description: {f.get('description', '')}",
+                ]
+                cwe = f.get("cwe")
+                if cwe:
+                    parts.append(f"CWE: {cwe}")
+                remediation = f.get("remediation")
+                if remediation:
+                    parts.append(f"\nRemediation: {remediation}")
+                failure.text = "\n".join(parts)
+
+        xml_str = ET.tostring(testsuite, encoding="unicode", xml_declaration=True)
+
+        if out:
+            Path(out).write_text(xml_str, encoding="utf-8")
+            from app.cli.theme import PALETTE as PAL
+            _state.console.print(
+                f"  [{PAL.ok}]JUnit XML written:[/] [{PAL.blue_mist}]{out}[/] "
+                f"[{PAL.muted}]({len(findings)} finding(s))[/]"
+            )
+        else:
+            typer.echo(xml_str)
+
+    _run(_do())
+
+
+@ci_app.command("check")
+def ci_check(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID to check.")],
+    fail_on: Annotated[
+        str,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 if any finding ≥ this severity (info|low|medium|high|critical).",
+        ),
+    ] = "high",
+) -> None:
+    """Check a scan result and exit with code 1 if findings exceed threshold.
+
+    Designed for CI/CD pipelines: use as a quality gate step.
+
+    \b
+    Exit codes:
+      0 = no findings above threshold (pass)
+      1 = findings above threshold (fail)
+      3 = error (scan not found, service unreachable)
+    """
+    _sev_order = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
+    fail_sev_val = _sev_order.get(fail_on, 4)
+
+    async def _do():
+        from app.cli.theme import PALETTE as PAL
+
+        try:
+            async with open_client(_state.api_url) as c:
+                report = await c.get_report(scan_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3)
+
+        if report is None:
+            report = load_report_from_disk(scan_id)
+
+        if report is None:
+            render_error_panel(
+                _state.console, _state.caps,
+                f"Report not found: {scan_id}",
+            )
+            raise typer.Exit(3)
+
+        findings = report.get("findings", [])
+        summary = report.get("summary", {})
+
+        # Count findings above threshold
+        above = [
+            f for f in findings
+            if _sev_order.get(f.get("severity", "info"), 0) >= fail_sev_val
+        ]
+
+        _state.console.print(f"\n  [{PAL.blue_primary}]CI Quality Gate[/]")
+        _state.console.print(f"  {'─' * 40}")
+        _state.console.print(f"  Scan ID:       [{PAL.blue_soft}]{scan_id}[/]")
+        _state.console.print(f"  Total findings: {summary.get('total', 0)}")
+        _state.console.print(f"  Threshold:     [{PAL.blue_soft}]≥ {fail_on}[/]")
+        _state.console.print(f"  Above threshold: {len(above)}")
+        _state.console.print()
+
+        if above:
+            _state.console.print(f"  [{PAL.error}]✗ FAIL[/] — {len(above)} finding(s) above threshold:")
+            for f in above[:10]:
+                sev = f.get("severity", "info").upper()
+                _state.console.print(
+                    f"    [{PAL.error}]{sev}[/] {f.get('rule', '?')} @ {f.get('location', '?')}"
+                )
+                _state.console.print(f"      {f.get('title', '')[:80]}")
+            if len(above) > 10:
+                _state.console.print(f"    ... and {len(above) - 10} more")
+            raise typer.Exit(1)
+        else:
+            _state.console.print(f"  [{PAL.ok}]✓ PASS[/] — no findings above threshold.")
+            raise typer.Exit(0)
 
     _run(_do())
 
