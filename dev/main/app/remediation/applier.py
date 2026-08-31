@@ -56,10 +56,18 @@ def create_backup(file_path: Path, backup_suffix: str = ".bak-cyense") -> Path |
 
 def apply_patch(
     file_path: Path,
-    unified_diff: str,
+    diff_text: str,
     source_root: Path,
 ) -> tuple[bool, str, Path | None]:
-    """Apply unified diff patch safely."""
+    """Apply a simple line-replacement diff safely.
+
+    The diff format produced by Cyense strategies is a lightweight line diff:
+        - <original line>
+        + <replacement line>
+    Each `-`/`+` pair identifies one line to replace. Lines without a marker
+    are ignored (context is not required). The function replaces the first
+    matching original line with the replacement line for each pair.
+    """
     # Validate same-origin first
     is_valid, error = is_same_origin(str(file_path), source_root)
     if not is_valid:
@@ -70,38 +78,64 @@ def apply_patch(
     if not backup:
         return False, "Failed to create backup", None
 
-    # Parse unified diff and apply line substitutions
-    lines = file_path.read_text().split("\n")
-
-    # Simple approach: find and replace matching lines
-    # This assumes diff format has "- old" and "+ new" markers
-
-    patched_lines = []
-
-    for line in lines:
-        # Remove trailing whitespace for comparison
-        original_clean = line.rstrip()
-
-        # Handle removal
+    # Parse diff into replacement pairs
+    replacements: list[tuple[str, str]] = []
+    diff_lines = diff_text.splitlines()
+    i = 0
+    while i < len(diff_lines):
+        line = diff_lines[i]
         if line.startswith("- ") and not line.startswith("---"):
-            if original_clean == line.lstrip("- ")[1:].rstrip():
-                continue  # Skip removed line
+            old_line = line[2:].rstrip()
+            # Look ahead for matching + line
+            new_line = ""
+            if i + 1 < len(diff_lines):
+                next_line = diff_lines[i + 1]
+                if next_line.startswith("+ ") and not next_line.startswith("+++"):
+                    new_line = next_line[2:].rstrip()
+                    i += 1
+            replacements.append((old_line, new_line))
+        i += 1
 
-        # Handle addition
-        elif line.startswith("+ ") and not line.startswith("+++"):
-            patched_lines.append(line.lstrip("+ ").rstrip())
-        else:
-            patched_lines.append(line)
+    if not replacements:
+        return False, "No valid replacements found in diff", backup
 
-    patched_content = "\n".join(patched_lines)
-
-    # Write patched file
+    # Apply replacements to file content
     try:
-        file_path.write_text(patched_content)
-        return True, "", backup
+        original_lines = file_path.read_text().splitlines()
+    except OSError as exc:
+        return False, f"Failed to read file: {exc}", backup
+
+    patched_lines = list(original_lines)
+    applied_count = 0
+    for old_line, new_line in replacements:
+        for idx, file_line in enumerate(patched_lines):
+            if file_line.rstrip() == old_line:
+                patched_lines[idx] = new_line
+                applied_count += 1
+                break
+        else:
+            # Could not find the line to replace; abort to avoid partial patch
+            return False, f"Could not find line to replace: {old_line!r}", backup
+
+    # Write patched file atomically via temp + replace
+    try:
+        patched_content = "\n".join(patched_lines)
+        # Preserve trailing newline if original had one
+        if original_lines and original_lines[-1].endswith("\n"):
+            patched_content += "\n"
+        elif file_path.read_text().endswith("\n"):
+            patched_content += "\n"
+
+        tmp_path = Path(str(file_path) + ".tmp-cyense")
+        tmp_path.write_text(patched_content)
+        tmp_path.replace(file_path)
+        return True, f"Applied {applied_count} replacement(s)", backup
     except OSError as exc:
         # Restore from backup on failure
-        file_path.write_bytes(backup.read_bytes())
+        try:
+            file_path.write_bytes(backup.read_bytes())
+        except OSError:
+            pass
         return False, f"Write failed: {exc}", backup
 
 
