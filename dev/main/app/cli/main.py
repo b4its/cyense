@@ -595,7 +595,6 @@ def scan_multi(
             console.print(f"\n  [{PAL.blue_soft}]Menunggu {len(scan_ids)} scan selesai...[/]")
 
         pending = {sid for sid, _ in scan_ids}
-        import time
         deadline = time.monotonic() + _state.timeout
         while pending and time.monotonic() < deadline:
             for sid in list(pending):
