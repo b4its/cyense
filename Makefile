@@ -2,7 +2,7 @@
 # Install dependencies first: pip install -r requirements.txt pytest ruff
 # Usage: make up / make down / make logs / make test / make shell
 
-.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli demo
+.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo
 
 SHELL := /bin/bash
 APP_DIR := dev/main
@@ -30,8 +30,19 @@ help: ## Show all available targets
 	@echo "  make lint       Run ruff linter"
 	@echo "  make ruff-fix   Apply auto-fixes with ruff"
 	@echo "  make format     Format code with ruff"
-	@echo "  make cli        Jalankan cyense CLI (lokal, service harus sudah up)"
-	@echo "  make demo       Demo end-to-end: scan repo contoh + lihat laporan"
+	@echo ""
+	@echo "CLI commands (run AFTER 'make up' — execute inside API container):"
+	@echo "  make cli ARGS=\"list\"              List recent scans"
+	@echo "  make cli ARGS=\"version\"           Show CLI + service version"
+	@echo "  make cli ARGS=\"rules\"             List active detection rules"
+	@echo "  make cli ARGS=\"history\"           Scan history with filters"
+	@echo "  make cli ARGS=\"view <scan_id>\"    Open web viewer for a scan"
+	@echo "  make cli ARGS=\"scan github URL --i-have-permission\""
+	@echo "  make cli ARGS=\"scan program --i-have-permission\""
+	@echo "  make cli ARGS=\"fix <scan_id>\"     Propose remediation patches"
+	@echo "  make cli-shell                      Open bash shell in container (type CLI commands interactively)"
+	@echo "  make cli-help                       Show full CLI help"
+	@echo "  make demo                           Demo end-to-end: scan a public repo"
 	@echo ""
 
 up: build ## Start services (API + lab app profile)
@@ -91,17 +102,40 @@ start-venv: ## Activate virtualenv
 
 # ---------------------------------------------------------------------------
 # CLI targets (cli-experience.md §5.2)
+# All CLI targets run INSIDE the API container — no local Python deps
+# needed. Requires 'make up' to have been run first.
 
-cli: ## Jalankan cyense CLI (service harus sudah `make up`)
-	cd $(APP_DIR) && $(PYTHON) -m app.cli.main $(ARGS)
+cli: ## Run cyense CLI inside API container (e.g. make cli ARGS="list")
+	$(COMPOSE_IN_APP) exec api python -m app.cli.main $(ARGS)
 
-demo: ## Demo end-to-end: scan repo publik contoh (butuh internet + service up)
+cli-shell: ## Open interactive bash shell inside API container for CLI work
+	@echo ""
+	@echo "============================================================"
+	@echo "  Cyense CLI — interactive shell (inside API container)"
+	@echo "============================================================"
+	@echo ""
+	@echo "Run CLI commands with:"
+	@echo "  python -m app.cli.main --help                   # show all commands"
+	@echo "  python -m app.cli.main version                  # CLI + service version"
+	@echo "  python -m app.cli.main list                     # list recent scans"
+	@echo "  python -m app.cli.main rules                    # active detection rules"
+	@echo "  python -m app.cli.scan github URL --i-have-permission"
+	@echo ""
+	@echo "Exit the shell with: exit"
+	@echo ""
+	$(COMPOSE_IN_APP) exec api /bin/bash
+
+cli-help: ## Show cyense CLI help
+	$(COMPOSE_IN_APP) exec api python -m app.cli.main --help
+
+demo: ## Demo end-to-end: scan a public repo (requires internet + service up)
 	@echo "=== Cyense CLI Demo ==="
 	@echo "Memastikan service berjalan..."
-	@cd $(APP_DIR) && $(PYTHON) -m app.cli.main version || (echo "ERROR: jalankan 'make up' dulu" && exit 1)
+	@$(COMPOSE_IN_APP) exec -T api python -m app.cli.main version \
+		|| (echo "ERROR: jalankan 'make up' dulu" && exit 1)
 	@echo ""
 	@echo "Scan repo contoh (octocat/Hello-World)..."
-	cd $(APP_DIR) && $(PYTHON) -m app.cli.main scan github \
+	$(COMPOSE_IN_APP) exec api python -m app.cli.main scan github \
 		https://github.com/octocat/Hello-World \
 		--i-have-permission \
 		--lang auto \

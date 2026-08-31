@@ -1034,12 +1034,15 @@ def rules_cmd() -> None:
             _state.console.print(f"\n  [bold {PAL.blue_primary}]{category.upper()}[/]")
             for r in rule_list:
                 rule_id = r.get("rule", "—")
-                sev     = r.get("severity", "—")
-                lang    = r.get("lang", "—")
+                # severity may be a list (e.g. LINK rule: ["critical", "high", "medium"])
+                # or a single string. Coerce to displayable string.
+                sev_raw = r.get("severity", "—")
+                sev = ",".join(sev_raw) if isinstance(sev_raw, list) else str(sev_raw)
+                lang    = r.get("lang", "—") or "—"
                 title   = r.get("title") or r.get("description", "")
                 _state.console.print(
                     f"  [{PAL.blue_soft}]{rule_id:<8}[/]"
-                    f"  [{PAL.muted}]{sev:<10}[/]"
+                    f"  [{PAL.muted}]{sev:<18}[/]"
                     f"  [{PAL.muted}]{lang:<8}[/]"
                     f"  {title}"
                 )
