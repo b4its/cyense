@@ -162,7 +162,10 @@ class ScanWorker:
                 prev_findings = checkpoint.get("findings", [])
                 if prev_findings:
                     report.setdefault("findings", []).extend(prev_findings)
-                    report["summary"] = self._recalc_summary(report.get("findings", []))
+                    report["summary"] = self._recalc_summary(
+                        report.get("findings", []),
+                        report.get("summary", {}),
+                    )
                 report.setdefault("meta", {})["resumed_from"] = resume_from
                 self._log_event(scan_id, f"resumed from {resume_from}")
 
@@ -184,9 +187,14 @@ class ScanWorker:
                 # recon-level controlled failure (e.g. no placeholder found):
                 # surface as FAILED, not silently completed-empty
                 await self.store.mark_failed(scan_id, report["meta"]["error"])
+                remove_checkpoint(self.settings.reports_dir, scan_id)
+                if resume_from:
+                    remove_checkpoint(self.settings.reports_dir, resume_from)
             else:
                 await self.store.mark_completed(scan_id)
                 remove_checkpoint(self.settings.reports_dir, scan_id)
+                if resume_from:
+                    remove_checkpoint(self.settings.reports_dir, resume_from)
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
             # Save failed checkpoint so user can resume after fixing cause.
@@ -294,16 +302,25 @@ class ScanWorker:
             pass
 
     @staticmethod
-    def _recalc_summary(findings: list[dict[str, Any]]) -> dict[str, Any]:
-        """Recalculate summary counts from a findings list (used after resume merge)."""
-        return {
+    def _recalc_summary(
+        findings: list[dict[str, Any]],
+        existing: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Recalculate summary counts from a findings list (used after resume merge).
+
+        Preserves non-severity fields from the existing summary so resume merge
+        does not strip files_scanned, duration_ms, or other engine metadata.
+        """
+        summary = dict(existing) if existing else {}
+        summary.update({
             "critical": sum(1 for f in findings if f.get("severity") == "critical"),
             "high": sum(1 for f in findings if f.get("severity") == "high"),
             "medium": sum(1 for f in findings if f.get("severity") == "medium"),
             "low": sum(1 for f in findings if f.get("severity") == "low"),
             "info": sum(1 for f in findings if f.get("severity") == "info"),
             "total": len(findings),
-        }
+        })
+        return summary
 
 
 async def run_github_scan(
