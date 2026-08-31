@@ -40,7 +40,8 @@ async def report_html(request: Request, scan_id: str) -> HTMLResponse:
 async def report_sarif(request: Request, scan_id: str) -> JSONResponse:
     """Get SARIF 2.1.0 report for GitHub Code Scanning (ci-compliance-reporting.md §3.2)."""
     report = _get_report(request, scan_id)
-    sarif_report = build_sarif_report(report)
+    findings = report.get("findings", [])
+    sarif_report = build_sarif_report(report, findings)
     return JSONResponse(
         content=sarif_report,
         media_type="application/sarif+json"

@@ -10,6 +10,8 @@ VENV := .venv
 PYTHON := $(shell which python3 || echo "python")
 DOCKER := docker
 COMPOSE := docker compose
+# Compose file lives in $(APP_DIR); all compose commands must run from there.
+COMPOSE_IN_APP := cd $(APP_DIR) && $(COMPOSE)
 
 help: ## Show all available targets
 	@echo "Cyense — Agentic IDOR Vulnerability Scanner"
@@ -33,33 +35,34 @@ help: ## Show all available targets
 	@echo ""
 
 up: build ## Start services (API + lab app profile)
-	$(COMPOSE) --profile lab up -d --wait api vulnerable-app
+	$(COMPOSE_IN_APP) --profile lab up -d --wait api vulnerable-app
 
 down: ## Stop services
-	$(COMPOSE) --profile lab down
+	$(COMPOSE_IN_APP) --profile lab down
 
 build: ## Build images (api service + lab app)
 	cd $(APP_DIR) && $(DOCKER) build -t cyense-api:latest .
 	cd $(APP_DIR)/tests/fixtures && $(DOCKER) build -f lab_Dockerfile -t cyense-lab:latest .
 
 logs: ## Follow logs from both API and lab
-	$(COMPOSE) --profile lab logs -f --tail=50 api vulnerable-app
+	$(COMPOSE_IN_APP) --profile lab logs -f --tail=50 api vulnerable-app
 
 logs-api: ## Follow API logs only
-	$(COMPOSE) --profile lab logs -f --tail=100 api
+	$(COMPOSE_IN_APP) --profile lab logs -f --tail=100 api
 
 logs-lab: ## Follow lab app logs only
-	$(COMPOSE) --profile lab logs -f --tail=100 vulnerable-app
+	$(COMPOSE_IN_APP) --profile lab logs -f --tail=100 vulnerable-app
 
 shell: ## Interactive shell in API container
-	docker exec -it cyense_api_1 /bin/bash
+	$(COMPOSE_IN_APP) exec api /bin/bash
 
 ps: ## Container status
-	$(COMPOSE) --profile lab ps
+	$(COMPOSE_IN_APP) --profile lab ps
 
 clean: down ## Remove containers and data volumes
-	$(COMPOSE) --profile lab down -v
-	@rm -rf reports/ __pycache__ .pytest_cache */*/__pycache__ */*/__pycache__
+	$(COMPOSE_IN_APP) --profile lab down -v
+	@rm -rf $(APP_DIR)/reports $(APP_DIR)/__pycache__ $(APP_DIR)/.pytest_cache
+	@find $(APP_DIR) -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 test: ## Run pytest with coverage hints
 	cd $(APP_DIR) && $(PYTHON) -m pytest tests -v --tb=short || (echo "Tests failed!" && exit 1)
@@ -68,7 +71,7 @@ lint: ## Run ruff linter
 	cd $(APP_DIR) && $(PYTHON) -m ruff check app baseline tests --statistics
 
 format: ## Auto-format code with ruff
-	cd $(APP_DIR) && $(PYTHON) -m ruff format app baseline tests wordlists tests/fixtures
+	cd $(APP_DIR) && $(PYTHON) -m ruff format app baseline tests wordlists tests/fixtures/vulnerable_app
 
 fix: ## Fix fixable issues with ruff
 	cd $(APP_DIR) && $(PYTHON) -m ruff check --fix app baseline tests

@@ -1,9 +1,9 @@
 services:
   api:
     build: .
-    image: cyense-api:2.0.0
+    image: cyense-api:latest
     ports:
-      - "8000:8000"
+      - "${CYENSE_API_PORT:-8000}:8000"
     volumes:
       - ./reports:/app/reports
       - ../brain:/app/brain
@@ -26,7 +26,9 @@ services:
     build:
       context: ./tests/fixtures
       dockerfile: lab_Dockerfile
-    image: cyense-lab:2.0.0
+    image: cyense-lab:latest
     profiles: ["lab"]
     ports:
-      - "8080:8080"
+      # Host port configurable via CYENSE_LAB_PORT (default 8080) so it can
+      # coexist with other services already bound to 8080 on the machine.
+      - "${CYENSE_LAB_PORT:-8080}:8080"

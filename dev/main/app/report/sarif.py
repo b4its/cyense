@@ -219,7 +219,7 @@ def build_sarif_report(
         "tool": {
             "driver": {
                 "name": TOOL_NAME,
-                "version": "2.0.0",
+                "version": "2.1.0",
                 "informationUri": TOOL_INFO_URI,
                 "rules": rules,
             }

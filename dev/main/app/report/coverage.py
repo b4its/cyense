@@ -107,9 +107,10 @@ def _analyze_gaps(findings: list[dict[str, Any]], scope_info: dict[str, Any] | N
     
     gaps = []
     
-    # Rule CY007-CY010 need JS/PHP files
-    has_js_files = any(f.get("location", "").endswith((".js", ".ts")) for f in findings)
-    has_php_files = any(f.get("location", "").endswith(".php") for f in findings)
+    # Rule CY007-CY010 need JS/PHP files. Coerce None to "" so .endswith()
+    # doesn't crash on findings whose location field is None (e.g. IDOR-LINK).
+    has_js_files = any((f.get("location") or "").endswith((".js", ".ts")) for f in findings)
+    has_php_files = any((f.get("location") or "").endswith(".php") for f in findings)
     
     if not has_js_files:
         gaps.append({

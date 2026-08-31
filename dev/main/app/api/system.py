@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["system"])
 
 
 @router.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "cyense", "version": "2.0.0"}
+async def health(request: Request) -> dict[str, str]:
+    # Version comes from the FastAPI app instance (app/main.py create_app),
+    # so this endpoint never drifts from the declared app version again.
+    return {
+        "status": "ok",
+        "service": "cyense",
+        "version": request.app.version,
+    }
 
 
 @router.get("/rules")
