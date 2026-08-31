@@ -1,7 +1,8 @@
-"""Scan endpoints: submit (POST), list, detail, delete.
+"""Scan endpoints: submit (POST), list, detail, delete, resume.
 
 POST /scans enforces the `i_have_permission` gate at the model level
 (422 when absent — PRD §4.1/§4.2) and returns 202 + scan_id.
+GET /scans/resumable — list scans with checkpoints available for resume.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from app.core.models import ScanRequest, ScanStatus
+from app.services.scan_resume import list_resumable_scans
 
 router = APIRouter(tags=["scans"])
 
@@ -19,6 +21,12 @@ async def submit_scan(request: Request, scan_request: ScanRequest) -> dict[str, 
     job = store.create(scan_request)
     request.app.state.worker.enqueue(job)
     return {"scan_id": job.scan_id, "status": job.status.value}
+
+
+@router.get("/scans/resumable")
+async def list_resumable(request: Request) -> list[dict[str, object]]:
+    """List scans with checkpoints available for --resume (Strix pattern)."""
+    return list_resumable_scans(request.app.state.settings.reports_dir)
 
 
 @router.get("/scans")

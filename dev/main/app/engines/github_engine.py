@@ -47,6 +47,7 @@ class GithubEngine:
         lang: str = "auto",
         force: bool = False,
         token: str | None = None,
+        diff_base: str | None = None,
     ) -> dict[str, Any]:
         """Run full github scan pipeline."""
         started = time.monotonic()
@@ -60,6 +61,7 @@ class GithubEngine:
             "subdir": subdir,
             "github_token": token,
             "force": force,
+            "diff_base": diff_base,
         }
 
         result = await fetcher(ctx)

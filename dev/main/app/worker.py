@@ -22,6 +22,11 @@ from app.report.cvss import enrich_finding
 from app.report.sarif import build_sarif_report, dump_sarif_report
 from app.report.coverage import build_coverage_document, write_coverage
 from app.report.dedupe import deduplicate_findings
+from app.services.scan_resume import (
+    load_checkpoint,
+    remove_checkpoint,
+    save_checkpoint,
+)
 
 log = get_logger("worker")
 
@@ -75,16 +80,36 @@ class ScanWorker:
             else dict(request)
         )
 
+        # Resume support: if this scan is resuming from another scan_id, load its checkpoint.
+        resume_from: str | None = request_dict.get("resume_from")
+        checkpoint: dict[str, Any] | None = None
+        if resume_from:
+            checkpoint = load_checkpoint(self.settings.reports_dir, resume_from)
+            if checkpoint is None:
+                await self.store.mark_failed(
+                    scan_id, f"cannot resume {resume_from}: no checkpoint found"
+                )
+                return
+
         await self.store.mark_running(scan_id, stage="recon")
         started = time.monotonic()
 
-        # Helper callback for all modes
+        # Helper callback for all modes: update stage, progress, and checkpoint.
         async def on_stage(stage: str) -> None:
             progress = {"resolve": 25, "fetch": 50, "analyze": 75, "report": 90}.get(
                 stage if isinstance(stage, str) else str(stage),
                 {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0),
             )
             await self.store.mark_stage(scan_id, stage, progress)
+            # Strix-style checkpoint at each stage transition
+            save_checkpoint(
+                reports_dir=self.settings.reports_dir,
+                scan_id=scan_id,
+                request_dict=request_dict,
+                stage=stage,
+                progress=progress,
+                extra={"resume_from": resume_from, "checkpoint_of": resume_from},
+            )
 
         try:
             if request_dict["mode"] == "link":
@@ -108,6 +133,7 @@ class ScanWorker:
                     lang=request_dict.get("lang", "auto"),
                     token=request_dict.get("github_token"),
                     force=request_dict.get("force", False),
+                    diff_base=request_dict.get("diff_base"),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -115,22 +141,39 @@ class ScanWorker:
                 )
             else:
                 await self.store.mark_stage(scan_id, "recon", 25)
+                await on_stage("recon")
                 source_dir = resolve_source_dir(
                     request_dict.get("source_type", "mounted"),
                     str(self.settings.workspace_dir),
                 )
                 await self.store.mark_stage(scan_id, "probe", 50)
+                await on_stage("probe")
                 result = run_program_scan(
                     lang=request_dict.get("lang", "python"),
                     source_dir=source_dir,
                     scan_id=scan_id,
                 )
                 await self.store.mark_stage(scan_id, "report", 80)
+                await on_stage("report")
                 report = self._program_report(scan_id, result, started)
+
+            # If resuming, merge previous checkpoint findings and mark as resumed.
+            if checkpoint:
+                prev_findings = checkpoint.get("findings", [])
+                if prev_findings:
+                    report.setdefault("findings", []).extend(prev_findings)
+                    report["summary"] = self._recalc_summary(report.get("findings", []))
+                report.setdefault("meta", {})["resumed_from"] = resume_from
+                self._log_event(scan_id, f"resumed from {resume_from}")
 
             # Enrich findings with CVSS data (ci-compliance-reporting.md §3.1)
             self._enrich_report(report)
             
+            # Preserve custom instruction in report meta (Strix-style audit context)
+            instruction = request_dict.get("instruction")
+            if instruction:
+                report.setdefault("meta", {})["instruction"] = instruction
+
             self._results[scan_id] = report
             self._dump_report(scan_id, report)
             
@@ -143,8 +186,18 @@ class ScanWorker:
                 await self.store.mark_failed(scan_id, report["meta"]["error"])
             else:
                 await self.store.mark_completed(scan_id)
+                remove_checkpoint(self.settings.reports_dir, scan_id)
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
+            # Save failed checkpoint so user can resume after fixing cause
+            save_checkpoint(
+                reports_dir=self.settings.reports_dir,
+                scan_id=scan_id,
+                request_dict=request_dict,
+                stage=job.stage,
+                progress=job.progress,
+                error=str(exc),
+            )
             raise
 
     def result(self, scan_id: str) -> dict[str, Any] | None:
@@ -227,6 +280,30 @@ class ScanWorker:
         except Exception as exc:
             log.warning("failed to write compliance artifacts for %s: %s", scan_id, exc)
 
+    def _log_event(self, scan_id: str, message: str) -> None:
+        """Log an event to the job store (best-effort, non-blocking)."""
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self.store.log(scan_id, message))
+            else:
+                loop.run_until_complete(self.store.log(scan_id, message))
+        except Exception:
+            pass
+
+    @staticmethod
+    def _recalc_summary(findings: list[dict[str, Any]]) -> dict[str, Any]:
+        """Recalculate summary counts from a findings list (used after resume merge)."""
+        return {
+            "critical": sum(1 for f in findings if f.get("severity") == "critical"),
+            "high": sum(1 for f in findings if f.get("severity") == "high"),
+            "medium": sum(1 for f in findings if f.get("severity") == "medium"),
+            "low": sum(1 for f in findings if f.get("severity") == "low"),
+            "info": sum(1 for f in findings if f.get("severity") == "info"),
+            "total": len(findings),
+        }
+
 
 async def run_github_scan(
     scan_id: str,
@@ -236,6 +313,7 @@ async def run_github_scan(
     lang: str = "auto",
     token: str | None = None,
     force: bool = False,
+    diff_base: str | None = None,
     brain: Any = None,
     reports_dir: str = "",
     settings: Any = None,
@@ -256,4 +334,5 @@ async def run_github_scan(
         lang=lang,
         force=force,
         token=token,
+        diff_base=diff_base,
     )

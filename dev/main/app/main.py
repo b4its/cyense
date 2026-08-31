@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Cyense",
-        version="2.0.0",
+        version="2.1.0",
         description=(
             "Cyber Insight Engine — agentic IDOR vulnerability scanner "
             "(link & program modes). Only scan targets you are authorized to test."

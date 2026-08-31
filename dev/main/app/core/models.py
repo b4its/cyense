@@ -42,6 +42,11 @@ class LinkScanRequest(BaseModel):
     probe_ids: list[str] | Literal["auto"] = "auto"
     method: Literal["GET", "HEAD"] = "GET"
     i_have_permission: bool = False
+    # Strix-derived features (usestrix/strix cli_args.py):
+    instruction: str | None = None
+    scan_mode: str = "standard"
+    scope_mode: str = "auto"
+    resume_from: str | None = None
 
     @field_validator("url")
     @classmethod
@@ -69,6 +74,11 @@ class ProgramScanRequest(BaseModel):
     lang: Literal["python", "js", "php"] = "python"
     source_type: Literal["mounted", "sample"] = "mounted"
     i_have_permission: bool = False
+    # Strix-derived features (usestrix/strix cli_args.py):
+    instruction: str | None = None
+    scan_mode: str = "standard"
+    scope_mode: str = "auto"
+    resume_from: str | None = None
 
     @model_validator(mode="after")
     def _permission_gate(self) -> ProgramScanRequest:

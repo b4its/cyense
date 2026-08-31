@@ -1,23 +1,32 @@
 """CLI entrypoint — Typer app `cyense`.
 
 Subcommand:
-  scan github <repo_url>   — audit repo GitHub (jalur utama)
-  scan program             — audit source lokal
-  scan link <url>          — probing IDOR dinamis
-  report <scan_id>         — render ulang laporan lama
-  list                     — tabel scan terakhir
-  history                  — riwayat scan + filter status (enhanced-reporting-viewer.md)
-  compare <a> <b>          — diff dua laporan scan
-  view [scan_id]           — buka web viewer di browser
-  export csv|pdf <id>      — unduh CSV/PDF
-  config get|set|list|reset— preferensi CLI (~/.cyense/config.json, 0o600)
-  rules                    — katalog aturan aktif
-  fix <scan_id>            — usulan patch remediasi
-  version                  — versi CLI + service
+   scan github <repo_url>   — audit repo GitHub (jalur utama)
+   scan program             — audit source lokal
+   scan link <url>          — probing IDOR dinamis
+   scan resume <scan_id>    — lanjutkan scan yang terinterupsi (Strix --resume)
+   scan multi <targets>     — scan multiple targets dari file (Strix --target-list)
+   report <scan_id>         — render ulang laporan lama
+   list                     — tabel scan terakhir
+   history                  — riwayat scan + filter status (enhanced-reporting-viewer.md)
+   compare <a> <b>          — diff dua laporan scan
+   view [scan_id]           — buka web viewer di browser
+   export csv|pdf <id>      — unduh CSV/PDF
+   config get|set|list|reset— preferensi CLI (~/.cyense/config.json, 0o600)
+   rules                    — katalog aturan aktif
+   fix <scan_id>            — usulan patch remediasi
+   version                  — versi CLI + service
 
 Arsitektur: CLI HANYA bicara ke API lewat HTTP (app/cli/client.py).
 TIDAK mengimpor app.engines, app.agents, app.program, app.worker.
 Lihat: instruction/feature/cli-experience.md §5.4
+
+Strix-derived features added (usestrix/strix v1.5.3):
+  --instruction/--instruction-file   custom testing focus metadata
+  --diff-base                        override diff comparison base
+  --resume <scan_id>                 resume interrupted scan from checkpoint
+  -n/--non-interactive               headless mode for CI/CD
+  --target-list <file>               batch targets from file
 """
 
 from __future__ import annotations
@@ -65,7 +74,7 @@ app = typer.Typer(
 scan_app = typer.Typer(help="Jalankan scan keamanan.", no_args_is_help=True)
 app.add_typer(scan_app, name="scan")
 
-_VERSION = "2.0.0"
+_VERSION = "2.1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +86,7 @@ class _State:
     console: Console = make_rich_console(caps)
     timeout: float = 300.0
     json_out: bool = False
+    non_interactive: bool = False  # Strix -n: headless mode for CI/CD
 
 
 _state = _State()
@@ -93,6 +103,9 @@ def _global(
     ] = False,
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Ringkas.")] = False,
     json_out: Annotated[bool, typer.Option("--json", help="Output JSON mentah.")] = False,
+    non_interactive: Annotated[
+        bool, typer.Option("--non-interactive", "-n", help="Mode headless untuk CI/CD (tanpa TUI).")
+    ] = False,
     timeout: Annotated[
         float, typer.Option("--timeout", help="Batas waktu tunggu scan (detik).")
     ] = 300.0,
@@ -100,6 +113,7 @@ def _global(
     """Cyense CLI — thin client ke FastAPI service."""
     _state.timeout = timeout
     _state.json_out = json_out
+    _state.non_interactive = non_interactive
 
     # Precedence: flag/env eksplisit > config file > default bawaan.
     resolved_api = api_url.rstrip("/")
@@ -116,7 +130,7 @@ def _global(
     caps = detect_caps(
         force_no_color=no_color,
         force_ascii=ascii_mode,
-        force_quiet=quiet,
+        force_quiet=quiet or non_interactive,
         force_json=json_out,
         width_override=shutil.get_terminal_size((100, 24)).columns,
     )
@@ -184,8 +198,38 @@ def scan_github(
             help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
         ),
     ] = "auto",
+    # Strix-derived features:
+    instruction: Annotated[
+        Optional[str], typer.Option("--instruction", help="Fokus testing khusus (mis. 'Focus on IDOR').")
+    ] = None,
+    instruction_file: Annotated[
+        Optional[str], typer.Option("--instruction-file", help="Path file berisi instruksi testing.")
+    ] = None,
+    diff_base: Annotated[
+        Optional[str],
+        typer.Option("--diff-base", help="Override base branch/commit untuk diff-scope (mis. origin/main)."),
+    ] = None,
+    resume: Annotated[
+        Optional[str],
+        typer.Option("--resume", help="Lanjutkan scan yang terinterupsi dari scan_id ini."),
+    ] = None,
 ) -> None:
     """Audit repository GitHub — jalur input utama Cyense."""
+    # Resolve instruction: --instruction-file overrides --instruction
+    resolved_instruction = instruction
+    if instruction_file:
+        try:
+            resolved_instruction = Path(instruction_file).read_text(encoding="utf-8").strip()
+        except OSError as e:
+            render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
+            raise typer.Exit(3)
+    if instruction and instruction_file:
+        render_error_panel(
+            _state.console, _state.caps,
+            "Tidak bisa menggunakan --instruction dan --instruction-file bersamaan.",
+        )
+        raise typer.Exit(3)
+
     # Peringatan keamanan token di argumen (§6.2)
     if token and sys.argv and "--token" in " ".join(sys.argv):
         _state.console.print(
@@ -208,6 +252,12 @@ def scan_github(
         payload["subdir"] = subdir
     if token:
         payload["github_token"] = token  # tidak pernah dicetak (redaksi di api/engine)
+    if resolved_instruction:
+        payload["instruction"] = resolved_instruction
+    if diff_base:
+        payload["diff_base"] = diff_base
+    if resume:
+        payload["resume_from"] = resume
 
     _run(_run_scan(
         payload=payload,
@@ -251,8 +301,27 @@ def scan_program(
             help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
         ),
     ] = "auto",
+    # Strix-derived features:
+    instruction: Annotated[
+        Optional[str], typer.Option("--instruction", help="Fokus testing khusus.")
+    ] = None,
+    instruction_file: Annotated[
+        Optional[str], typer.Option("--instruction-file", help="Path file instruksi testing.")
+    ] = None,
+    resume: Annotated[
+        Optional[str],
+        typer.Option("--resume", help="Lanjutkan scan yang terinterupsi dari scan_id ini."),
+    ] = None,
 ) -> None:
     """Audit source code lokal (mounted / sample)."""
+    resolved_instruction = instruction
+    if instruction_file:
+        try:
+            resolved_instruction = Path(instruction_file).read_text(encoding="utf-8").strip()
+        except OSError as e:
+            render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
+            raise typer.Exit(3)
+
     payload = {
         "mode": "program",
         "lang": lang,
@@ -261,6 +330,11 @@ def scan_program(
         "scan_mode": scan_mode,
         "scope_mode": scope_mode,
     }
+    if resolved_instruction:
+        payload["instruction"] = resolved_instruction
+    if resume:
+        payload["resume_from"] = resume
+
     _run(_run_scan(
         payload=payload,
         mode="program",
@@ -298,8 +372,27 @@ def scan_link(
             help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
         ),
     ] = "auto",
+    # Strix-derived features:
+    instruction: Annotated[
+        Optional[str], typer.Option("--instruction", help="Fokus testing khusus.")
+    ] = None,
+    instruction_file: Annotated[
+        Optional[str], typer.Option("--instruction-file", help="Path file instruksi testing.")
+    ] = None,
+    resume: Annotated[
+        Optional[str],
+        typer.Option("--resume", help="Lanjutkan scan yang terinterupsi dari scan_id ini."),
+    ] = None,
 ) -> None:
     """Probing IDOR dinamis pada URL live."""
+    resolved_instruction = instruction
+    if instruction_file:
+        try:
+            resolved_instruction = Path(instruction_file).read_text(encoding="utf-8").strip()
+        except OSError as e:
+            render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
+            raise typer.Exit(3)
+
     payload = {
         "mode": "link",
         "url": url,
@@ -307,6 +400,11 @@ def scan_link(
         "scan_mode": scan_mode,
         "scope_mode": scope_mode,
     }
+    if resolved_instruction:
+        payload["instruction"] = resolved_instruction
+    if resume:
+        payload["resume_from"] = resume
+
     _run(_run_scan(
         payload=payload,
         mode="link",
@@ -315,6 +413,239 @@ def scan_link(
         fail_on=fail_on,
         min_severity=min_severity,
     ))
+
+
+# ---------------------------------------------------------------------------
+# scan resume — lanjutkan scan yang terinterupsi (Strix --resume pattern)
+
+@scan_app.command("resume")
+def scan_resume(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID untuk dilanjutkan (--resume <id>).")],
+    instruction: Annotated[
+        Optional[str], typer.Option("--instruction", help="Instruksi tambahan untuk resumed scan.")
+    ] = None,
+    out: Annotated[Optional[str], typer.Option("--out")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md")] = False,
+    fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
+    min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
+) -> None:
+    """Lanjutkan scan yang terinterupsi dari checkpoint (Strix --resume pattern)."""
+
+    async def _do():
+        caps = _state.caps
+        console = _state.console
+
+        # Cek koneksi
+        try:
+            async with open_client(_state.api_url, timeout=10) as c:
+                await c.health()
+        except Exception as e:
+            render_error_panel(console, caps, f"Service tidak terjangkau: {e}")
+            raise typer.Exit(3)
+
+        # Cek apakah scan_id ada di list resumable
+        try:
+            async with open_client(_state.api_url, timeout=10) as c:
+                resumable = await c.list_resumable()
+        except Exception as e:
+            render_error_panel(console, caps, f"Gagal ambil daftar resumable: {e}")
+            raise typer.Exit(3)
+
+        resumable_ids = {r["scan_id"] for r in resumable}
+        if scan_id not in resumable_ids:
+            render_error_panel(
+                console, caps,
+                f"Scan {scan_id} tidak memiliki checkpoint untuk resume.",
+                "Gunakan `cyense list` untuk melihat scan yang tersedia.",
+            )
+            raise typer.Exit(3)
+
+        # Find the original scan's mode and build resume payload
+        cp_info = next(r for r in resumable if r["scan_id"] == scan_id)
+        mode = cp_info.get("mode", "program")
+
+        payload: dict = {
+            "mode": mode,
+            "i_have_permission": True,
+            "resume_from": scan_id,
+        }
+        if instruction:
+            payload["instruction"] = instruction
+
+        await _run_scan(
+            payload=payload,
+            mode=mode,
+            out_path=out,
+            no_md=no_md,
+            fail_on=fail_on,
+            min_severity=min_severity,
+        )
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# scan multi — scan multiple targets dari file (Strix --target-list pattern)
+
+@scan_app.command("multi")
+def scan_multi(
+    targets_file: Annotated[
+        str, typer.Argument(help="Path file berisi daftar target (satu per baris).")
+    ],
+    i_have_permission: Annotated[
+        bool, typer.Option("--i-have-permission", help="[wajib] Konfirmasi izin audit semua target.")
+    ] = False,
+    scan_mode: Annotated[str, typer.Option("--scan-mode")] = "standard",
+    scope_mode: Annotated[str, typer.Option("--scope-mode")] = "auto",
+    fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
+    min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
+) -> None:
+    """Scan multiple targets dari file (Strix --target-list pattern)."""
+
+    async def _do():
+        caps = _state.caps
+        console = _state.console
+
+        if not caps.quiet:
+            render_banner(console, caps, _VERSION)
+
+        # Parse targets file
+        try:
+            from app.services.multi_scan import parse_targets_file
+            targets = parse_targets_file(targets_file)
+        except (OSError, ValueError) as e:
+            render_error_panel(console, caps, f"Gagal baca targets file: {e}")
+            raise typer.Exit(3)
+
+        if not targets:
+            render_error_panel(console, caps, "File targets kosong.")
+            raise typer.Exit(3)
+
+        # Check connection
+        try:
+            async with open_client(_state.api_url, timeout=10) as c:
+                await c.health()
+        except Exception as e:
+            render_error_panel(console, caps, f"Service tidak terjangkau: {e}")
+            raise typer.Exit(3)
+
+        from app.cli.theme import PALETTE as PAL
+
+        if not caps.quiet:
+            console.print(
+                f"  [{PAL.blue_soft}]Targets:[/] [{PAL.ink}]{len(targets)} target dari {targets_file}[/]"
+            )
+
+        # Submit each target as individual scan
+        scan_ids: list[tuple[str, str]] = []  # (scan_id, label)
+        for target in targets:
+            ttype = target.get("type", "unknown")
+            label = target.get("url") or target.get("path") or ttype
+            payload: dict = {
+                "mode": ttype if ttype in ("github", "program", "link") else "program",
+                "i_have_permission": i_have_permission,
+                "scan_mode": scan_mode,
+                "scope_mode": scope_mode,
+            }
+            if ttype == "github":
+                payload["repo_url"] = target["url"]
+                if "ref" in target:
+                    payload["ref"] = target["ref"]
+                if "lang" in target:
+                    payload["lang"] = target["lang"]
+            elif ttype in ("url", "link"):
+                payload["mode"] = "link"
+                payload["url"] = target["url"]
+            else:
+                payload["mode"] = "program"
+
+            try:
+                async with open_client(_state.api_url, timeout=30) as c:
+                    result = await c.submit_scan(payload)
+                sid = result["scan_id"]
+                scan_ids.append((sid, label))
+                if not caps.quiet:
+                    console.print(f"  [{PAL.blue_soft}]  → {sid}[/]  [{PAL.muted}]{label}[/]")
+            except Exception as e:
+                if not caps.quiet:
+                    console.print(f"  [{PAL.error}]  ✗ gagal submit:[/] {label}: {e}")
+
+        if not scan_ids:
+            render_error_panel(console, caps, "Tidak ada target yang berhasil di-submit.")
+            raise typer.Exit(3)
+
+        # Poll each scan until all are terminal
+        if not caps.quiet:
+            console.print(f"\n  [{PAL.blue_soft}]Menunggu {len(scan_ids)} scan selesai...[/]")
+
+        pending = {sid for sid, _ in scan_ids}
+        import time
+        deadline = time.monotonic() + _state.timeout
+        while pending and time.monotonic() < deadline:
+            for sid in list(pending):
+                try:
+                    async with open_client(_state.api_url, timeout=10) as c:
+                        data = await c.get_scan(sid)
+                    if data.get("status") in ("completed", "failed"):
+                        pending.discard(sid)
+                except Exception:
+                    pass
+            if pending:
+                await asyncio.sleep(2.0)
+
+        # Summary
+        if not caps.quiet:
+            from rich.table import Table
+            table = Table(
+                show_header=True,
+                header_style=f"bold {PAL.blue_primary}",
+                border_style=PAL.rule_line,
+                padding=(0, 1),
+            )
+            table.add_column("SCAN ID", style=PAL.blue_soft, width=14)
+            table.add_column("TARGET", style=PAL.blue_mist, max_width=40)
+            table.add_column("STATUS", width=12)
+
+            status_color = {
+                "completed": PAL.ok,
+                "failed": PAL.error,
+                "running": PAL.blue_accent,
+                "queued": PAL.muted,
+            }
+            for sid, label in scan_ids:
+                try:
+                    async with open_client(_state.api_url, timeout=10) as c:
+                        data = await c.get_scan(sid)
+                    st = data.get("status", "unknown")
+                except Exception:
+                    st = "unknown"
+                sc = status_color.get(st, PAL.muted)
+                table.add_row(sid, label, f"[{sc}]{st}[/]")
+
+            console.print(table)
+
+        # Check fail_on
+        _sev_order = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
+        fail_sev_val = _sev_order.get(fail_on, 0)
+        exit_code = 0
+        if fail_sev_val > 0:
+            for sid, _ in scan_ids:
+                try:
+                    async with open_client(_state.api_url, timeout=10) as c:
+                        report = await c.get_report(sid)
+                    if report:
+                        for f in report.get("findings", []):
+                            if _sev_order.get(f.get("severity", "info"), 0) >= fail_sev_val:
+                                exit_code = 1
+                                break
+                except Exception:
+                    pass
+                if exit_code:
+                    break
+
+        raise typer.Exit(exit_code)
+
+    _run(_do())
 
 
 # ---------------------------------------------------------------------------

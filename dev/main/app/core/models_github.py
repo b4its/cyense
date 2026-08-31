@@ -17,6 +17,12 @@ class GithubScanRequest(BaseModel):
     github_token: str | None = None
     force: bool = False
     i_have_permission: bool = False
+    # Strix-derived features (usestrix/strix cli_args.py):
+    instruction: str | None = None          # custom testing focus (metadata, not LLM)
+    diff_base: str | None = None            # override diff comparison base
+    scan_mode: str = "standard"             # quick | standard | deep
+    scope_mode: str = "auto"                # auto | full | diff
+    resume_from: str | None = None          # scan_id to resume from
 
     @field_validator("repo_url")
     def _github_host_only(cls, v: str) -> str:

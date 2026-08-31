@@ -138,6 +138,12 @@ class CyenseClient:
         r.raise_for_status()
         return r.json()
 
+    async def list_resumable(self) -> list[dict[str, Any]]:
+        """GET /scans/resumable — list scans with checkpoints."""
+        r = await self._c().get(f"{_API}/scans/resumable")
+        r.raise_for_status()
+        return r.json()
+
     # -- polling -------------------------------------------------------------
 
     async def poll_until_done(
