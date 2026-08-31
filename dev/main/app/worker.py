@@ -142,6 +142,7 @@ class ScanWorker:
                     force=request_dict.get("force", False),
                     diff_base=request_dict.get("diff_base"),
                     scope_mode=request_dict.get("scope_mode", "auto"),
+                    level=request_dict.get("level", "medium"),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -175,6 +176,7 @@ class ScanWorker:
                     lang=request_dict.get("lang", "python"),
                     source_dir=source_dir,
                     scan_id=scan_id,
+                    level=request_dict.get("level", "medium"),
                 )
                 await self.store.mark_stage(scan_id, "report", 80)
                 await on_stage("report")
@@ -356,6 +358,7 @@ async def run_github_scan(
     force: bool = False,
     diff_base: str | None = None,
     scope_mode: str = "auto",
+    level: str = "medium",
     brain: Any = None,
     reports_dir: str = "",
     settings: Any = None,
@@ -378,6 +381,7 @@ async def run_github_scan(
         token=token,
         diff_base=diff_base,
         scope_mode=scope_mode,
+        level=level,
     )
 
 

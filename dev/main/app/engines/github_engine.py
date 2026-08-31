@@ -51,6 +51,7 @@ class GithubEngine:
         token: str | None = None,
         diff_base: str | None = None,
         scope_mode: str = "auto",
+        level: str = "medium",
     ) -> dict[str, Any]:
         """Run full github scan pipeline."""
         started = time.monotonic()
@@ -120,6 +121,7 @@ class GithubEngine:
             source_dir=tree_root,
             scan_id=self.scan_id,
             include_paths=include_paths,
+            level=level,
         )
 
         findings = analysis_result["findings"]
