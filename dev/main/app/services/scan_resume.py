@@ -61,7 +61,7 @@ def save_checkpoint(
         "progress": progress,
         "findings": findings_so_far or [],
         "error": error,
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime()),
     }
     if extra:
         payload["extra"] = extra
