@@ -215,6 +215,14 @@ def scan_github(
     ] = None,
 ) -> None:
     """Audit repository GitHub — jalur input utama Cyense."""
+    # Mutual exclusion check must happen before reading instruction_file.
+    if instruction and instruction_file:
+        render_error_panel(
+            _state.console, _state.caps,
+            "Tidak bisa menggunakan --instruction dan --instruction-file bersamaan.",
+        )
+        raise typer.Exit(3)
+
     # Resolve instruction: --instruction-file overrides --instruction
     resolved_instruction = instruction
     if instruction_file:
@@ -223,12 +231,6 @@ def scan_github(
         except OSError as e:
             render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
             raise typer.Exit(3)
-    if instruction and instruction_file:
-        render_error_panel(
-            _state.console, _state.caps,
-            "Tidak bisa menggunakan --instruction dan --instruction-file bersamaan.",
-        )
-        raise typer.Exit(3)
 
     # Peringatan keamanan token di argumen (§6.2)
     if token and sys.argv and "--token" in " ".join(sys.argv):
@@ -314,6 +316,13 @@ def scan_program(
     ] = None,
 ) -> None:
     """Audit source code lokal (mounted / sample)."""
+    if instruction and instruction_file:
+        render_error_panel(
+            _state.console, _state.caps,
+            "Tidak bisa menggunakan --instruction dan --instruction-file bersamaan.",
+        )
+        raise typer.Exit(3)
+
     resolved_instruction = instruction
     if instruction_file:
         try:
@@ -385,6 +394,13 @@ def scan_link(
     ] = None,
 ) -> None:
     """Probing IDOR dinamis pada URL live."""
+    if instruction and instruction_file:
+        render_error_panel(
+            _state.console, _state.caps,
+            "Tidak bisa menggunakan --instruction dan --instruction-file bersamaan.",
+        )
+        raise typer.Exit(3)
+
     resolved_instruction = instruction
     if instruction_file:
         try:
