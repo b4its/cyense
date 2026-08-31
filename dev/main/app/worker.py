@@ -90,6 +90,13 @@ class ScanWorker:
                     scan_id, f"cannot resume {resume_from}: no checkpoint found"
                 )
                 return
+            # Restore original request from checkpoint so resume uses the same
+            # scan parameters (mode, url, lang, scope, etc.). New-request fields
+            # (e.g. a fresh --instruction) override the original.
+            original_request = dict(checkpoint.get("request", {}))
+            original_request.update(request_dict)
+            request_dict = original_request
+            self._log_event(scan_id, f"restored original request for resume from {resume_from}")
 
         await self.store.mark_running(scan_id, stage="recon")
         started = time.monotonic()
