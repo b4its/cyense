@@ -22,6 +22,9 @@ class GithubScanRequest(BaseModel):
     diff_base: str | None = None            # override diff comparison base
     scan_mode: str = "standard"             # quick | standard | deep
     scope_mode: str = "auto"                # auto | full | diff
+    # Analysis depth level (low|medium|high|max) — controls how deeply each
+    # rule analyzes source code; orthogonal to scan_mode/scope_mode.
+    level: str = "medium"
     resume_from: str | None = None          # scan_id to resume from
 
     @field_validator("repo_url")
@@ -36,6 +39,14 @@ class GithubScanRequest(BaseModel):
         # reject control characters
         if any(ord(c) < 0x20 or ord(c) == 0x7F for c in v):
             raise ValueError("repo_url must not contain control characters")
+        return v
+
+    @field_validator("level")
+    @classmethod
+    def _validate_level(cls, v: str) -> str:
+        valid = ("low", "medium", "high", "max")
+        if v not in valid:
+            raise ValueError(f"level must be one of {valid}, got {v!r}")
         return v
 
     @model_validator(mode="after")

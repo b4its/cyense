@@ -78,6 +78,9 @@ class ProgramScanRequest(BaseModel):
     instruction: str | None = None
     scan_mode: str = "standard"
     scope_mode: str = "auto"
+    # Analysis depth level (low|medium|high|max) — controls how deeply each
+    # rule analyzes source code; orthogonal to scan_mode/scope_mode.
+    level: str = "medium"
     resume_from: str | None = None
 
     @model_validator(mode="after")
@@ -88,6 +91,14 @@ class ProgramScanRequest(BaseModel):
                 "authorized to audit"
             )
         return self
+
+    @field_validator("level")
+    @classmethod
+    def _validate_level(cls, v: str) -> str:
+        valid = ("low", "medium", "high", "max")
+        if v not in valid:
+            raise ValueError(f"level must be one of {valid}, got {v!r}")
+        return v
 
 
 class WebsiteScanRequest(BaseModel):
