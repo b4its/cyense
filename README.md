@@ -1,128 +1,138 @@
 # 🛡️ Cyense: Cyber Defense for Search and Treat Vulnerability in Our System
 
-**Agentic IDOR, and XSS type vulnerability scanner** — menemukan *Insecure Direct Object Reference*, dan Jenis *Cross-Site Scripting* dengan routing dinamis, Agentic AI with Orchestration execution use specific agent indivudally, audit repo GitHub, hingga **usulan perbaikan sistem secara otomatis**.
+**Agentic IDOR & XSS vulnerability scanner** — discovers *Insecure Direct Object Reference* and *Cross-Site Scripting* patterns in dynamic routes through orchestrated AI agents, audits GitHub repositories, and proposes automatic remediation.
 
-
----
-
-## 1. Siapa yang Punya Masalah Ini? (Who has this problem)
-
-**Pentester, bug bounty hunter, dan developer** yang harus melakukan triase IDOR secara manual:
-
-| Persona | Bottleneck |
-|---------|-----------|
-| 🎯 **Pentester** (Andi) | Menerima scope URL → memetakan endpoint, menebak pola ID, mencoba kombinasi, membandingkan response — semua manual via Burp/Postman. **1–3 jam per endpoint.** |
-| 🐛 **Bug bounty hunter** (Sari) | Tools komersial (~$450/tahun) melakukan diff response secara naif → banyak false positive → triase hasil scan justru makan waktu lagi. |
-| 👨‍💻 **Developer** (Budi) | Ingin cek endpoint sendiri sebelum deploy, tapi tidak punya waktu/anggaran untuk setup tool komersial. Audit repo GitHub pihak lain butuh clone manual dulu. |
-
-**Bottleneck inti:** triase IDOR repetitif namun butuh *nalar konteks* — apakah 200 OK ini benar-benar data milik user lain, atau sekadar halaman generik? Dan setelah temuan ditemukan, menulis perbaikannya tetap manual untuk setiap titik.
-
-**Mengapa berharga:** satu triase manual 1–3 jam/endpoint menjadi scan menit; false positive tertekan sehingga pentester hanya meninjau temuan terverifikasi; developer mendapat diff perbaikan siap review — bukan sekadar instruksi teks.
+> **ID (Bahasa Indonesia):** Scanner kerentanan **IDOR** dan **XSS** berbasis agen — menemukan *Insecure Direct Object Reference* serta pola *Cross-Site Scripting* pada routing dinamis menggunakan agen AI yang diorkestrasi, mengaudit repositori GitHub, dan memberikan usulan perbaikan otomatis.
 
 ---
 
-## 2. Bagaimana Agent Menyelesaikannya (Agent Solution & Engineering)
+## 1. Who Has This Problem? / Siapa yang Punya Masalah Ini?
 
-### Multi-agent pipeline — 6 agent, satu orkestrator
+**EN:** Pentesters, bug bounty hunters, and developers who still triage IDOR manually.
+
+**ID:** Pentester, bug bounty hunter, dan developer yang masih harus melakukan triase IDOR secara manual.
+
+| Persona | Bottleneck / Kendala |
+|---------|----------------------|
+| 🎯 **Pentester** (Andi) | Receives a URL scope → maps endpoints, guesses ID patterns, tries combinations, compares responses — all manual via Burp/Postman. **1–3 hours per endpoint.** / Menerima scope URL → memetakan endpoint, menebak pola ID, mencoba kombinasi, membandingkan response — semua manual via Burp/Postman. **1–3 jam per endpoint.** |
+| 🐛 **Bug bounty hunter** (Sari) | Commercial tools (~$450/year) do naive response diffing → many false positives → triaging the scan results takes even more time. / Tools komersial (~$450/tahun) melakukan diff response secara naif → banyak false positive → triase hasil scan justru makan waktu lagi. |
+| 👨‍💻 **Developer** (Budi) | Wants to self-check endpoints before deploy, but has no time/budget for commercial tools. Auditing someone else's GitHub repo requires manual clone first. / Ingin mengecek endpoint sendiri sebelum deploy, tapi tidak punya waktu/anggaran untuk tool komersial. Audit repo GitHub pihak lain butuh clone manual dulu. |
+
+**EN — Core bottleneck:** IDOR triage is repetitive yet requires *contextual reasoning* — is this 200 OK really another user's data, or just a generic page? And after findings are discovered, writing fixes remains manual for every location.
+
+**ID — Bottleneck inti:** triase IDOR repetitif namun butuh *nalar konteks* — apakah 200 OK ini benar-benar data milik user lain, atau sekadar halaman generik? Dan setelah temuan ditemukan, menulis perbaikannya tetap manual untuk setiap titik.
+
+**EN — Why it matters:** one manual triage of 1–3 hours/endpoint becomes a minute-long scan; false positives are suppressed so pentesters only review verified findings; developers receive ready-to-review remediation diffs — not just text instructions.
+
+**ID — Mengapa berharga:** satu triase manual 1–3 jam/endpoint menjadi scan menit; false positive tertekan sehingga pentester hanya meninjau temuan terverifikasi; developer mendapat diff perbaikan siap review — bukan sekadar instruksi teks.
+
+---
+
+## 2. How the Agent Solves It / Bagaimana Agent Menyelesaikannya
+
+### Multi-agent pipeline — 6 agents, one orchestrator / 6 agen, satu orkestrator
 
 ```
 POST /scans ──► asyncio queue ──► Orchestrator
-                                        │
-        ┌───────────────┬───────────────┼────────────────┬──────────────┐
-        ▼               ▼               ▼                ▼              ▼
-   🎯 RECON         🕵️ PROBER       ⚖️ VERIFIER      🐙 FETCHER      🔧 FIXER
-   context          tools           verification     tools           remediation
-   parse {ID}       fire candidates  4-step check     github tarball  patch proposals
-   fingerprint      adaptive expand  control-ID ⭐    sandbox extract  diff + verify
-   brain strategy   classify shape   PII detection    host allowlist  backup/revert
-        │               │               │                │              │
-        └───────────────┴───────┬───────┴────────────────┴──────────────┘
-                                ▼
-                         🧠 BRAIN (memory)
-                         knowledge.json — persist antar-scan
+                                         │
+         ┌───────────────┬───────────────┼────────────────┬──────────────┐
+         ▼               ▼               ▼                ▼              ▼
+    🎯 RECON         🕵️ PROBER       ⚖️ VERIFIER      🐙 FETCHER      🔧 FIXER
+    context          tools           verification     tools           remediation
+    parse {ID}       fire candidates  4-step check     github tarball  patch proposals
+    fingerprint      adaptive expand  control-ID ⭐    sandbox extract  diff + verify
+    brain strategy   classify shape   PII detection    host allowlist  backup/revert
+         │               │               │                │              │
+         └───────────────┴───────┬───────┴────────────────┴──────────────┘
+                                 ▼
+                          🧠 BRAIN (memory)
+                          knowledge.json — persist antar-scan
 ```
 
-### Kapabilitas agent → rubrik lomba
+### Agent capabilities → competition rubric / Kapabilitas agent → rubrik lomba
 
-| Kapabilitas | Implementasi di Cyense |
-|-------------|------------------------|
-| **Better context** | 🎯 Recon: fingerprint framework dari response → strategi probing dari Brain |
-| **Better tools** | 🕵️ Prober: probing paralel rate-limited + adaptive expansion; 🐙 Fetcher: tarball GitHub + sandbox ber-guard |
-| **Memory** | 🧠 Brain: knowledge framework + id valid + cache `repo@sha` antar-scan |
-| **Verification** | ⚖️ Verifier: 4 langkah + **kontrol-ID negative control**; 🔧 Fixer: re-scan membuktikan temuan hilang |
-| **Orchestration** | Orchestrator: pipeline `recon → probe → verify → report` dengan progress live per stage |
+| Capability / Kapabilitas | Implementation in Cyense / Implementasi di Cyense |
+|--------------------------|---------------------------------------------------|
+| **Better context** | 🎯 Recon: fingerprints framework from response → probing strategy from Brain / Recon: fingerprint framework dari response → strategi probing dari Brain |
+| **Better tools** | 🕵️ Prober: rate-limited parallel probing + adaptive expansion; 🐙 Fetcher: GitHub tarball + guarded sandbox / Prober: probing paralel rate-limited + adaptive expansion; Fetcher: tarball GitHub + sandbox ber-guard |
+| **Memory** | 🧠 Brain: framework knowledge + valid ids + `repo@sha` cache across scans / Brain: knowledge framework + id valid + cache `repo@sha` antar-scan |
+| **Verification** | ⚖️ Verifier: 4-step + **control-ID negative control**; 🔧 Fixer: re-scan proves findings disappear / Verifier: 4 langkah + **kontrol-ID negative control**; Fixer: re-scan membuktikan temuan hilang |
+| **Orchestration** | Orchestrator: `recon → probe → verify → report` pipeline with live stage progress / Orchestrator: pipeline `recon → probe → verify → report` dengan progress live per stage |
 
-### ⭐ Inovasi kunci — Kontrol-ID sebagai negative control
+### ⭐ Key innovation — Control-ID as negative control / Inovasi kunci — Kontrol-ID sebagai negative control
 
-Pengetahuan pentester yang di-encode sebagai verification step: request dengan ID yang **pasti tidak ada** (mis. `99999999`) sebagai pembanding. Response kandidat dibandingkan dengan response kontrol via **JSON key-set comparison** — identik = *generic-200* = false positive → ditolak. Ini yang tidak dilakukan scanner naif, dan menjadi bukti terkuat "does the agent solve it well?".
+**EN:** Pentester knowledge encoded as a verification step: request an ID that **definitely does not exist** (e.g. `99999999`) as a comparison. The candidate response is compared to the control response via **JSON key-set comparison** — identical = *generic-200* = false positive → rejected. This is what naive scanners do not do, and it is the strongest evidence that "the agent solves it well."
 
-### Keputusan desain: **tanpa LLM**
+**ID:** Pengetahuan pentester yang di-encode sebagai verification step: request dengan ID yang **pasti tidak ada** (mis. `99999999`) sebagai pembanding. Response kandidat dibandingkan dengan response kontrol via **JSON key-set comparison** — identik = *generic-200* = false positive → ditolak. Ini yang tidak dilakukan scanner naif, dan menjadi bukti terkuat "does the agent solve it well?"
 
-Nalar konteks yang dibutuhkan (similarity difflib, PII regex, status code, kontrol behavior, AST transform) sudah **objektif dan deterministik**. LLM justru menambah biaya, nondeterminisme, dan risiko kredensial keluar (ground rule #8). Cyense memilih *memory + verification + orchestration + better tools* yang murah ($0) dan 100% reprodusibel — *purposeful design choices > jumlah komponen*.
+### Design decision: no LLM / Keputusan desain: tanpa LLM
+
+**EN:** The required reasoning (difflib similarity, PII regex, status code, control behavior, AST transform) is already **objective and deterministic**. An LLM would only add cost, nondeterminism, and credential-leak risk (ground rule #8). Cyense chooses *memory + verification + orchestration + better tools* — cheap ($0) and 100% reproducible. *Purposeful design choices > number of components.*
+
+**ID:** Nalar konteks yang dibutuhkan (similarity difflib, PII regex, status code, kontrol behavior, AST transform) sudah **objektif dan deterministik**. LLM justru menambah biaya, nondeterminisme, dan risiko kredensial keluar (ground rule #8). Cyense memilih *memory + verification + orchestration + better tools* yang murah ($0) dan 100% reprodusibel — *purposeful design choices > jumlah komponen*.
 
 ---
 
-## 3. Empat Mode Scan
+## 3. Four Scan Modes / Empat Mode Scan
 
 | Mode | Input | Pipeline | Output |
 |------|-------|----------|--------|
-| **`link`** | URL ber-placeholder `http://app/invoice/{ID}` + kredensial | Recon → Prober → Verifier → Report (dynamic) | Temuan terverifikasi + PII evidence + curl reprodusibel |
-| **`program`** | Source code (mounted `/workspace` atau sample bawaan) | Static analysis | `file:line` + rule CY001–CY010 + remediation |
-| **`github`** | Link repo `https://github.com/owner/repo` | Fetcher (tarball + sandbox) → Analyze → Report | Temuan statis + `commit_sha` reprodusibel + brain cache |
-| **`fixes`** | Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + bukti temuan hilang + backup/revert |
+| **`link`** | URL with placeholder `http://app/invoice/{ID}` + credentials / URL ber-placeholder + kredensial | Recon → Prober → Verifier → Report (dynamic) | Verified findings + PII evidence + reproducible curl / Temuan terverifikasi + bukti PII + curl reprodusibel |
+| **`program`** | Source code (mounted `/workspace` or built-in sample) / Source code (mounted `/workspace` atau sample bawaan | Static analysis / Analisis statis | `file:line` + rule CY001–CY010 + remediation |
+| **`github`** | Repo link `https://github.com/owner/repo` / Link repo | Fetcher (tarball + sandbox) → Analyze → Report | Static findings + reproducible `commit_sha` + brain cache / Temuan statis + `commit_sha` reprodusibel + brain cache |
+| **`fixes`** | Findings from any scan / Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + proof finding disappeared + backup/revert / Diff patch + bukti temuan hilang + backup/revert |
 
-**10 rules deteksi:**
+**10 detection rules / 10 aturan deteksi:**
 
-| Rule | Pola | Bahasa | Severity |
-|------|------|--------|----------|
-| CY001 | `Model.objects.get(id=request.X)` tanpa ownership | Python | High |
-| CY002 | `.filter(id=...).first()` tanpa user scoping | Python | High |
-| CY003 | Flask route `<int:id>` → query unscoped | Python | High |
-| CY004 | FastAPI path param → DB query langsung | Python | High |
-| CY005 | `get_object_or_404` tanpa `user=` | Python | High |
+| Rule | Pattern / Pola | Language | Severity |
+|------|----------------|----------|----------|
+| CY001 | `Model.objects.get(id=request.X)` without ownership / tanpa ownership | Python | High |
+| CY002 | `.filter(id=...).first()` without user scoping / tanpa user scoping | Python | High |
+| CY003 | Flask route `<int:id>` → unscoped query / query unscoped | Python | High |
+| CY004 | FastAPI path param → direct DB query / DB query langsung | Python | High |
+| CY005 | `get_object_or_404` without `user=` / tanpa `user=` | Python | High |
 | CY006 | `open(f"/uploads/{request.param}")` | Python | **Critical** |
 | CY007 | `findOne({_id: req.params.id})` | JS | High |
 | CY008 | `findById(req.params.id)` | JS | High |
 | CY009 | `->where('id', $_GET[..])` | PHP | High |
 | CY010 | `Model::find($_GET[..])` | PHP | High |
-| IDOR-LINK | 200 + PII cross-account + kontrol-ID blocked | HTTP | **Critical** |
+| IDOR-LINK | 200 + cross-account PII + control-ID blocked / 200 + PII cross-account + kontrol-ID blocked | HTTP | **Critical** |
 
-**Kelas aturan kedua — XSS (XS001–XS008)** berjalan sebagai pass kedua pada mesin
-statis (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML`
-(JS), `eval` (critical), `v-html` (Vue), `echo $_GET` tanpa escape (PHP),
-`\|safe` Jinja2, dan komposisi HTML via f-string (Python) — masing-masing dengan
-guard anti false-positive (string statis, output ter-sanitasi, dan komentar tidak
-dilaporkan). Lihat `instruction/feature/xss-detection.md`.
+**EN:** A second rule class — XSS (`XS001`–`XS008`) — runs as a second pass in the static engine (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML` (JS), `eval` (critical), `v-html` (Vue), `echo $_GET` without escaping (PHP), `|safe` Jinja2, and HTML composition via f-string (Python) — each with anti-false-positive guards (static strings, sanitized output, comments are not reported). See `instruction/feature/xss-detection.md`.
+
+**ID:** Kelas aturan kedua — XSS (`XS001`–`XS008`) — berjalan sebagai pass kedua pada mesin statis (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML` (JS), `eval` (critical), `v-html` (Vue), `echo $_GET` tanpa escape (PHP), `|safe` Jinja2, dan komposisi HTML via f-string (Python) — masing-masing dengan guard anti false-positive (string statis, output ter-sanitasi, dan komentar tidak dilaporkan). Lihat `instruction/feature/xss-detection.md`.
 
 ---
 
-## 4. Measured Improvement (Evaluasi Terukur)
+## 4. Measured Improvement / Peningkatan Terukur
 
-**Primary metric: precision** — persentase temuan yang benar-benar IDOR. Pain terbesar user adalah waktu triase false positive. Task, eval cases, rate limit, dan concurrency **identik** untuk baseline dan agentic (fair comparison, PRD §7.2).
+**EN — Primary metric: precision** — percentage of findings that are truly IDOR. The biggest user pain is false-positive triage time. Task, eval cases, rate limit, and concurrency are **identical** for baseline and agentic (fair comparison, PRD §7.2).
 
-### Hasil eval — 9 kasus lab (dari 11 kasus PRD §7.3; kasus flaky/timeout dikesampingkan)
+**ID — Primary metric: precision** — persentase temuan yang benar-benar IDOR. Pain terbesar user adalah waktu triase false positive. Task, eval cases, rate limit, dan concurrency **identik** untuk baseline dan agentic (fair comparison, PRD §7.2).
+
+### Eval results — 9 lab cases (from 11 PRD §7.3 cases; flaky/timeout cases excluded) / Hasil eval — 9 kasus lab
 
 | Metric | Simple Baseline (naive) | Agent Solution (Cyense) | Change |
 |--------|------------------------|-------------------------|--------|
-| **Precision (kasus benar)** | 5/9 (**56%**) | **9/9 (100%)** | **+44 poin** |
-| False positive pada trap (kasus 4 & 11) | 4 dilaporkan mentah | **0** (15 ditolak verifier) | −100% |
-| IDOR critical + PII terdeteksi | 2 | 2 (confidence 0.95) | sama |
-| Waktu scan per kasus | ~12 ms | ~17 ms | +5 ms (murah utk precision) |
-| Generic-200 trap (kasus 4) | 3 FP dilaporkan | Ditolak via kontrol-ID ⭐ | — |
+| **Precision (correct cases)** | 5/9 (**56%**) | **9/9 (100%)** | **+44 points** |
+| False positives on trap (cases 4 & 11) | 4 reported raw | **0** (15 rejected by verifier) | −100% |
+| IDOR critical + PII detected | 2 | 2 (confidence 0.95) | same |
+| Scan time per case | ~12 ms | ~17 ms | +5 ms (cheap for precision) |
+| Generic-200 trap (case 4) | 3 FPs reported | Rejected via control-ID ⭐ | — |
 
-### Tabel hasil per kasus
+### Per-case results / Hasil per kasus
 
-| Kasus | Ground Truth | Baseline | Agentic |
-|-------|-------------|----------|---------|
-| 1. `/invoice/{ID}` PII beda | IDOR Critical | ✅ 2 temuan | ✅ 2 temuan critical |
-| 2. `/orders/{ID}` tanpa PII | IDOR High | ❌ miss | ✅ 1 temuan |
-| 3. `/profile/{ID}` 403 | Aman | ✅ 0 temuan | ✅ 0 temuan |
-| 4. `/docs/{ID}` generic-200 | **False-positive trap** | ❌ 3 FP | ✅ 0 (8 ditolak) |
+| Case / Kasus | Ground Truth | Baseline | Agentic |
+|--------------|--------------|----------|---------|
+| 1. `/invoice/{ID}` different PII | IDOR Critical | ✅ 2 findings | ✅ 2 critical findings |
+| 2. `/orders/{ID}` no PII | IDOR High | ❌ miss | ✅ 1 finding |
+| 3. `/profile/{ID}` 403 | Safe | ✅ 0 findings | ✅ 0 findings |
+| 4. `/docs/{ID}` generic-200 | **False-positive trap** | ❌ 3 FPs | ✅ 0 (8 rejected) |
 | 5. UUID direct access | IDOR | ❌ miss | ✅ 1 critical (PII) |
-| 7. `/payment/{ID}` 302 login | Aman | ✅ 0 | ✅ 0 |
-| 8. `/file/{ID}` | IDOR Critical | ❌ miss | ✅ 1 temuan |
-| 10. `/missing/{ID}` 404 semua | Aman | ✅ 0 | ✅ 0 |
-| 11. generic + 1 beda shape | **Challenging** | ✅ (kebetulan) | ✅ 1 temuan (via kontrol) |
+| 7. `/payment/{ID}` 302 login | Safe | ✅ 0 | ✅ 0 |
+| 8. `/file/{ID}` | IDOR Critical | ❌ miss | ✅ 1 finding |
+| 10. `/missing/{ID}` 404 all | Safe | ✅ 0 | ✅ 0 |
+| 11. generic + 1 different shape | **Challenging** | ✅ (by chance) | ✅ 1 finding (via control) |
 
 ### Regression suite
 
@@ -133,37 +143,37 @@ ruff check: All checks passed (0 errors)
 
 ---
 
-## 5. Improvement Changelog
+## 5. Improvement Changelog / Riwayat Peningkatan
 
-| Stage | Apa yang dicoba & mengapa | Bukti (eval) | Keputusan |
-|-------|---------------------------|--------------|-----------|
-| **Baseline** | Naive probing: laporkan semua 200 mirip-shape | 56% precision, 4 FP pada trap | Titik awal |
-| **Iterasi 1** | + Verifier 4 langkah (similarity, PII, retry, kontrol-id) | FP trap berkurang | **kept** |
-| **Iterasi 2** | + Forward semua kandidat-200 ke verifier (hapus pre-filter shape) | PII tidak hilang — kasus 5 & 8 terdeteksi (2→4 kasus benar) | **kept** |
-| **Iterasi 3** | + Kontrol-ID sebagai negative control + JSON key-set comparison (bukan raw-text similarity yang rapuh thd echoed id) | 100% precision (9/9) | **kept** — kontribusi utama |
-| **Iterasi 4** | + Brain memory antar-scan (id valid + fingerprint + cache repo@sha) | Scan ulang repo sama skip fetch | **kept** |
-| **Iterasi 5** | + Mode github (Fetcher agent, sandbox guard, host allowlist) | Parity test: temuan identik dgn mode program | **kept** |
-| **Iterasi 6** | + Remediasi Fixer (diff proposal, backup, revert, verify loop) | E2E: 10 findings → 10 proposals, safety gate 422 | **kept** |
-| **Dihapus** | Pre-filter same-shape di prober sebelum verifier | Menyebabkan PII cross-account terbuang (kasus 5) | **removed** — pelajaran: jangan pre-filter apa yang bisa diverifikasi lebih baik di downstream |
-| **Dihapus** | Raw-text similarity untuk kontrol-ID check | Rapuh terhadap id yang di-echo di body (false reject/accept) | **removed** — diganti JSON key-set |
+| Stage | What was tried & why / Apa yang dicoba & mengapa | Evidence / Bukti | Decision / Keputusan |
+|-------|----------------------------------------------------|------------------|----------------------|
+| **Baseline** | Naive probing: report every 200 with similar shape / Naive probing: laporkan semua 200 mirip-shape | 56% precision, 4 FPs on trap / 56% precision, 4 FP pada trap | Starting point / Titik awal |
+| **Iteration 1** | + Verifier 4-step (similarity, PII, retry, control-id) / + Verifier 4 langkah | FP trap reduced / FP trap berkurang | **kept** |
+| **Iteration 2** | + Forward all 200 candidates to verifier (remove shape pre-filter) / + Forward semua kandidat-200 ke verifier | PII preserved — cases 5 & 8 detected (2→4 correct) / PII tidak hilang — kasus 5 & 8 terdeteksi | **kept** |
+| **Iteration 3** | + Control-ID as negative control + JSON key-set comparison (not brittle raw-text similarity) / + Kontrol-ID + JSON key-set comparison | 100% precision (9/9) | **kept** — main contribution / kontribusi utama |
+| **Iteration 4** | + Brain memory across scans (valid ids + fingerprint + repo@sha cache) / + Brain memory antar-scan | Re-scan same repo skips fetch / Scan ulang repo sama skip fetch | **kept** |
+| **Iteration 5** | + Github mode (Fetcher agent, sandbox guard, host allowlist) / + Mode github | Parity test: findings identical to program mode / Parity test: temuan identik dgn mode program | **kept** |
+| **Iteration 6** | + Remediation Fixer (diff proposal, backup, revert, verify loop) / + Remediasi Fixer | E2E: 10 findings → 10 proposals, safety gate 422 | **kept** |
+| **Removed** | Same-shape pre-filter in prober before verifier / Pre-filter same-shape di prober | Caused cross-account PII to be dropped (case 5) / Menyebabkan PII cross-account terbuang (kasus 5) | **removed** — lesson: don't pre-filter what downstream can verify better / pelajaran: jangan pre-filter apa yang bisa diverifikasi lebih baik di downstream |
+| **Removed** | Raw-text similarity for control-ID check / Raw-text similarity untuk kontrol-ID | Brittle against echoed id in body (false reject/accept) / Rapuh terhadap id yang di-echo | **removed** — replaced by JSON key-set / diganti JSON key-set |
 
 ---
 
-## 6. Reproduction Guide (dari clean environment)
+## 6. Reproduction Guide / Panduan Reproduksi
 
-### Prasyarat
-- Docker ≥ 20.10 + Compose v2, **atau** Python 3.11+
+### Prerequisites / Prasyarat
+- Docker ≥ 20.10 + Compose v2, **or** Python 3.11+
 
-### Jalankan via Docker (direkomendasikan)
+### Run with Docker (recommended) / Jalankan via Docker (direkomendasikan)
 
 ```bash
 git clone <repo-url> && cd cyense
 make up          # api :8000 + lab app :8080 (profile lab)
 curl http://localhost:8000/api/v1/health
-# {"status":"ok","service":"cyense","version":"2.0.0"}
+# {"status":"ok","service":"cyense","version":"2.1.0"}
 ```
 
-### Jalankan via Python
+### Run with Python / Jalankan via Python
 
 ```bash
 cd dev/main
@@ -173,14 +183,14 @@ uvicorn app.main:app --port 8000
 # Swagger UI: http://localhost:8000/docs
 ```
 
-### Reproduksi evaluasi (baseline vs agentic)
+### Reproduce evaluation (baseline vs agentic) / Reproduksi evaluasi
 
 ```bash
-# 1. Start lab app rentan (11 eval cases)
+# 1. Start vulnerable lab app (11 eval cases)
 docker compose --profile lab up -d
-# atau: python dev/main/tests/fixtures/vulnerable_app/lab_app.py
+# or: python dev/main/tests/fixtures/vulnerable_app/lab_app.py
 
-# 2. Scan agentic — kasus 1 (IDOR critical + PII)
+# 2. Agentic scan — case 1 (IDOR critical + PII)
 curl -X POST http://localhost:8000/api/v1/scans \
   -H 'Content-Type: application/json' \
   -d '{"mode":"link","url":"http://localhost:8080/invoice/{ID}",
@@ -188,20 +198,22 @@ curl -X POST http://localhost:8000/api/v1/scans \
 # → 202 {"scan_id":"..."}
 
 curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
-# {"critical":2,"total":2,...}  ← PII bob@example.com + kontrol-ID blocked
+# {"critical":2,"total":2,...}  ← PII bob@example.com + control-ID blocked
 
-# 3. False-positive trap — kasus 4 (generic-200)
+# 3. False-positive trap — case 4 (generic-200)
 curl -X POST http://localhost:8000/api/v1/scans \
   -H 'Content-Type: application/json' \
   -d '{"mode":"link","url":"http://localhost:8080/docs/{ID}",
        "baseline_id":"x","probe_ids":["y","z"],"i_have_permission":true}'
 curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
-# {"total":0,"rejected_false_positives":8,...}  ← DITOLAK via kontrol-ID ⭐
+# {"total":0,"rejected_false_positives":8,...}  ← REJECTED via control-ID ⭐
 ```
 
-**Runtime:** < 30 detik untuk seluruh eval (concurrency 10, 50 probe). **Biaya:** $0 (tanpa LLM/API eksternal).
+**EN:** Runtime: < 30 seconds for the whole eval (concurrency 10, 50 probes). Cost: $0 (no LLM/external API).
 
-### Jalankan test suite
+**ID:** Runtime: < 30 detik untuk seluruh eval (concurrency 10, 50 probe). Biaya: $0 (tanpa LLM/API eksternal).
+
+### Run test suite / Jalankan test suite
 
 ```bash
 make test       # 51 tests via pytest
@@ -210,40 +222,45 @@ make lint       # ruff, 0 errors
 
 ---
 
-## 7. API Reference (`/api/v1`, Swagger otomatis di `/docs`)
+## 7. API Reference / Referensi API (`/api/v1`, auto Swagger at `/docs`)
 
-| Method | Path | Deskripsi |
-|--------|------|-----------|
+| Method | Path | Description / Deskripsi |
+|--------|------|-------------------------|
 | GET | `/health` | Liveness |
-| POST | `/scans` | Submit scan → `202 {scan_id}` (422 tanpa `i_have_permission`) |
-| GET | `/scans` | Daftar scan |
-| GET | `/scans/{id}` | Status + progress + stage live |
-| GET | `/scans/{id}/report` | Laporan JSON lengkap |
-| GET | `/scans/{id}/report/html` | Laporan HTML self-contained |
-| DELETE | `/scans/{id}` | Hapus scan & artefak |
-| GET | `/rules` | Daftar rule aktif |
-| POST | `/scans/{id}/fixes` | Generate patch proposals (dry-run) |
-| GET | `/fixes/{session_id}` | Daftar proposal |
-| GET | `/fixes/{session_id}/diff` | Unified diff gabungan |
-| POST | `/fixes/{session_id}/apply` | Apply (wajib `confirm:true`) + backup + verify |
-| POST | `/fixes/{session_id}/revert` | Restore dari backup |
+| POST | `/scans` | Submit scan → `202 {scan_id}` (422 without `i_have_permission`) / Submit scan → `202 {scan_id}` (422 tanpa `i_have_permission`) |
+| GET | `/scans` | List scans / Daftar scan |
+| GET | `/scans/{id}` | Status + live progress + stage / Status + progress live + stage |
+| GET | `/scans/{id}/report` | Full JSON report / Laporan JSON lengkap |
+| GET | `/scans/{id}/report/html` | Self-contained HTML report / Laporan HTML self-contained |
+| GET | `/scans/{id}/report/sarif` | SARIF 2.1.0 export |
+| GET | `/scans/{id}/coverage` | Coverage document |
+| GET | `/scans/{id}/export/csv` | CSV findings export |
+| GET | `/scans/{id}/export/pdf` | PDF compliance report |
+| GET | `/scans/resumable` | List resumable scans / Daftar scan yang bisa dilanjutkan |
+| DELETE | `/scans/{id}` | Delete scan & artifacts / Hapus scan & artefak |
+| GET | `/rules` | Active rules catalog / Daftar rule aktif |
+| POST | `/scans/{id}/fixes` | Generate patch proposals (dry-run) / Generate usulan patch (dry-run) |
+| GET | `/fixes/{session_id}` | List proposals / Daftar proposal |
+| GET | `/fixes/{session_id}/diff` | Combined unified diff / Unified diff gabungan |
+| POST | `/fixes/{session_id}/apply` | Apply (requires `confirm:true`) + backup + verify / Apply (wajib `confirm:true`) + backup + verify |
+| POST | `/fixes/{session_id}/revert` | Restore from backup / Restore dari backup |
 
-**State machine:** `QUEUED → RUNNING (recon\|probe\|verify\|resolve\|fetch\|analyze\|report) → COMPLETED | FAILED`
+**State machine / Mesin state:** `QUEUED → RUNNING (recon|probe|verify|resolve|fetch|analyze|report) → COMPLETED | FAILED`
 
-### Contoh: mode github & remediasi
+### Example: github mode & remediation / Contoh: mode github & remediasi
 
 ```bash
-# Audit repo GitHub publik (fetcher + sandbox + rules CY001-CY010)
+# Audit public GitHub repo (fetcher + sandbox + CY001-CY010 rules)
 curl -X POST http://localhost:8000/api/v1/scans \
   -H 'Content-Type: application/json' \
   -d '{"mode":"github","repo_url":"https://github.com/owner/repo",
        "ref":"main","i_have_permission":true}'
 
-# Minta usulan perbaikan dari scan (dry-run, tidak menulis)
+# Request remediation proposals from a scan (dry-run, does not write)
 curl -X POST http://localhost:8000/api/v1/scans/<scan_id>/fixes
 # → {"session_id":"fix_...","message":"Proposals generated: 10 fixes ready"}
 
-# Tinjau diff, lalu apply subset (butuh confirm eksplisit)
+# Review diff, then apply subset (requires explicit confirm)
 curl http://localhost:8000/api/v1/fixes/<session_id>/diff
 curl -X POST http://localhost:8000/api/v1/fixes/<session_id>/apply \
   -H 'Content-Type: application/json' \
@@ -252,61 +269,67 @@ curl -X POST http://localhost:8000/api/v1/fixes/<session_id>/apply \
 
 ---
 
-## 8. Keamanan, Etika & Ground Rules
+## 8. Security, Ethics & Ground Rules / Keamanan, Etika & Ground Rules
 
-| Ground rule lomba | Implementasi Cyense |
-|-------------------|----------------------|
-| #4 Sandbox + human approval | Gate `i_have_permission` (422 tanpa itu); remediasi dry-run default, tulis hanya via `confirm:true`; sandbox tarball ber-guard |
-| #5 Qualified human reviewer | Patch selalu berupa *proposal* — keputusan apply/reject di tangan user |
-| #6 Legal & ethical | Probing read-only (GET/HEAD saja); host allowlist GitHub (anti-SSRF); tanpa auto-exploit |
-| #7 Data yang diizinkan | Lab app sintetis untuk eval; token GitHub opsional & hanya ke github.com |
-| #8 Kredensial di luar submission | Redaksi otomatis `Authorization`/`Cookie`/token di semua log, report, trajectory (teruji) |
-| #9 Klaim terhubung bukti | Eval table §4 + verify loop remediasi (temuan hilang = bukti) |
-| #10 Juri bisa menjalankan | Reproduction guide §6 + docker compose + profile lab |
+| Ground rule | Implementation in Cyense / Implementasi di Cyense |
+|-------------|---------------------------------------------------|
+| #4 Sandbox + human approval | Gate `i_have_permission` (422 without it); remediation dry-run default, write only via `confirm:true`; guarded tarball sandbox / Gate `i_have_permission` (422 tanpa itu); remediasi dry-run default, tulis hanya via `confirm:true`; sandbox tarball ber-guard |
+| #5 Qualified human reviewer | Patch is always a *proposal* — apply/reject decision stays with user / Patch selalu berupa *proposal* — keputusan apply/reject di tangan user |
+| #6 Legal & ethical | Read-only probing (GET/HEAD only); GitHub host allowlist (anti-SSRF); no auto-exploit / Probing read-only (GET/HEAD saja); host allowlist GitHub (anti-SSRF); tanpa auto-exploit |
+| #7 Authorized data only | Synthetic lab app for eval; optional GitHub token only to github.com / Lab app sintetis untuk eval; token GitHub opsional & hanya ke github.com |
+| #8 Credentials outside submission | Automatic redaction of `Authorization`/`Cookie`/token in all logs, reports, trajectories (tested) / Redaksi otomatis `Authorization`/`Cookie`/token di semua log, report, trajectory (teruji) |
+| #9 Claims connected to evidence | Eval table §4 + remediation verify loop (finding disappeared = proof) / Eval table §4 + verify loop remediasi (temuan hilang = bukti) |
+| #10 Judges can run it | Reproduction guide §6 + docker compose + lab profile / Reproduction guide §6 + docker compose + profile lab |
 
-**Safety tambahan:** anti zip-bomb (size/file cap), anti path-traversal (`resolve()` containment), symlink rejection, backup `.bak-cyense` + revert byte-identik, same-origin guard untuk patch.
+**Additional safety / Safety tambahan:** anti zip-bomb (size/file cap), anti path-traversal (`resolve()` containment), symlink rejection, `.bak-cyense` backup + byte-identical revert, same-origin guard for patches.
 
 ---
 
-## 9. Struktur Proyek
+## 9. Project Structure / Struktur Proyek
 
 ```
 cyense/
-├── README.md                          ← dokumen ini
+├── README.md                          ← this document / dokumen ini
 ├── Makefile                           ← make up/down/test/lint
 ├── instruction/
 │   ├── PRD.md                         ← PRD v2.0 (source of truth)
 │   └── feature/
-│       ├── github-repo-audit.md       ← PRD fitur mode github
-│       └── idor-remediation.md        ← PRD fitur remediasi
+│       ├── github-repo-audit.md       ← github mode PRD
+│       ├── idor-remediation.md        ← remediation PRD
+│       ├── ci-compliance-reporting.md ← SARIF/CVSS/coverage/diff-scope PRD
+│       ├── enhanced-reporting-viewer.md ← viewer/pdf/csv/multi PRD
+│       └── cli-experience.md          ← CLI PRD
 ├── dev/
-│   ├── main/                          ★ IMPLEMENTASI UTAMA
+│   ├── main/                          ★ MAIN IMPLEMENTATION / IMPLEMENTASI UTAMA
 │   │   ├── app/
 │   │   │   ├── main.py                ← app factory + lifespan
-│   │   │   ├── api/                   ← scans, reports, system, remediations
+│   │   │   ├── api/                   ← scans, reports, system, remediations, export, viewer
 │   │   │   ├── core/                  ← models, config, store (+github models)
 │   │   │   ├── agents/                ← brain, recon, prober, verifier, fetcher, orchestrator
-│   │   │   ├── engines/               ← link, program, github
-│   │   │   ├── program/               ← rules CY001-CY010 + sample fixture
+│   │   │   ├── engines/               ← link, program, github, diff_scope
+│   │   │   ├── program/               ← CY001-CY010 rules + sample fixture
 │   │   │   ├── remediation/           ← fixer, strategies, applier, store
-│   │   │   ├── report/                ← json + html (string-builder, TANPA Jinja)
-│   │   │   └── utils/                 ← http_client, sandbox, github_client, pii, dll
-│   │   ├── baseline/naive_engine.py   ← baseline pembanding
+│   │   │   ├── report/                ← json + html + sarif + csv + pdf + coverage
+│   │   │   ├── services/              ← multi_scan, scan_resume
+│   │   │   └── utils/                 ← http_client, sandbox, github_client, pii, etc.
+│   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
 │   │   ├── tests/                     ← 51 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml
-│   │   └── README.md                  ← README service-level
+│   │   └── README.md                  ← service-level README
 │   ├── brain/                         ← 🧠 knowledge.json + memory antar-scan
-│   └── target/                        ← target mode program (read-only)
-└── document/                          ← referensi hackathon (gitignored)
+│   └── target/                        ← program mode target (read-only)
+└── document/                          ← hackathon reference (gitignored)
 ```
 
-### Agent trajectories (deliverable #4)
+### Agent trajectories (deliverable #4) / Trajectory agent
 
-Setiap agent merekam langkahnya di `reports/<scan_id>/trajectories/<agent>.json` — dari instruksi hingga hasil, mudah diikuti:
+**EN:** Every agent records its steps in `reports/<scan_id>/trajectories/<agent>.json` — from instruction to result, easy to follow.
+
+**ID:** Setiap agent merekam langkahnya di `reports/<scan_id>/trajectories/<agent>.json` — dari instruksi hingga hasil, mudah diikuti.
 
 ```json
-// trajectories/verifier.json (contoh)
+// trajectories/verifier.json (example / contoh)
 {"scan_id":"...","agent":"verifier","steps":[
   {"t":1788029499.9,"action":"start","detail":{"agent":"verifier"}},
   {"t":1788029499.9,"action":"control_id","detail":{"id":"99999999","status":404,"blocked":true}},
@@ -316,33 +339,40 @@ Setiap agent merekam langkahnya di `reports/<scan_id>/trajectories/<agent>.json`
 
 ---
 
-## 10. Failure Mode Utama & Hot Take
+## 10. Main Failure Mode & Hot Take / Failure Mode Utama & Hot Take
 
-**Failure mode:** verifikasi bergantung pada *konteks yang teramati*. Kasus 2 (`/orders`) sempat miss karena similarity body pendek di bawah threshold — solusinya bukan menurunkan threshold (itu membuka FP), melainkan meneruskan **semua** kandidat-200 ke verifier dan membiarkan kontrol-ID + PII yang memutuskan. Pelajaran: **jangan pre-filter apa yang bisa diverifikasi lebih baik di downstream** — pre-filter berbasis shape justru membuang temuan PII cross-account paling penting.
+**EN:** Verification depends on *observed context*. Case 2 (`/orders`) was initially missed because short body similarity fell below threshold — the fix was not lowering the threshold (that would open false positives), but forwarding **all** 200 candidates to the verifier and letting control-ID + PII decide. Lesson: **don't pre-filter what downstream can verify better** — shape-based pre-filtering discards the most important cross-account PII findings.
 
-**Hot take:** *scanner yang melaporkan lebih banyak bukan scanner yang lebih baik.* Nilai sebenarnya dari agentic workflow di security bukan menembak lebih banyak, tapi **berpikir seperti pentester**: membangkitkan negative control, membandingkan bukti, dan berani menolak temuan sendiri. Kontrol-ID adalah 1 request tambahan yang menghapus hampir semua false positive — murah, deterministik, dan tidak butuh LLM. Agent terbaik untuk tugas objektif bukan yang paling pintar menebak, tapi yang paling disiplin memverifikasi.
+**ID:** Verifikasi bergantung pada *konteks yang teramati*. Kasus 2 (`/orders`) sempat miss karena similarity body pendek di bawah threshold — solusinya bukan menurunkan threshold (itu membuka FP), melainkan meneruskan **semua** kandidat-200 ke verifier dan membiarkan kontrol-ID + PII yang memutuskan. Pelajaran: **jangan pre-filter apa yang bisa diverifikasi lebih baik di downstream** — pre-filter berbasis shape justru membuang temuan PII cross-account paling penting.
+
+**EN:** **Hot take:** *a scanner that reports more is not a better scanner.* The real value of an agentic workflow in security is not shooting more, but **thinking like a pentester**: generating a negative control, comparing evidence, and having the discipline to reject its own findings. Control-ID is 1 extra request that removes almost all false positives — cheap, deterministic, and no LLM needed. The best agent for objective tasks is not the one that guesses smartest, but the one that verifies most disciplined.
+
+**ID:** **Hot take:** *scanner yang melaporkan lebih banyak bukan scanner yang lebih baik.* Nilai sebenarnya dari agentic workflow di security bukan menembak lebih banyak, tapi **berpikir seperti pentester**: membangkitkan negative control, membandingkan bukti, dan berani menolak temuan sendiri. Kontrol-ID adalah 1 request tambahan yang menghapus hampir semua false positive — murah, deterministik, dan tidak butuh LLM. Agent terbaik untuk tugas objektif bukan yang paling pintar menebak, tapi yang paling disiplin memverifikasi.
 
 ---
 
-## 11. Teknologi
+## 11. Technology / Teknologi
 
-| Layer | Pilihan | Alasan |
-|-------|---------|--------|
-| Python 3.11+ | asyncio + `ast` builtin | requirement; zero-dep static analysis |
-| FastAPI + pydantic v2 | async-native, Swagger otomatis | requirement |
-| httpx AsyncClient | probing paralel + timeout | rate limit + read-only enforcement |
-| difflib + regex | similarity + PII | deterministik, tanpa LLM |
-| String-builder HTML | f-string + `html.escape` | **tanpa Jinja**, self-contained |
-| Docker Compose | profile `lab` | requirement + reproducibility |
-| pytest + ruff | 51 tests, 0 lint errors | kualitas terukur |
+| Layer | Choice / Pilihan | Reason / Alasan |
+|-------|------------------|-----------------|
+| Python 3.11+ | asyncio + built-in `ast` | requirement; zero-dep static analysis |
+| FastAPI + pydantic v2 | async-native, auto Swagger | requirement |
+| httpx AsyncClient | parallel probing + timeout | rate limit + read-only enforcement |
+| difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
+| String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
+| Docker Compose | `lab` profile | requirement + reproducibility |
+| pytest + ruff | 51 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP lengkap: 4 mode scan, 6 agent, 10 rules, 51/51 tests
-- ✅ Eval terukur: precision 100% vs baseline 56% (fair comparison)
-- ✅ E2E live terverifikasi: scan → findings → remediasi → safety gate
-- 📋 Backlog: PR-diff analysis, GitLab adapter, interactive web UI (lihat PRD fitur)
+- ✅ MVP complete: 4 scan modes, 6 agents, 10+ rules, 51/51 tests / MVP lengkap: 4 mode scan, 6 agen, 10+ aturan, 51/51 tests
+- ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
+- ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
+- ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
+- 📋 Backlog: GitLab adapter, more CI adapters, interactive web UI (see PRD features) / Backlog: GitLab adapter, CI adapter tambahan, interactive web UI
 
 ---
+
+*Cyense — built for micro1 Agentic Workflows Hackathon. Only scan targets you are authorized to test.* 🛡️
 
 *Cyense — dibangun untuk micro1 Agentic Workflows Hackathon. Hanya scan target yang Anda miliki izinnya.* 🛡️
