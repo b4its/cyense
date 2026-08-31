@@ -189,7 +189,9 @@ class ScanWorker:
                 remove_checkpoint(self.settings.reports_dir, scan_id)
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
-            # Save failed checkpoint so user can resume after fixing cause
+            # Save failed checkpoint so user can resume after fixing cause.
+            # Do NOT re-raise: _loop() already logs and marks failed; re-raising
+            # would cause duplicate error state and duplicate logs.
             save_checkpoint(
                 reports_dir=self.settings.reports_dir,
                 scan_id=scan_id,
@@ -198,7 +200,6 @@ class ScanWorker:
                 progress=job.progress,
                 error=str(exc),
             )
-            raise
 
     def result(self, scan_id: str) -> dict[str, Any] | None:
         """Get cached scan result by scan_id."""
