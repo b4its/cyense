@@ -199,6 +199,14 @@ def scan_github(
             help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
         ),
     ] = "auto",
+    # Analysis depth level (low|medium|high|max)
+    level: Annotated[
+        str,
+        typer.Option(
+            "--level",
+            help="Kedalaman analisis: low (cepat), medium (default), high (data flow), max (cross-file).",
+        ),
+    ] = "medium",
     # Strix-derived features:
     instruction: Annotated[
         Optional[str], typer.Option("--instruction", help="Fokus testing khusus (mis. 'Focus on IDOR').")
@@ -248,6 +256,7 @@ def scan_github(
         "i_have_permission": i_have_permission,
         "scan_mode": scan_mode,
         "scope_mode": scope_mode,
+        "level": level,
     }
     if ref:
         payload["ref"] = ref
@@ -304,6 +313,14 @@ def scan_program(
             help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
         ),
     ] = "auto",
+    # Analysis depth level (low|medium|high|max)
+    level: Annotated[
+        str,
+        typer.Option(
+            "--level",
+            help="Kedalaman analisis: low (cepat), medium (default), high (data flow), max (cross-file).",
+        ),
+    ] = "medium",
     # Strix-derived features:
     instruction: Annotated[
         Optional[str], typer.Option("--instruction", help="Fokus testing khusus.")
@@ -339,6 +356,7 @@ def scan_program(
         "i_have_permission": i_have_permission,
         "scan_mode": scan_mode,
         "scope_mode": scope_mode,
+        "level": level,
     }
     if resolved_instruction:
         payload["instruction"] = resolved_instruction
