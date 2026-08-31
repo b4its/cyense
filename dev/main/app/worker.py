@@ -273,8 +273,19 @@ class ScanWorker:
             "files_scanned": result["files_scanned"],
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
+        # Propagate level + active rules from program_engine to report meta
+        # so consumers (CLI, viewer, SARIF) can report what depth was used.
+        meta: dict[str, Any] = {
+            "scan_id": scan_id,
+            "mode": "program",
+            "engine": "static-ast",
+        }
+        if "level" in result:
+            meta["level"] = result["level"]
+        if "level_rules_active" in result:
+            meta["level_rules_active"] = result["level_rules_active"]
         return {
-            "meta": {"scan_id": scan_id, "mode": "program", "engine": "static-ast"},
+            "meta": meta,
             "summary": summary,
             "findings": findings,
         }
