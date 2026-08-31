@@ -26,7 +26,13 @@ def _load_report(request: Request, scan_id: str) -> dict[str, Any]:
         return report
 
     reports_dir: Path = request.app.state.settings.reports_dir
-    path = reports_dir / scan_id / "report.json"
+    path = (reports_dir / scan_id / "report.json").resolve()
+    # Path traversal guard: resolved report must live inside reports_dir.
+    try:
+        path.relative_to(reports_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="invalid scan_id") from None
+
     if path.exists():
         try:
             return json.loads(path.read_text())

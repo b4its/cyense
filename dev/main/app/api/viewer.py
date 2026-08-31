@@ -22,7 +22,12 @@ _STATIC_DIR = Path(__file__).resolve().parents[1] / "interface" / "viewer" / "st
 def _load_report_from_disk(scan_id: str, request: Request) -> dict[str, Any] | None:
     """Read reports/<scan_id>/report.json (worker._dump_report fallback)."""
     reports_dir: Path = request.app.state.settings.reports_dir
-    path = reports_dir / scan_id / "report.json"
+    path = (reports_dir / scan_id / "report.json").resolve()
+    # Path traversal guard even though get_scan_data validates store membership.
+    try:
+        path.relative_to(reports_dir.resolve())
+    except ValueError:
+        return None
     try:
         if path.exists():
             return json.loads(path.read_text())
