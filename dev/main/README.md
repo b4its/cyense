@@ -179,6 +179,7 @@ State machine / Mesin state: `QUEUED → RUNNING (recon|probe|verify|resolve|fet
 cyense scan github <repo_url>    # GitHub repo audit / audit repo GitHub
 cyense scan program              # Local source audit / audit source lokal
 cyense scan link <url>           # Dynamic IDOR probing / probing IDOR dinamis
+cyense scan website <url>        # Public website crawl (IDOR + XSS) / crawl website publik
 cyense scan resume <scan_id>     # Resume interrupted scan / lanjutkan scan
 cyense scan multi <targets.txt>  # Multi-target scan from file / multi-target dari file
 cyense report <scan_id>          # Re-render old report / render ulang laporan
@@ -259,7 +260,38 @@ python -m app.cli.main scan link "http://example.com/users/{ID}" \
 
 **ID — Placeholder yang didukung:** `{ID}`, `{UID}`, `{GUID}`, `{EMAIL}`. Minimal satu harus ada di URL.
 
-### 3️⃣ Analyze Local Source Code / Analisis Source Code Lokal
+### 3️⃣ Scan a Public Website / Scan Website Publik
+
+**EN:** Give Cyense any public URL (no `{ID}` placeholder needed) and the crawler will discover pages, identify ID-bearing endpoints, and analyze every HTML response for XSS surface. All crawling is same-domain and read-only (HTTP GET).
+
+**ID:** Berikan Cyense URL publik apa pun (tanpa placeholder `{ID}`) dan crawler akan menemukan halaman, mengidentifikasi endpoint ber-ID, dan menganalisis setiap response HTML untuk permukaan XSS. Seluruh crawling bersifat same-domain dan read-only (HTTP GET).
+
+```bash
+# Basic scan / Scan dasar:
+make cli ARGS="scan website http://example.com --i-have-permission"
+
+# With custom crawl limits / Dengan batasan crawl khusus:
+make cli ARGS="scan website http://example.com --i-have-permission --max-depth 3 --max-pages 100"
+
+# Throttle requests to be polite / Batasi request agar sopan:
+make cli ARGS="scan website http://example.com --i-have-permission --rate-limit 5"
+```
+
+**EN — What it finds:**
+- **IDOR-WEBSITE**: Endpoints with numeric ID parameters (candidates for IDOR)
+- **XS-LIVE-001/002**: Missing or weak Content-Security-Policy
+- **XS-LIVE-003–016**: Dangerous JS patterns in served pages (eval, innerHTML, document.write, etc.)
+- **XS-LIVE-017**: Possibly reflected query parameters (reflected XSS signal)
+- **XS-LIVE-011/012**: Missing security headers (nosniff, clickjacking protection)
+
+**ID — Apa yang ditemukan:**
+- **IDOR-WEBSITE**: Endpoint dengan parameter ID numerik (kandidat IDOR)
+- **XS-LIVE-001/002**: Content-Security-Policy hilang atau lemah
+- **XS-LIVE-003–016**: Pola JS berbahaya di halaman (eval, innerHTML, document.write, dll.)
+- **XS-LIVE-017**: Kemungkinan parameter ter-refleksi (sinyal reflected XSS)
+- **XS-LIVE-011/012**: Security header hilang (nosniff, proteksi clickjacking)
+
+### 4️⃣ Analyze Local Source Code / Analisis Source Code Lokal
 
 **EN:** Scan Python/JS/PHP files mounted at `/workspace` (or the built-in sample).
 
@@ -273,7 +305,7 @@ make cli ARGS="scan program --i-have-permission --source-type sample"
 make cli ARGS="scan program --i-have-permission --lang js"
 ```
 
-### 4️⃣ View Results / Lihat Hasil
+### 5️⃣ View Results / Lihat Hasil
 
 ```bash
 # List all scans / Daftar semua scan:
@@ -300,7 +332,7 @@ make cli ARGS="compare <old_scan_id> <new_scan_id>"
 make cli ARGS="history --status completed --limit 10"
 ```
 
-### 5️⃣ Remediation / Remediasi
+### 6️⃣ Remediation / Remediasi
 
 ```bash
 # Generate patch proposals (dry-run, does not write) / Generate usulan patch (dry-run):
@@ -311,7 +343,7 @@ python -m app.cli.main fix <scan_id>
 # Then call POST /api/v1/fixes/<session_id>/apply with confirm=true
 ```
 
-### 6️⃣ Full Workflow Example / Contoh Workflow Lengkap
+### 7️⃣ Full Workflow Example / Contoh Workflow Lengkap
 
 ```bash
 # Step 1: Start services / Mulai services

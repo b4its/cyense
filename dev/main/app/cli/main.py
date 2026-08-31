@@ -4,6 +4,7 @@ Subcommand:
    scan github <repo_url>   — audit repo GitHub (jalur utama)
    scan program             — audit source lokal
    scan link <url>          — probing IDOR dinamis
+   scan website <url>       — crawl website, cari IDOR + XSS live
    scan resume <scan_id>    — lanjutkan scan yang terinterupsi (Strix --resume)
    scan multi <targets>     — scan multiple targets dari file (Strix --target-list)
    report <scan_id>         — render ulang laporan lama
@@ -424,6 +425,76 @@ def scan_link(
     _run(_run_scan(
         payload=payload,
         mode="link",
+        out_path=out,
+        no_md=no_md,
+        fail_on=fail_on,
+        min_severity=min_severity,
+    ))
+
+
+# ---------------------------------------------------------------------------
+# scan website — crawl a public site, discover IDOR + live XSS
+
+@scan_app.command("website")
+def scan_website(
+    url: Annotated[
+        str,
+        typer.Argument(help="Starting URL of the public website to scan (http/https)."),
+    ],
+    max_depth: Annotated[
+        int,
+        typer.Option("--max-depth", help="Max crawl depth (0-5, default 2)."),
+    ] = 2,
+    max_pages: Annotated[
+        int,
+        typer.Option("--max-pages", help="Max pages to crawl (1-500, default 50)."),
+    ] = 50,
+    rate_limit: Annotated[
+        int,
+        typer.Option(
+            "--rate-limit",
+            help="Max requests per second to the target (1-100, default 10).",
+        ),
+    ] = 10,
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[mandatory] Confirm you have explicit permission to scan this website.",
+        ),
+    ] = False,
+    out: Annotated[Optional[str], typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+    fail_on: Annotated[
+        str,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 bila ada temuan ≥ severity ini (none|info|low|medium|high|critical).",
+        ),
+    ] = "none",
+    min_severity: Annotated[
+        str,
+        typer.Option("--min-severity", help="Sembunyikan temuan di bawah severity ini (tampilan)."),
+    ] = "info",
+) -> None:
+    """Scan a public website for IDOR & XSS vulnerabilities via crawling.
+
+    The crawler stays same-domain and read-only (HTTP GET). It discovers
+    ID-bearing endpoints automatically and inspects every HTML response for
+    XSS surface (weak CSP, eval/innerHTML/document.write, inline handlers,
+    reflected parameters, missing security headers).
+    """
+    payload: dict = {
+        "mode": "website",
+        "url": url,
+        "max_depth": max_depth,
+        "max_pages": max_pages,
+        "rate_limit": rate_limit,
+        "i_have_permission": i_have_permission,
+    }
+    _run(_run_scan(
+        payload=payload,
+        mode="website",
         out_path=out,
         no_md=no_md,
         fail_on=fail_on,

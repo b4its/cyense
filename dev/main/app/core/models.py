@@ -90,7 +90,46 @@ class ProgramScanRequest(BaseModel):
         return self
 
 
-ScanRequest = LinkScanRequest | ProgramScanRequest | GithubScanRequest
+class WebsiteScanRequest(BaseModel):
+    """Scan a public website for IDOR & XSS via crawler + live analysis.
+
+    Unlike :class:`LinkScanRequest`, the URL does NOT need an ``{ID}``
+    placeholder — the crawler discovers ID-bearing endpoints on its own.
+    Scanning is strictly **same-domain** and **read-only** (HTTP GET).
+    """
+
+    mode: Literal["website"]
+    url: str
+    max_depth: int = Field(default=2, ge=0, le=5)
+    max_pages: int = Field(default=50, ge=1, le=500)
+    rate_limit: int = Field(default=10, ge=1, le=100)
+    headers: dict[str, str] = {}
+    cookies: dict[str, str] = {}
+    i_have_permission: bool = False
+    instruction: str | None = None
+    scan_mode: str = "standard"
+    resume_from: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        if not re.match(r"^https?://\S+$", value):
+            raise ValueError("url must be a valid http(s) URL")
+        if any(ord(ch) < 0x20 or ch == "\x7f" for ch in value):
+            raise ValueError("url must not contain control characters")
+        return value
+
+    @model_validator(mode="after")
+    def _permission_gate(self) -> "WebsiteScanRequest":
+        if not self.i_have_permission:
+            raise ValueError(
+                "i_have_permission must be true: only scan websites "
+                "you are authorized to test (read-only crawling)"
+            )
+        return self
+
+
+ScanRequest = LinkScanRequest | ProgramScanRequest | GithubScanRequest | WebsiteScanRequest
 
 
 # ---------------------------------------------------------------------------
@@ -129,9 +168,9 @@ class Finding(BaseModel):
 
 class ScanJob(BaseModel):
     scan_id: str
-    request: LinkScanRequest | ProgramScanRequest | GithubScanRequest
+    request: LinkScanRequest | ProgramScanRequest | GithubScanRequest | WebsiteScanRequest
     status: ScanStatus = ScanStatus.QUEUED
-    stage: str | None = None  # recon | probe | verify | report
+    stage: str | None = None  # recon | probe | verify | report | crawl
     progress: int = 0  # 0..100
     error: str | None = None
     created_at: str = ""

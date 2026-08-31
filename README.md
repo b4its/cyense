@@ -73,13 +73,14 @@ POST /scans ──► asyncio queue ──► Orchestrator
 
 ---
 
-## 3. Four Scan Modes / Empat Mode Scan
+## 3. Five Scan Modes / Lima Mode Scan
 
 | Mode | Input | Pipeline | Output |
 |------|-------|----------|--------|
 | **`link`** | URL with placeholder `http://app/invoice/{ID}` + credentials / URL ber-placeholder + kredensial | Recon → Prober → Verifier → Report (dynamic) | Verified findings + PII evidence + reproducible curl / Temuan terverifikasi + bukti PII + curl reprodusibel |
 | **`program`** | Source code (mounted `/workspace` or built-in sample) / Source code (mounted `/workspace` atau sample bawaan | Static analysis / Analisis statis | `file:line` + rule CY001–CY010 + remediation |
 | **`github`** | Repo link `https://github.com/owner/repo` / Link repo | Fetcher (tarball + sandbox) → Analyze → Report | Static findings + reproducible `commit_sha` + brain cache / Temuan statis + `commit_sha` reprodusibel + brain cache |
+| **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report | ID-bearing endpoints + live XSS surface (CSP, eval, innerHTML, reflected params, missing headers) |
 | **`fixes`** | Findings from any scan / Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + proof finding disappeared + backup/revert / Diff patch + bukti temuan hilang + backup/revert |
 
 **10 detection rules / 10 aturan deteksi:**
@@ -365,7 +366,7 @@ cyense/
 
 ## 12. Status
 
-- ✅ MVP complete: 4 scan modes, 6 agents, 10+ rules, 51/51 tests / MVP lengkap: 4 mode scan, 6 agen, 10+ aturan, 51/51 tests
+- ✅ MVP complete: 5 scan modes, 6 agents, 10+ rules, 51/51 tests / MVP lengkap: 5 mode scan, 6 agen, 10+ aturan, 51/51 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless

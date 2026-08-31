@@ -162,7 +162,15 @@ def build_sarif_report(
         # Build location(s)
         locations = []
         if repo_rel_loc:
-            regions = [{"startLine": int(loc.split(":")[-1]) if ":" in loc else 1}] if ":" in loc else []
+            # Parse line number from "path:line" format — but only when the
+            # last colon-separated segment is a plain integer. URLs like
+            # "http://host:8080/path" would otherwise crash int().
+            line_no = 1
+            if ":" in loc:
+                tail = loc.split(":")[-1]
+                if tail.isdigit():
+                    line_no = int(tail)
+            regions = [{"startLine": line_no}]
             locations.append({
                 "physicalLocation": {
                     "artifactLocation": {

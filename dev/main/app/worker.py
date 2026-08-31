@@ -147,6 +147,21 @@ class ScanWorker:
                     settings=self.settings,
                     on_stage=on_stage,
                 )
+            elif request_dict["mode"] == "website":
+                # Website scan: crawl + discover ID endpoints + live XSS.
+                report = await run_website_scan(
+                    scan_id=scan_id,
+                    url=request_dict["url"],
+                    max_depth=int(request_dict.get("max_depth", 2)),
+                    max_pages=int(request_dict.get("max_pages", 50)),
+                    rate_limit=int(request_dict.get("rate_limit", 10)),
+                    headers=request_dict.get("headers") or {},
+                    cookies=request_dict.get("cookies") or {},
+                    brain=self.brain,
+                    reports_dir=str(self.settings.reports_dir),
+                    settings=self.settings,
+                    on_stage=on_stage,
+                )
             else:
                 await self.store.mark_stage(scan_id, "recon", 25)
                 await on_stage("recon")
@@ -363,4 +378,37 @@ async def run_github_scan(
         token=token,
         diff_base=diff_base,
         scope_mode=scope_mode,
+    )
+
+
+async def run_website_scan(
+    scan_id: str,
+    url: str,
+    max_depth: int = 2,
+    max_pages: int = 50,
+    rate_limit: int = 10,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+    brain: Any = None,
+    reports_dir: str = "",
+    settings: Any = None,
+    on_stage: Any = None,
+) -> dict[str, Any]:
+    """Run website-scan mode pipeline (crawl + IDOR discovery + live XSS)."""
+    from app.engines.website_engine import WebsiteEngine
+
+    engine = WebsiteEngine(
+        scan_id=scan_id,
+        brain=brain,
+        reports_dir=reports_dir,
+        settings=settings,
+        on_stage=on_stage,
+    )
+    return await engine.run(
+        url=url,
+        max_depth=max_depth,
+        max_pages=max_pages,
+        rate_limit=rate_limit,
+        headers=headers or {},
+        cookies=cookies or {},
     )
