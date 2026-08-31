@@ -83,7 +83,38 @@ POST /scans ──► asyncio queue ──► Orchestrator
 | **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report | ID-bearing endpoints + live XSS surface (CSP, eval, innerHTML, reflected params, missing headers) |
 | **`fixes`** | Findings from any scan / Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + proof finding disappeared + backup/revert / Diff patch + bukti temuan hilang + backup/revert |
 
-**10 detection rules / 10 aturan deteksi:**
+### Analysis Levels / Level Analisis
+
+**EN:** For `program` and `github` scans, you can control how deeply Cyense analyzes source code via the `--level` flag. Higher levels activate more sophisticated rules at the cost of more scan time.
+
+**ID:** Untuk scan `program` dan `github`, Anda dapat mengontrol seberapa dalam Cyense menganalisis source code melalui flag `--level`. Level yang lebih tinggi mengaktifkan rule yang lebih canggih dengan biaya waktu scan lebih lama.
+
+| Level | Files | Active Rules | Extra Analysis |
+|-------|-------|--------------|----------------|
+| **low** | ≤100 | CY001–CY010, XS001–XS008 | Quick CI/pre-commit check / cek CI cepat |
+| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008 | Balanced coverage / cakupan seimbang |
+| **high** | ≤5000 | + **CY011, CY012, XS009, XS010** | Data flow tracking |
+| **max** | unlimited | + **CY013, XS011** | Cross-file analysis + call graph |
+
+**Deep rules exclusive to high/max / Rule deep eksklusif untuk high/max:**
+
+| Rule | Severity | What it detects / Apa yang dideteksi |
+|------|----------|--------------------------------------|
+| **CY011** (high) | High | Data-flow IDOR: user input from `request.*` flows into DB query without ownership filter / IDOR data-flow: input user dari `request.*` mengalir ke query DB tanpa filter kepemilikan |
+| **CY012** (high) | High | Unauthenticated endpoint accessing user data (CWE-306) / Endpoint tanpa auth yang mengakses data user |
+| **CY013** (max) | Medium | Cross-file IDOR: route delegates to imported helper that queries DB / IDOR lintas-file: route mendelegasikan ke helper terimpor yang query DB |
+| **XS009** (high, JS) | High | `document.cookie` leaked to external origin via fetch/XHR/beacon |
+| **XS010** (high, Py) | Critical | `eval/exec/compile` with user-controlled input (data flow) |
+| **XS011** (max, Py) | Medium | Cross-file XSS: route renders user input through imported template helper |
+
+**Example / Contoh:**
+```bash
+cyense scan program --level high --i-have-permission --source-type sample
+# → 13 findings (vs 10 at medium) — CY011 data-flow catches 3 additional IDOR
+cyense scan github https://github.com/owner/repo --level max --i-have-permission
+```
+
+**18 detection rules / 18 aturan deteksi:**
 
 | Rule | Pattern / Pola | Language | Severity |
 |------|----------------|----------|----------|
@@ -97,9 +128,16 @@ POST /scans ──► asyncio queue ──► Orchestrator
 | CY008 | `findById(req.params.id)` | JS | High |
 | CY009 | `->where('id', $_GET[..])` | PHP | High |
 | CY010 | `Model::find($_GET[..])` | PHP | High |
+| **CY011** ⚡ | data-flow: `request.*` → DB query without ownership (high level) | Python | High |
+| **CY012** ⚡ | unauth endpoint accessing user data, no auth decorator (high level) | Python | High |
+| **CY013** ⚡ | cross-file: route delegates request input to imported DB helper (max level) | Python | Medium |
 | IDOR-LINK | 200 + cross-account PII + control-ID blocked / 200 + PII cross-account + kontrol-ID blocked | HTTP | **Critical** |
 
 **EN:** A second rule class — XSS (`XS001`–`XS008`) — runs as a second pass in the static engine (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML` (JS), `eval` (critical), `v-html` (Vue), `echo $_GET` without escaping (PHP), `|safe` Jinja2, and HTML composition via f-string (Python) — each with anti-false-positive guards (static strings, sanitized output, comments are not reported). See `instruction/feature/xss-detection.md`.
+
+**EN:** At the `high` level, three additional XSS rules activate: **XS009** (JS — `document.cookie` leaked via fetch/XHR/beacon), **XS010** (Python — `eval`/`exec`/`compile` of user-controlled input traced via data flow). At `max`, **XS011** (Python — cross-file XSS via imported template renderers).
+
+**ID:** Pada level `high`, tiga rule XSS tambahan aktif: **XS009** (JS — `document.cookie` bocor via fetch/XHR/beacon), **XS010** (Python — `eval`/`exec`/`compile` dari input user yang dilacak via data flow). Pada `max`, **XS011** (Python — XSS lintas-file via template renderer terimpor).
 
 **ID:** Kelas aturan kedua — XSS (`XS001`–`XS008`) — berjalan sebagai pass kedua pada mesin statis (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML` (JS), `eval` (critical), `v-html` (Vue), `echo $_GET` tanpa escape (PHP), `|safe` Jinja2, dan komposisi HTML via f-string (Python) — masing-masing dengan guard anti false-positive (string statis, output ter-sanitasi, dan komentar tidak dilaporkan). Lihat `instruction/feature/xss-detection.md`.
 
@@ -366,7 +404,7 @@ cyense/
 
 ## 12. Status
 
-- ✅ MVP complete: 5 scan modes, 6 agents, 10+ rules, 51/51 tests / MVP lengkap: 5 mode scan, 6 agen, 10+ aturan, 51/51 tests
+- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 51/51 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 51/51 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless

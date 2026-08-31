@@ -196,6 +196,8 @@ cyense version                   # CLI + service version / versi CLI + service
 
 Global options / Opsi global: `--api-url`, `--no-color`, `--ascii`, `--quiet`, `--json`, `--non-interactive` (`-n` for CI/headless), `--timeout`.
 
+Scan options / Opsi scan: `--scan-mode` (quick/standard/deep), `--scope-mode` (auto/full/diff), **`--level` (low/medium/high/max)** — analysis depth.
+
 ---
 
 ## CLI Usage Tutorial / Tutorial Penggunaan CLI
@@ -234,6 +236,9 @@ make cli ARGS="scan github https://github.com/owner/repo --i-have-permission --s
 
 # Force diff-scope against main branch / Paksa diff-scope terhadap branch main:
 make cli ARGS="scan github https://github.com/owner/repo --i-have-permission --scope-mode diff --diff-base origin/main"
+
+# Control analysis depth / Kontrol kedalaman analisis:
+make cli ARGS="scan github https://github.com/owner/repo --i-have-permission --level high"
 ```
 
 ### 2️⃣ Scan a URL / Link (Dynamic IDOR Probing) / Scan URL/Link (Probing IDOR Dinamis)
@@ -303,7 +308,30 @@ make cli ARGS="scan program --i-have-permission --source-type sample"
 
 # With language override / Dengan override bahasa:
 make cli ARGS="scan program --i-have-permission --lang js"
+
+# Control analysis depth / Kontrol kedalaman analisis:
+make cli ARGS="scan program --i-have-permission --level low"     # quick, 100 files
+make cli ARGS="scan program --i-have-permission --level medium"  # default, 1000 files
+make cli ARGS="scan program --i-have-permission --level high"    # + data flow rules
+make cli ARGS="scan program --i-have-permission --level max"     # + cross-file analysis
 ```
+
+**Analysis levels / Level analisis:**
+
+| Level | Files | Rules | Extra |
+|-------|-------|-------|-------|
+| **low** | ≤100 | CY001–CY010, XS001–XS008 | Quick CI/pre-commit check |
+| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008 | Balanced coverage |
+| **high** | ≤5000 | + CY011, CY012, XS009, XS010 | Data flow tracking |
+| **max** | unlimited | + CY013, XS011 | Cross-file + call graph |
+
+**Deep rules (high/max only) / Rule deep (hanya high/max):**
+- **CY011** (high): Data-flow IDOR — trace `request.*` → DB query without ownership
+- **CY012** (high): Unauthenticated endpoint accessing user data (CWE-306)
+- **CY013** (max): Cross-file IDOR via imported helpers
+- **XS009** (high, JS): `document.cookie` leaked to external origin
+- **XS010** (high, Python): `eval/exec/compile` with user-controlled input
+- **XS011** (max, Python): Cross-file XSS via imported template renderers
 
 ### 5️⃣ View Results / Lihat Hasil
 
