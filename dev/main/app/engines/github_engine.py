@@ -102,8 +102,11 @@ class GithubEngine:
                 repo_url=repo_url,
                 token=token,
             )
+            # Explicit diff_base overrides auto semantics so users can force
+            # diff-scope outside CI without changing scope_mode.
+            calc_mode = "diff" if diff_base else scope_mode
             scope_doc = await scope_calc.calculate_scope(
-                mode=scope_mode,
+                mode=calc_mode,
                 diff_base=diff_base,
                 head=sha,
             )
