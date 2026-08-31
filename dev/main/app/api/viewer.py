@@ -71,6 +71,14 @@ async def serve_viewer(scan_id: str, request: Request) -> HTMLResponse:
         f"<title>Cyense Scan: {scan_id}</title>",
     )
     html = html.replace("</head>", f'<meta name="scan-id" content="{scan_id}"></head>')
+    # Rewrite relative static asset paths (href="static/..." / src="static/...")
+    # to absolute /api/v1/viewer/static/... so the browser resolves them
+    # correctly regardless of the current URL depth. Without this rewrite,
+    # requests like /api/v1/viewer/{scan_id}/static/app.js would 404 because
+    # the static-file route lives at /api/v1/viewer/static/{file_path}.
+    viewer_prefix = request.scope.get("root_path", "") + "/api/v1/viewer/static/"
+    html = html.replace('href="static/', f'href="{viewer_prefix}')
+    html = html.replace('src="static/', f'src="{viewer_prefix}')
     return HTMLResponse(content=html, status_code=200)
 
 
