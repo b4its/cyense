@@ -228,7 +228,7 @@ async def apply_fixes(
 async def revert_fixes(
     session_id: str,
     request: Request,
-) -> dict[str, str]:
+) -> dict[str, list]:
     """Revert applied patches using backups."""
     session_store = request.app.state.fix_store
 
