@@ -134,6 +134,7 @@ class ScanWorker:
                     token=request_dict.get("github_token"),
                     force=request_dict.get("force", False),
                     diff_base=request_dict.get("diff_base"),
+                    scope_mode=request_dict.get("scope_mode", "auto"),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -332,6 +333,7 @@ async def run_github_scan(
     token: str | None = None,
     force: bool = False,
     diff_base: str | None = None,
+    scope_mode: str = "auto",
     brain: Any = None,
     reports_dir: str = "",
     settings: Any = None,
@@ -353,4 +355,5 @@ async def run_github_scan(
         force=force,
         token=token,
         diff_base=diff_base,
+        scope_mode=scope_mode,
     )

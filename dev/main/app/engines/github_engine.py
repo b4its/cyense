@@ -7,10 +7,12 @@ structure so parity test vs mode=program is exact (PRD §7 testing).
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from app.agents.brain import Brain
 from app.agents.fetcher import FetcherAgent
+from app.engines.diff_scope import DiffScope
 from app.engines.program_engine import run_program_scan
 
 
@@ -48,6 +50,7 @@ class GithubEngine:
         force: bool = False,
         token: str | None = None,
         diff_base: str | None = None,
+        scope_mode: str = "auto",
     ) -> dict[str, Any]:
         """Run full github scan pipeline."""
         started = time.monotonic()
@@ -84,11 +87,28 @@ class GithubEngine:
             return {"meta": meta, "summary": {}, "findings": [], "cached": True}
 
         # Extract sandbox path for analyzer
-        tree_root = result.data["tree_root"]
+        tree_root = Path(result.data["tree_root"])
 
         # Stage fetch — dipanggil di sini agar progress 25→50→75 tidak melompat
         # (cli-experience.md §5.2 perbaikan bug R2; worker.py:77 sudah memetakan fetch:50)
         await self._notify("fetch")
+
+        # Resolve diff-scope (Strix --diff-base pattern). Explicit diff_base
+        # forces diff scope; otherwise follow scope_mode semantics.
+        include_paths: set[str] | None = None
+        if diff_base or scope_mode in ("diff", "auto"):
+            scope_calc = DiffScope(
+                base_dir=tree_root,
+                repo_url=repo_url,
+                token=token,
+            )
+            scope_doc = await scope_calc.calculate_scope(
+                mode=scope_mode,
+                diff_base=diff_base,
+                head=sha,
+            )
+            if scope_doc.get("resolved"):
+                include_paths = set(scope_doc.get("include_paths", []))
 
         # Stage 2: ANALYZE (reuse program engine)
         await self._notify("analyze")
@@ -96,6 +116,7 @@ class GithubEngine:
             lang=lang,
             source_dir=tree_root,
             scan_id=self.scan_id,
+            include_paths=include_paths,
         )
 
         findings = analysis_result["findings"]
@@ -135,6 +156,13 @@ class GithubEngine:
                 "size_bytes": result.data.get("size_bytes", 0),
             },
         }
+        if diff_base:
+            meta["diff_base"] = diff_base
+        if include_paths is not None:
+            meta["diff_scope"] = {
+                "active": True,
+                "included_files": len(include_paths),
+            }
 
         result_data = {
             "meta": meta,
