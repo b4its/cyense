@@ -17,6 +17,8 @@ dependencies = [
     "rich>=13.7,<14.0",
     # CI/Compliance Reporting (ci-compliance-reporting.md §3.1)
     "cvss>=3.2,<4.0",
+    # PDF export (enhanced-reporting-viewer.md §3.2)
+    "reportlab>=4.0,<5.0",
 ]
 
 [project.scripts]

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyense Scan Results</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Cyense Scan Results</h1>
+            <div class="scan-info">
+                <span class="scan-id" id="scanId">Loading...</span>
+                <span class="scan-date" id="scanDate"></span>
+            </div>
+        </header>
+
+        <section class="summary-section">
+            <h2>Summary</h2>
+            <div class="severity-grid">
+                <div class="severity-card critical">
+                    <div class="severity-label">Critical</div>
+                    <div class="severity-count" id="criticalCount">0</div>
+                </div>
+                <div class="severity-card high">
+                    <div class="severity-label">High</div>
+                    <div class="severity-count" id="highCount">0</div>
+                </div>
+                <div class="severity-card medium">
+                    <div class="severity-label">Medium</div>
+                    <div class="severity-count" id="mediumCount">0</div>
+                </div>
+                <div class="severity-card low">
+                    <div class="severity-label">Low</div>
+                    <div class="severity-count" id="lowCount">0</div>
+                </div>
+                <div class="severity-card info">
+                    <div class="severity-label">Info</div>
+                    <div class="severity-count" id="infoCount">0</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="findings-section">
+            <h2>Findings</h2>
+            <div class="filters">
+                <select id="severityFilter" class="filter-select">
+                    <option value="all">All Severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="info">Info</option>
+                </select>
+                <input type="text" id="searchInput" class="search-input" placeholder="Search findings...">
+            </div>
+
+            <div class="findings-table-container">
+                <table class="findings-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Rule</th>
+                            <th>Severity</th>
+                            <th>CVSS</th>
+                            <th>Location</th>
+                            <th>Title</th>
+                        </tr>
+                    </thead>
+                    <tbody id="findingsTableBody">
+                        <tr>
+                            <td colspan="6" class="loading">Loading findings...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- Finding Detail Modal -->
+    <div id="findingModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle">Finding Details</h2>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="static/app.js"></script>
+</body>
+</html>

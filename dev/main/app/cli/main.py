@@ -6,6 +6,11 @@ Subcommand:
   scan link <url>          — probing IDOR dinamis
   report <scan_id>         — render ulang laporan lama
   list                     — tabel scan terakhir
+  history                  — riwayat scan + filter status (enhanced-reporting-viewer.md)
+  compare <a> <b>          — diff dua laporan scan
+  view [scan_id]           — buka web viewer di browser
+  export csv|pdf <id>      — unduh CSV/PDF
+  config get|set|list|reset— preferensi CLI (~/.cyense/config.json, 0o600)
   rules                    — katalog aturan aktif
   fix <scan_id>            — usulan patch remediasi
   version                  — versi CLI + service
@@ -93,9 +98,20 @@ def _global(
     ] = 300.0,
 ) -> None:
     """Cyense CLI — thin client ke FastAPI service."""
-    _state.api_url = api_url.rstrip("/")
     _state.timeout = timeout
     _state.json_out = json_out
+
+    # Precedence: flag/env eksplisit > config file > default bawaan.
+    resolved_api = api_url.rstrip("/")
+    if resolved_api == "http://localhost:8000":
+        try:
+            from app.core.config_store import load_config
+            cfg_url = str(load_config().get("api_url", "")).rstrip("/")
+            if cfg_url and cfg_url != "http://localhost:8000":
+                resolved_api = cfg_url
+        except Exception:
+            pass  # config bersifat best-effort
+    _state.api_url = resolved_api
 
     caps = detect_caps(
         force_no_color=no_color,
@@ -746,6 +762,390 @@ def fix_cmd(
                 )
 
     _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# view — buka web viewer di browser (enhanced-reporting-viewer.md §3.5.1)
+
+@app.command("view")
+def view_cmd(
+    scan_id: Annotated[
+        Optional[str], typer.Argument(help="Scan ID (atau gunakan --latest).")
+    ] = None,
+    latest: Annotated[bool, typer.Option("--latest", help="Buka scan terbaru.")] = False,
+    no_browser: Annotated[
+        bool, typer.Option("--no-browser", help="Cetak URL saja, jangan buka browser.")
+    ] = False,
+) -> None:
+    """Buka dashboard web viewer untuk hasil scan."""
+    from app.core.config_store import load_config
+
+    cfg = load_config()
+
+    async def _do():
+        target_id = scan_id
+
+        if latest or not target_id:
+            try:
+                async with open_client(_state.api_url, timeout=10) as c:
+                    scans = await c.list_scans()
+            except Exception as e:
+                render_error_panel(_state.console, _state.caps, str(e))
+                raise typer.Exit(3)
+            if not scans:
+                _state.console.print("  Tidak ada scan yang bisa dilihat.")
+                raise typer.Exit(0)
+            target_id = scans[0].get("scan_id")
+
+        # Pastikan service hidup sebelum membuka browser
+        try:
+            async with open_client(_state.api_url, timeout=5) as c:
+                await c.health()
+        except Exception as e:
+            render_error_panel(
+                _state.console, _state.caps,
+                f"Service tidak terjangkau: {e}",
+                "Jalankan 'make up' atau set --api-url",
+            )
+            raise typer.Exit(3)
+
+        url = f"{_state.api_url}/api/v1/viewer/{target_id}"
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"  [{PAL.blue_soft}]Viewer[/]  [{PAL.blue_mist}]{url}[/]"
+        )
+
+        if not no_browser and cfg.get("auto_open_viewer", True):
+            import webbrowser
+            webbrowser.open(url)
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# history — daftar scan terakhir (enhanced-reporting-viewer.md §3.5.2)
+
+@app.command("history")
+def history_cmd(
+    limit: Annotated[int, typer.Option("--limit", help="Jumlah maksimum baris.")] = 20,
+    status_filter: Annotated[
+        Optional[str],
+        typer.Option("--status", help="Filter: completed|failed|running|queued."),
+    ] = None,
+    format: Annotated[str, typer.Option("--format", help="table|json")] = "table",
+) -> None:
+    """Tampilkan riwayat scan beserta ringkasannya."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=15) as c:
+                scans = await c.list_scans()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3)
+
+        if status_filter:
+            scans = [s for s in scans if s.get("status") == status_filter]
+        scans = scans[: max(1, limit)]
+
+        if _state.caps.json_out or format == "json":
+            typer.echo(json.dumps(scans, indent=2))
+            return
+
+        if not scans:
+            _state.console.print("  Tidak ada scan.")
+            return
+
+        from rich.table import Table  # type: ignore[import-untyped]
+        from app.cli.theme import PALETTE as PAL
+
+        status_color = {
+            "completed": PAL.ok,
+            "failed": PAL.error,
+            "running": PAL.blue_accent,
+            "queued": PAL.muted,
+        }
+
+        table = Table(
+            show_header=True,
+            header_style=f"bold {PAL.blue_primary}",
+            border_style=PAL.rule_line,
+            padding=(0, 1),
+        )
+        table.add_column("SCAN ID",   style=PAL.blue_soft, width=14)
+        table.add_column("MODE",     width=8)
+        table.add_column("STATUS",   width=10)
+        table.add_column("PROGRESS", justify="right", width=8)
+        table.add_column("DIBUAT",   style=PAL.muted, width=20)
+
+        for s in scans:
+            st = s.get("status", "—")
+            sc = status_color.get(st, PAL.muted)
+            table.add_row(
+                s.get("scan_id", "—"),
+                s.get("mode", "—"),
+                f"[{sc}]{st}[/]",
+                f"{s.get('progress', 0)}%",
+                (s.get("created_at") or "—")[:19].replace("T", " "),
+            )
+        _state.console.print(table)
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# compare — bandingkan dua scan (enhanced-reporting-viewer.md §3.5.3)
+
+@app.command("compare")
+def compare_cmd(
+    scan_a: Annotated[str, typer.Argument(help="Scan ID pertama (lama).")],
+    scan_b: Annotated[str, typer.Argument(help="Scan ID kedua (baru).")],
+    diff_only: Annotated[
+        bool, typer.Option("--diff-only", help="Sembunyikan temuan yang tidak berubah.")
+    ] = False,
+    format: Annotated[str, typer.Option("--format", help="table|json")] = "table",
+) -> None:
+    """Bandingkan dua laporan scan (temuan baru / hilang / berubah)."""
+    from app.report.scan_compare import compare_reports
+
+    async def _fetch(scan_id: str):
+        async with open_client(_state.api_url, timeout=20) as c:
+            report = await c.get_report(scan_id)
+        if report is None:
+            report = load_report_from_disk(scan_id)
+        return report
+
+    async def _do():
+        try:
+            old = await _fetch(scan_a)
+            new = await _fetch(scan_b)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3)
+
+        if old is None or new is None:
+            missing = scan_a if old is None else scan_b
+            render_error_panel(
+                _state.console, _state.caps,
+                f"Report tidak ditemukan: {missing}",
+                "Pastikan scan sudah selesai dan service menyimpan hasilnya.",
+            )
+            raise typer.Exit(3)
+
+        diff = compare_reports(old, new)
+
+        if _state.caps.json_out or format == "json":
+            typer.echo(json.dumps(diff, indent=2, default=str))
+            return
+
+        from rich.table import Table  # type: ignore[import-untyped]
+        from app.cli.theme import PALETTE as PAL
+        from app.cli.theme import SEVERITY_BADGE_COLOR
+
+        _state.console.print(
+            f"  [bold {PAL.blue_primary}]{scan_a}[/] → [bold {PAL.blue_primary}]{scan_b}[/]"
+        )
+
+        def _sev(f: dict) -> str:
+            sev = str(f.get("severity", "info")).lower()
+            bc = SEVERITY_BADGE_COLOR.get(sev, PAL.muted)
+            return f"[{bc}]{sev.upper()}[/]"
+
+        def _row(f: dict) -> tuple[str, str, str, str]:
+            score = f.get("cvss_score")
+            return (
+                str(f.get("rule", "—")),
+                _sev(f),
+                f"{score:.1f}" if score is not None else "—",
+                str(f.get("location") or "—"),
+            )
+
+        def _section(title: str, findings: list[dict]) -> None:
+            if not findings:
+                return
+            _state.console.print(f"\n  [bold {PAL.blue_accent}]{title}[/] ({len(findings)})")
+            table = Table(
+                show_header=False, border_style=PAL.rule_line, padding=(0, 1),
+            )
+            table.add_column("RULE", style=PAL.blue_soft, width=8)
+            table.add_column("SEV", width=10)
+            table.add_column("CVSS", width=5, justify="right")
+            table.add_column("LOCATION", style=PAL.blue_mist, max_width=48)
+            for f in findings:
+                table.add_row(*_row(f))
+            _state.console.print(table)
+
+        _section("TAMBAH (baru saja)", diff["added"])
+        _section("HILANG (terperbaiki/dihapus)", diff["removed"])
+        if diff["changed"]:
+            _state.console.print(f"\n  [bold {PAL.sev_medium}]BERUBAH[/] ({len(diff['changed'])})")
+            table = Table(show_header=False, border_style=PAL.rule_line, padding=(0, 1))
+            table.add_column("RULE", style=PAL.blue_soft, width=8)
+            table.add_column("SEBELUM", width=12)
+            table.add_column("SESUDAH", width=12)
+            table.add_column("LOCATION", style=PAL.blue_mist, max_width=40)
+            for c in diff["changed"]:
+                o, n = c["old"], c["new"]
+                table.add_row(
+                    str(o.get("rule", "—")),
+                    _sev(o),
+                    _sev(n),
+                    str(o.get("location") or "—"),
+                )
+            _state.console.print(table)
+        if not diff_only:
+            _section("TIDAK BERUBAH", diff["unchanged"])
+
+        c = diff["counts"]
+        _state.console.print(
+            f"\n  [{PAL.muted}]Ringkasan:[/] "
+            f"[{PAL.ok}]{c['unchanged']} tetap[/] · "
+            f"[{PAL.sev_high}]{c['added']} baru[/] · "
+            f"[{PAL.ok}]{c['removed']} hilang[/] · "
+            f"[{PAL.sev_medium}]{c['changed']} berubah[/]"
+        )
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# export — unduh CSV/PDF (enhanced-reporting-viewer.md §3.2, §3.3)
+
+export_app = typer.Typer(help="Ekspor hasil scan ke format lain.", no_args_is_help=True)
+app.add_typer(export_app, name="export")
+
+
+@export_app.command("csv")
+def export_csv_cmd(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Path output .csv.")] = None,
+    no_remediation: Annotated[
+        bool, typer.Option("--no-remediation", help="Tanpa kolom remediation.")
+    ] = False,
+) -> None:
+    """Unduh temuan sebagai CSV."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=60) as c:
+                csv_text = await c.get_csv_export(scan_id, include_remediation=not no_remediation)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3)
+
+        dest = Path(out) if out else Path(f"cyense-{scan_id}-findings.csv")
+        dest.write_text(csv_text, encoding="utf-8")
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"  [{PAL.ok}]CSV tersimpan:[/] [{PAL.blue_mist}]{dest}[/] "
+            f"[{PAL.muted}]({len(csv_text.splitlines()) - 1} baris)[/]"
+        )
+
+    _run(_do())
+
+
+@export_app.command("pdf")
+def export_pdf_cmd(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
+    out: Annotated[Optional[str], typer.Option("--out", "-o", help="Path output .pdf.")] = None,
+) -> None:
+    """Unduh laporan compliance PDF."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=120) as c:
+                pdf_bytes = await c.get_pdf_export(scan_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3)
+
+        dest = Path(out) if out else Path(f"cyense-{scan_id}-report.pdf")
+        dest.write_bytes(pdf_bytes)
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"  [{PAL.ok}]PDF tersimpan:[/] [{PAL.blue_mist}]{dest}[/] "
+            f"[{PAL.muted}]({len(pdf_bytes) / 1024:.0f} KB)[/]"
+        )
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# config — persistensi preferensi (enhanced-reporting-viewer.md §3.6)
+
+config_app = typer.Typer(help="Kelola preferensi CLI (~/.cyense/config.json).", no_args_is_help=True)
+app.add_typer(config_app, name="config")
+
+
+@config_app.command("list")
+def config_list_cmd() -> None:
+    """Tampilkan seluruh konfigurasi (secret dimask)."""
+    from app.core.config_store import load_config, printable_config
+
+    cfg = printable_config(load_config())
+    from app.cli.theme import PALETTE as PAL
+    for key, value in cfg.items():
+        _state.console.print(f"  [{PAL.blue_soft}]{key:<22}[/] [{PAL.ink}]{value}[/]")
+
+
+@config_app.command("get")
+def config_get_cmd(
+    key: Annotated[str, typer.Argument(help="Nama key konfigurasi.")],
+) -> None:
+    """Tampilkan nilai satu key (secret dimask)."""
+    from app.core.config_store import load_config, printable_config
+
+    cfg = printable_config(load_config())
+    if key not in cfg:
+        render_error_panel(_state.console, _state.caps, f"Key tidak dikenal: {key}")
+        raise typer.Exit(3)
+    from app.cli.theme import PALETTE as PAL
+    _state.console.print(f"  [{PAL.blue_soft}]{key}[/] = [{PAL.ink}]{cfg[key]}[/]")
+
+
+@config_app.command("set")
+def config_set_cmd(
+    key: Annotated[str, typer.Argument(help="Nama key konfigurasi.")],
+    value: Annotated[str, typer.Argument(help="Nilai baru (JSON-aware: true, 8080, \"teks\").")],
+) -> None:
+    """Set satu key dan simpan (file 0o600, tulis atomik)."""
+    from app.core import config_store
+
+    parsed: object
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = value
+
+    try:
+        config_store.set_value(key, parsed)
+    except KeyError as e:
+        render_error_panel(_state.console, _state.caps, str(e))
+        raise typer.Exit(3)
+
+    from app.cli.theme import PALETTE as PAL
+    masked = config_store.printable_config(config_store.load_config()).get(key)
+    _state.console.print(
+        f"  [{PAL.ok}]Tersimpan.[/] [{PAL.blue_soft}]{key}[/] = [{PAL.ink}]{masked}[/]"
+    )
+
+
+@config_app.command("reset")
+def config_reset_cmd(
+    confirm: Annotated[bool, typer.Option("--confirm", help="Wajib untuk benar-benar reset.")] = False,
+) -> None:
+    """Kembalikan seluruh konfigurasi ke default."""
+    from app.core.config_store import reset_config
+    from app.cli.theme import PALETTE as PAL
+
+    if not confirm:
+        _state.console.print(
+            f"  [{PAL.sev_medium}]{config_app.info.name if hasattr(config_app, 'info') else 'config'}: "
+            f"reset butuh --confirm[/]"
+        )
+        raise typer.Exit(3)
+    reset_config()
+    _state.console.print(f"  [{PAL.ok}]Konfigurasi direset ke default.[/]")
 
 
 # ---------------------------------------------------------------------------

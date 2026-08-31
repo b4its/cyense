@@ -17,6 +17,12 @@ from app.engines.link_engine import run_link_scan
 from app.engines.program_engine import resolve_source_dir, run_program_scan
 from app.utils.logger import get_logger
 
+# CI/Compliance Reporting modules (ci-compliance-reporting.md)
+from app.report.cvss import enrich_finding
+from app.report.sarif import build_sarif_report, dump_sarif_report
+from app.report.coverage import build_coverage_document, write_coverage
+from app.report.dedupe import deduplicate_findings
+
 log = get_logger("worker")
 
 
@@ -122,8 +128,15 @@ class ScanWorker:
                 await self.store.mark_stage(scan_id, "report", 80)
                 report = self._program_report(scan_id, result, started)
 
+            # Enrich findings with CVSS data (ci-compliance-reporting.md §3.1)
+            self._enrich_report(report)
+            
             self._results[scan_id] = report
             self._dump_report(scan_id, report)
+            
+            # Write SARIF and coverage reports (ci-compliance-reporting.md §3.2, §3.5)
+            self._write_compliance_artifacts(scan_id, report)
+            
             if report.get("meta", {}).get("error"):
                 # recon-level controlled failure (e.g. no placeholder found):
                 # surface as FAILED, not silently completed-empty
@@ -159,6 +172,10 @@ class ScanWorker:
             f.model_dump(mode="json") if hasattr(f, "model_dump") else f
             for f in finding_models
         ]
+        
+        # Deduplicate findings (ci-compliance-reporting.md §3.6)
+        findings = deduplicate_findings(findings)
+        
         summary = {
             "critical": sum(1 for f in findings if f["severity"] == "critical"),
             "high": sum(1 for f in findings if f["severity"] == "high"),
@@ -184,6 +201,31 @@ class ScanWorker:
             (out_dir / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
         except OSError:
             log.warning("failed to dump report for %s", scan_id)
+
+    def _enrich_report(self, report: dict[str, Any]) -> None:
+        """Enrich findings with CVSS data (ci-compliance-reporting.md §3.1)."""
+        findings = report.get("findings", [])
+        for finding in findings:
+            enrich_finding(finding)
+
+    def _write_compliance_artifacts(self, scan_id: str, report: dict[str, Any]) -> None:
+        """Write SARIF and coverage reports (ci-compliance-reporting.md §3.2, §3.5)."""
+        import json
+        from pathlib import Path
+        
+        try:
+            out_dir = self.settings.reports_dir / scan_id
+            
+            # Write SARIF report
+            sarif_path = out_dir / "findings.sarif"
+            dump_sarif_report(report, sarif_path)
+            
+            # Write coverage report
+            coverage_doc = build_coverage_document(report)
+            write_coverage(out_dir, coverage_doc)
+            
+        except Exception as exc:
+            log.warning("failed to write compliance artifacts for %s: %s", scan_id, exc)
 
 
 async def run_github_scan(

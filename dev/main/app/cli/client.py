@@ -113,6 +113,21 @@ class CyenseClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_csv_export(self, scan_id: str, include_remediation: bool = True) -> str:
+        """Download CSV export (text)."""
+        r = await self._c().get(
+            f"{_API}/scans/{scan_id}/export/csv",
+            params={"include_remediation": str(include_remediation).lower()},
+        )
+        r.raise_for_status()
+        return r.text
+
+    async def get_pdf_export(self, scan_id: str) -> bytes:
+        """Download PDF export (binary)."""
+        r = await self._c().get(f"{_API}/scans/{scan_id}/export/pdf")
+        r.raise_for_status()
+        return r.content
+
     async def propose_fixes(self, scan_id: str) -> dict[str, str]:
         r = await self._c().post(f"{_API}/scans/{scan_id}/fixes")
         r.raise_for_status()
