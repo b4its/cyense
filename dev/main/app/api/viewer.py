@@ -56,9 +56,16 @@ async def serve_static(file_path: str) -> FileResponse:
 
 @router.get("/{scan_id}", response_class=HTMLResponse)
 async def serve_viewer(scan_id: str, request: Request) -> HTMLResponse:
-    """Serve the dashboard shell for a scan (scan_id injected as meta tag)."""
+    """Serve the dashboard shell for a scan (scan_id injected as meta tag).
+
+    Falls back to on-disk ``reports/<scan_id>/report.json`` when the scan
+    is no longer in the in-memory store (e.g. after service restart), so
+    the dashboard can still be opened for historical scans.
+    """
     store = request.app.state.store
-    if store.get(scan_id) is None:
+    in_memory = store.get(scan_id) is not None
+    on_disk = (request.app.state.settings.reports_dir / scan_id / "report.json").is_file()
+    if not in_memory and not on_disk:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
 
     index_path = _STATIC_DIR / "index.html"
@@ -84,27 +91,44 @@ async def serve_viewer(scan_id: str, request: Request) -> HTMLResponse:
 
 @router.get("/{scan_id}/data")
 async def get_scan_data(scan_id: str, request: Request) -> dict[str, Any]:
-    """JSON data feed for the dashboard (worker result, disk fallback)."""
+    """JSON data feed for the dashboard (worker result, disk fallback).
+
+    Returns in-memory scan data when available, otherwise falls back to
+    on-disk ``reports/<scan_id>/report.json`` for historical scans that
+    survived a service restart. Returns 404 only when neither source
+    knows the scan.
+    """
     store = request.app.state.store
     job = store.get(scan_id)
-    if job is None:
+    reports_dir: Path = request.app.state.settings.reports_dir
+    disk_report_path = reports_dir / scan_id / "report.json"
+
+    if job is None and not disk_report_path.is_file():
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
 
-    status = job.status.value if job.status else "unknown"
+    status = job.status.value if job is not None and job.status else "completed"
+    created_at = job.created_at if job is not None else None
+    finished_at = job.finished_at if job is not None else None
+    error = job.error if job is not None else None
 
-    report: dict[str, Any] | None = request.app.state.worker.result(scan_id)
-    source = "memory"
+    report: dict[str, Any] | None = None
+    source = "unknown"
+    if job is not None:
+        report = request.app.state.worker.result(scan_id)
+        if report is not None:
+            source = "memory"
     if report is None:
         report = _load_report_from_disk(scan_id, request)
-        source = "disk"
+        if report is not None:
+            source = "disk"
 
     if report is None:
         return {
             "scan_id": scan_id,
             "status": status,
-            "created_at": job.created_at,
-            "completed_at": job.finished_at,
-            "error": job.error,
+            "created_at": created_at,
+            "completed_at": finished_at,
+            "error": error,
             "summary": {},
             "findings": [],
             "source": source,
@@ -114,9 +138,9 @@ async def get_scan_data(scan_id: str, request: Request) -> dict[str, Any]:
     return {
         "scan_id": scan_id,
         "status": status,
-        "created_at": job.created_at,
-        "completed_at": job.finished_at,
-        "error": job.error,
+        "created_at": created_at,
+        "completed_at": finished_at,
+        "error": error,
         "summary": report.get("summary", {}),
         "findings": report.get("findings", []),
         "meta": report.get("meta", {}),
