@@ -47,8 +47,22 @@ def run_program_scan(
     source_dir: Path | str,
     scan_id: str,
     scan_types: tuple[str, ...] | list[str] | None = None,
+    include_paths: set[str] | None = None,  # diff-scope filter (ci-compliance-reporting.md §3.3)
+    max_files: int | None = None,
 ) -> dict[str, Any]:
-    """Walk source tree and apply rules; returns report-shaped dict."""
+    """Walk source tree and apply rules; returns report-shaped dict.
+    
+    Args:
+        lang: Language to analyze (python, js, php, auto)
+        source_dir: Root directory to scan
+        scan_id: Scan identifier for finding IDs
+        scan_types: Tuple/list of scan types (idor, xss) or None for default
+        include_paths: Optional set of relative paths to include (diff-scope filter)
+        max_files: Optional cap on files scanned (scan mode support)
+    
+    Returns:
+        Dict with files_scanned and findings list
+    """
     if scan_types is None:
         scan_types = DEFAULT_SCAN_TYPES
     scan_types = tuple(scan_types)
@@ -60,6 +74,7 @@ def run_program_scan(
 
     findings: list[dict[str, Any]] = []
     files_scanned = 0
+    files_read_errors = 0  # track for coverage.complete flag
 
     suffixes = AUTO_SUFFIXES if lang == "auto" else SUFFIX_MAP.get(lang, {".py"})
 
@@ -70,10 +85,26 @@ def run_program_scan(
         parts = {p.lower() for p in path.parts}
         if parts & {"node_modules", ".git", "venv", ".venv", "__pycache__", "dist", "build"}:
             continue
+        
+        # Apply diff-scope filter (ci-compliance-reporting.md §3.3)
+        if include_paths is not None:
+            try:
+                rel = path.relative_to(source_dir)
+                rel_str = str(rel).replace("\\", "/")  # normalize to POSIX
+                if rel_str not in include_paths:
+                    continue
+            except ValueError:
+                continue
+        
+        # Apply max_files cap
+        if max_files is not None and files_scanned >= max_files:
+            break
+        
         files_scanned += 1
         try:
             source = path.read_text(errors="replace")
         except OSError:
+            files_read_errors += 1
             continue
 
         resolved_lang = _lang_for_suffix(path, lang)
@@ -94,4 +125,8 @@ def run_program_scan(
             if run_xss:
                 findings.extend(xss_rules.analyze_php_xss_file(path, source, scan_id))
 
-    return {"files_scanned": files_scanned, "findings": findings}
+    return {
+        "files_scanned": files_scanned,
+        "findings": findings,
+        "files_read_errors": files_read_errors,  # for coverage.complete flag
+    }

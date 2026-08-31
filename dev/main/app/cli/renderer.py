@@ -308,20 +308,24 @@ def render_findings_table(
     )
     table.add_column("RULE",     style=f"bold {p.blue_soft}", width=7)
     table.add_column("SEVERITY", width=10)
+    table.add_column("CVSS",     justify="right", width=5, style=p.muted)
     table.add_column("CONF",     justify="right", width=5, style=p.muted)
-    table.add_column("LOCATION", style=p.blue_mist, max_width=40)
-    table.add_column("TITLE",    style=p.ink,       max_width=35)
+    table.add_column("LOCATION", style=p.blue_mist, max_width=35)
+    table.add_column("TITLE",    style=p.ink,       max_width=30)
 
     from app.cli.theme import SEVERITY_BADGE_COLOR
     for f in findings:
         sev = _esc(f.get("severity", "info")).lower()
         bc  = SEVERITY_BADGE_COLOR.get(sev, p.muted)
+        cvss_score = f.get("cvss_score")
+        cvss_str = f"{cvss_score:.1f}" if cvss_score is not None else "—"
         table.add_row(
             _esc(f.get("rule", "—")),
             f"[{bc}]{sev.upper()}[/]",
+            cvss_str,
             f"{f.get('confidence', 0):.2f}",
             _esc(f.get("location") or "—"),
-            _esc(f.get("title", "—"))[:35],
+            _esc(f.get("title", "—"))[:30],
         )
 
     console.print(table)
@@ -396,6 +400,28 @@ def render_recommendations(
         f" untuk melihat usulan patch otomatis.[/]"
     )
     console.print()
+
+
+def render_scope_warning(
+    console: Console,
+    caps: TermCaps,
+    scope_mode: str,
+    files_scanned: int,
+    files_excluded: int,
+) -> None:
+    """Render warning for diff-scope (ci-compliance-reporting.md §3.7.2)."""
+    if scope_mode not in ("diff", "auto"):
+        return
+    
+    p = PALETTE
+    g = caps.g()
+    
+    if files_excluded > 0:
+        console.print(
+            f"  [{p.sev_medium}]{g.warn} Scan dibatasi pada {files_scanned} file yang berubah. "
+            f"{files_excluded} file lain TIDAK diperiksa — lihat coverage.json.[/]"
+        )
+        console.print()
 
 
 def _wrap(text: str, width: int) -> list[str]:

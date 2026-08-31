@@ -7,3 +7,5 @@ uvicorn>=0.29,<1.0
 # CLI — thin client ke FastAPI (cli-experience.md §5.2)
 typer>=0.12,<1.0
 rich>=13.7,<14.0
+# CI/Compliance Reporting — CVSS scoring (ci-compliance-reporting.md §3.1)
+cvss>=3.2,<4.0

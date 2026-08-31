@@ -233,6 +233,9 @@ def _finding_section(idx: int, f: dict[str, Any]) -> str:
     desc       = _esc(f.get("description") or "")
     location   = _esc(f.get("location") or "")
     remediation = _esc(f.get("remediation") or "")
+    cwe        = f.get("cwe")
+    cvss_score = f.get("cvss_score")
+    cvss_vector = f.get("cvss_vector")
 
     lines = [
         f"### {idx}. [{sev}] `{rule}` — {title}",
@@ -244,6 +247,12 @@ def _finding_section(idx: int, f: dict[str, Any]) -> str:
         f"| **Severity** | {sev} |",
         f"| **Confidence** | {conf:.2f} |",
     ]
+    if cwe:
+        lines.append(f"| **CWE** | `{_esc(cwe)}` |")
+    if cvss_score is not None:
+        lines.append(f"| **CVSS Score** | {cvss_score:.1f} |")
+    if cvss_vector:
+        lines.append(f"| **CVSS Vector** | `{_esc(cvss_vector)}` |")
     if location:
         lines.append(f"| **Lokasi** | `{_md_escape(location)}` |")
 

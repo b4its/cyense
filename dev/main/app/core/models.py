@@ -107,6 +107,10 @@ class Finding(BaseModel):
     verification: VerificationEvidence = VerificationEvidence()
     remediation: str = ""
     location: str | None = None
+    # New optional fields for compliance reporting (backward-compatible)
+    cwe: str | None = None  # CWE identifier
+    cvss_score: float | None = None  # CVSS v3.1 Base Score (0-10)
+    cvss_vector: str | None = None  # Full CVSS vector string
 
 
 # ---------------------------------------------------------------------------

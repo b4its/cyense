@@ -154,6 +154,20 @@ def scan_github(
         str,
         typer.Option("--min-severity", help="Sembunyikan temuan di bawah severity ini (tampilan)."),
     ] = "info",
+    scan_mode: Annotated[
+        str,
+        typer.Option(
+            "--scan-mode",
+            help="Mode scan: quick (cepat, IDOR saja), standard (default, IDOR+XSS), deep (komprehensif).",
+        ),
+    ] = "standard",
+    scope_mode: Annotated[
+        str,
+        typer.Option(
+            "--scope-mode",
+            help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
+        ),
+    ] = "auto",
 ) -> None:
     """Audit repository GitHub — jalur input utama Cyense."""
     # Peringatan keamanan token di argumen (§6.2)
@@ -169,6 +183,8 @@ def scan_github(
         "lang": lang,
         "force": force,
         "i_have_permission": i_have_permission,
+        "scan_mode": scan_mode,
+        "scope_mode": scope_mode,
     }
     if ref:
         payload["ref"] = ref
@@ -205,6 +221,20 @@ def scan_program(
     no_md: Annotated[bool, typer.Option("--no-md")] = False,
     fail_on: Annotated[str, typer.Option("--fail-on")] = "none",
     min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
+    scan_mode: Annotated[
+        str,
+        typer.Option(
+            "--scan-mode",
+            help="Mode scan: quick (cepat, IDOR saja), standard (default, IDOR+XSS), deep (komprehensif).",
+        ),
+    ] = "standard",
+    scope_mode: Annotated[
+        str,
+        typer.Option(
+            "--scope-mode",
+            help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
+        ),
+    ] = "auto",
 ) -> None:
     """Audit source code lokal (mounted / sample)."""
     payload = {
@@ -212,6 +242,8 @@ def scan_program(
         "lang": lang,
         "source_type": source_type,
         "i_have_permission": i_have_permission,
+        "scan_mode": scan_mode,
+        "scope_mode": scope_mode,
     }
     _run(_run_scan(
         payload=payload,
@@ -236,12 +268,28 @@ def scan_link(
     min_severity: Annotated[str, typer.Option("--min-severity")] = "info",
     out: Annotated[Optional[str], typer.Option("--out")] = None,
     no_md: Annotated[bool, typer.Option("--no-md")] = False,
+    scan_mode: Annotated[
+        str,
+        typer.Option(
+            "--scan-mode",
+            help="Mode scan: quick (cepat, IDOR saja), standard (default, IDOR+XSS), deep (komprehensif).",
+        ),
+    ] = "standard",
+    scope_mode: Annotated[
+        str,
+        typer.Option(
+            "--scope-mode",
+            help="Mode cakupan: auto (otomatis), full (semua file), diff (hanya perubahan).",
+        ),
+    ] = "auto",
 ) -> None:
     """Probing IDOR dinamis pada URL live."""
     payload = {
         "mode": "link",
         "url": url,
         "i_have_permission": i_have_permission,
+        "scan_mode": scan_mode,
+        "scope_mode": scope_mode,
     }
     _run(_run_scan(
         payload=payload,

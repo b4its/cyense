@@ -41,5 +41,11 @@ class Settings(BaseSettings):
     github_timeout: float = 60.0
     github_cache: bool = True
 
+    # CI/Compliance Reporting (instruction/feature/ci-compliance-reporting.md)
+    scan_mode_default: str = "standard"  # quick | standard | deep
+    scope_mode_default: str = "auto"     # auto | full | diff
+    sarif_enabled: bool = True
+    coverage_enabled: bool = True
+
 
 settings = Settings()

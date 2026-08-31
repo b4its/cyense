@@ -1,11 +1,16 @@
-"""Report endpoints: JSON report and self-contained HTML report (PRD §4.4)."""
+"""Report endpoints: JSON report and self-contained HTML report (PRD §4.4).
+
+Also serves SARIF and coverage artifacts (ci-compliance-reporting.md §3.7).
+"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from app.report.html_report import render_html_report
+from app.report.sarif import build_sarif_report
+from app.report.coverage import build_coverage_document
 
 router = APIRouter(tags=["reports"])
 
@@ -29,3 +34,22 @@ async def report_json(request: Request, scan_id: str) -> dict[str, object]:
 async def report_html(request: Request, scan_id: str) -> HTMLResponse:
     report = _get_report(request, scan_id)
     return HTMLResponse(content=render_html_report(report), media_type="text/html")
+
+
+@router.get("/scans/{scan_id}/report/sarif")
+async def report_sarif(request: Request, scan_id: str) -> JSONResponse:
+    """Get SARIF 2.1.0 report for GitHub Code Scanning (ci-compliance-reporting.md §3.2)."""
+    report = _get_report(request, scan_id)
+    sarif_report = build_sarif_report(report)
+    return JSONResponse(
+        content=sarif_report,
+        media_type="application/sarif+json"
+    )
+
+
+@router.get("/scans/{scan_id}/coverage")
+async def coverage_json(request: Request, scan_id: str) -> JSONResponse:
+    """Get coverage document showing what was checked (ci-compliance-reporting.md §3.5)."""
+    report = _get_report(request, scan_id)
+    coverage_doc = build_coverage_document(report)
+    return JSONResponse(content=coverage_doc)

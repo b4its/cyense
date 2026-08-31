@@ -47,17 +47,24 @@ def _finding(
     description: str,
     remediation: str,
 ) -> Finding:
+    """Create finding with unique ID including lineno (fixes collision bug)."""
+    
+    lineno = getattr(node, "lineno", 0)
+    
+    # Fix: include line number in finding_id for uniqueness (ci-compliance-reporting.md §3.6)
+    finding_id = f"{scan_id}-{rule}-{lineno}" if lineno else f"{scan_id}-{rule}"
+    
     return Finding(
-        finding_id=f"{scan_id}-{rule}",
+        finding_id=finding_id,
         rule=rule,
         severity=severity,
         confidence=0.7,
         title=title,
         description=description,
-        evidence={"file": path, "line": getattr(node, "lineno", 0)},
+        evidence={"file": path, "line": lineno},
         verification=VerificationEvidence(notes="static analysis (AST)"),
         remediation=remediation,
-        location=f"{path}:{getattr(node, 'lineno', 0)}",
+        location=f"{path}:{lineno}",
     )
 
 
