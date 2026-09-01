@@ -48,7 +48,7 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
         # Target-level values win; config fills the rest (no duplicate kwargs).
         github_kwargs: dict[str, Any] = {
             k: v for k, v in config.items()
-            if k in ("subdir", "lang", "github_token", "force", "i_have_permission")
+            if k in ("subdir", "ref", "lang", "github_token", "force", "i_have_permission")
         }
         # Pop config values FIRST (short-circuit `or` would skip the pop).
         cfg_ref = github_kwargs.pop("ref", None)
@@ -68,6 +68,10 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
             if k in ("lang", "source_type", "i_have_permission")
         }
         cfg_lang = program_kwargs.pop("lang", "python")
+        # A "local:/path/to/project" target carries its source directory in
+        # target["path"] — previously parsed but silently dropped, so the
+        # scan always ran against the default workspace_dir.
+        program_kwargs["source_dir"] = str(target["path"]) if target.get("path") else None
         return ProgramScanRequest(
             mode="program",
             lang=target.get("lang") or cfg_lang,
@@ -79,7 +83,10 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
 
         link_kwargs = {
             k: v for k, v in config.items()
-            if k in ("headers", "cookies", "baseline_id", "probe_ids", "method", "i_have_permission")
+            if k in (
+                "headers", "cookies", "baseline_id", "probe_ids", "method",
+                "i_have_permission",
+            )
         }
         return LinkScanRequest(
             mode="link",

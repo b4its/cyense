@@ -182,7 +182,7 @@ class ScanWorker:
             else:
                 await self.store.mark_stage(scan_id, "recon", 25)
                 await on_stage("recon")
-                source_dir = resolve_source_dir(
+                source_dir = request_dict.get("source_dir") or resolve_source_dir(
                     request_dict.get("source_type", "mounted"),
                     str(self.settings.workspace_dir),
                 )

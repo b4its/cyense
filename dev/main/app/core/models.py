@@ -73,6 +73,9 @@ class ProgramScanRequest(BaseModel):
     mode: Literal["program"]
     lang: Literal["python", "js", "php"] = "python"
     source_type: Literal["mounted", "sample"] = "mounted"
+    # Optional explicit source directory (multi-target "local:" entries).
+    # Overrides the workspace_dir default when present.
+    source_dir: str | None = None
     i_have_permission: bool = False
     # Strix-derived features (usestrix/strix cli_args.py):
     instruction: str | None = None
