@@ -54,20 +54,27 @@ def save_checkpoint(
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     # Sanitize the persisted request — NEVER write raw tokens/credentials
-    # to disk (checkpoints survive until scan deletion and are listed by
-    # /scans/resumable).
-    from app.utils.redact import redact_headers
+    # to disk. Secrets are DROPPED (set to None) rather than masked: the
+    # worker's resume merge overlays the new request onto the checkpoint,
+    # so a "[REDACTED]" sentinel would be sent to the API as a real value
+    # (→ 401). None means "no token from checkpoint" — the fresh request's
+    # token (if any) wins, otherwise the scan proceeds anonymously.
+    from app.utils.redact import SENSITIVE_KEYS
 
     safe_request = dict(request_dict or {})
     for key in ("github_token", "token", "password", "secret",
                 "api_key", "apikey"):
         if safe_request.get(key):
-            safe_request[key] = "[REDACTED]"
+            safe_request[key] = None
     if isinstance(safe_request.get("headers"), dict):
-        safe_request["headers"] = redact_headers(safe_request["headers"])
+        # Drop sensitive headers entirely (mangled redacted values would be
+        # sent to the target on resume).
+        safe_request["headers"] = {
+            k: v for k, v in safe_request["headers"].items()
+            if str(k).lower() not in SENSITIVE_KEYS
+        }
     if isinstance(safe_request.get("cookies"), dict):
-        safe_request["cookies"] = {k: "[REDACTED]"
-                                   for k in safe_request["cookies"]}
+        safe_request["cookies"] = {}
 
     payload: dict[str, Any] = {
         "version": _CHECKPOINT_VERSION,

@@ -46,7 +46,14 @@ def redact_url_credentials(url: str | None) -> str:
     # Case-insensitive, any scheme, optional scheme. The credential span is
     # anything up to '@' (passwords may contain '/'); over-redaction is
     # preferred over leaking.
-    result = re.sub(r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^@\s]+)@", r"\1[REDACTED]@", url, flags=re.I)
-    # Scheme-relative (//user:pass@host) or no-scheme (user:pass@host).
-    result = re.sub(r"((?:^|//))([^@\s]+)@", r"\1[REDACTED]@", result)
+    result = re.sub(
+        r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^@\s]+)@",
+        r"\1[REDACTED]@", url, flags=re.I,
+    )
+    if result == url:
+        # Scheme-relative (//user:pass@host) or no-scheme (user:pass@host).
+        # Only run when the scheme-based pass did nothing — running it
+        # unconditionally would strip the scheme from already-redacted URLs.
+        # Try "//" FIRST so it is preserved in the output.
+        result = re.sub(r"((?://)?)([^@\s]+)@", r"\1[REDACTED]@", result)
     return result
