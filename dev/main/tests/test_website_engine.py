@@ -304,3 +304,122 @@ def test_reflection_probe_skips_non_2xx_and_no_query() -> None:
     # any HTTP request). We just assert the result is empty & fast.
     findings = asyncio.run(engine._probe_reflected_xss(pages, headers={}, cookies={}))
     assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# XSS payload injection probe (confirmed reflected XSS via real vectors)
+# ---------------------------------------------------------------------------
+
+def test_xss_payload_confirms_vulnerability(monkeypatch) -> None:
+    """A param that reflects <img onerror> raw is flagged as XS-LIVE-032."""
+    from app.engines.website_engine import WebsiteEngine
+    from app.utils.http_client import HttpClient, Response
+
+    captured: dict[str, str] = {}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return None
+        async def get(self, url: str) -> Response:
+            captured["probe_url"] = url
+            # Echo the payload raw (unencoded) — vulnerable!
+            from urllib.parse import parse_qs, urlparse
+            qs = parse_qs(urlparse(url).query)
+            val = list(qs.values())[0][0]
+            return Response(
+                status=200,
+                headers={"content-type": "text/html"},
+                body=f"<html><p>Reflected: {val}</p></html>",
+                elapsed_ms=1,
+                url=url,
+            )
+
+    monkeypatch.setattr(HttpClient, "__init__", _Client.__init__)
+    monkeypatch.setattr(HttpClient, "__aenter__", _Client.__aenter__)
+    monkeypatch.setattr(HttpClient, "__aexit__", _Client.__aexit__)
+    monkeypatch.setattr(HttpClient, "get", _Client.get)
+
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    pages = [
+        {
+            "url": "http://x.test/search?q=hello",
+            "status": 200,
+            "body": "<html><p>search</p></html>",
+            "content_type": "text/html",
+            "headers": {"content-type": "text/html"},
+        }
+    ]
+    findings = asyncio.run(engine._probe_xss_payloads(pages, headers={}, cookies={}))
+    assert len(findings) >= 1, findings
+    # At least the universal marker or an onerror payload should match
+    payload_rules = {f["rule"] for f in findings}
+    assert "XS-LIVE-032" in payload_rules, findings
+    # The finding must include the working payload
+    assert any("payload" in f.get("evidence", {}) for f in findings)
+
+
+def test_xss_payload_encoded_reflection_not_flagged(monkeypatch) -> None:
+    """HTML-encoded payload reflection must NOT be flagged."""
+    from app.engines.website_engine import WebsiteEngine
+    from app.utils.http_client import HttpClient, Response
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *exc):
+            return None
+        async def get(self, url: str) -> Response:
+            import html as _html
+            from urllib.parse import parse_qs, urlparse
+            qs = parse_qs(urlparse(url).query)
+            val = list(qs.values())[0][0]
+            return Response(
+                status=200,
+                headers={"content-type": "text/html"},
+                body=f"<html><p>{_html.escape(val)}</p></html>",
+                elapsed_ms=1,
+                url=url,
+            )
+
+    monkeypatch.setattr(HttpClient, "__init__", _Client.__init__)
+    monkeypatch.setattr(HttpClient, "__aenter__", _Client.__aenter__)
+    monkeypatch.setattr(HttpClient, "__aexit__", _Client.__aexit__)
+    monkeypatch.setattr(HttpClient, "get", _Client.get)
+
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    pages = [
+        {
+            "url": "http://x.test/search?q=hello",
+            "status": 200,
+            "body": "<html><p>search</p></html>",
+            "content_type": "text/html",
+            "headers": {"content-type": "text/html"},
+        }
+    ]
+    findings = asyncio.run(engine._probe_xss_payloads(pages, headers={}, cookies={}))
+    # Only the universal marker (no special chars) MIGHT slip through;
+    # payloads with <>/' should NOT be detected.
+    payload_findings = [f for f in findings
+                        if f["evidence"].get("payload", "") != "/\"'<>CyenseXSS"]
+    assert payload_findings == [], payload_findings
+
+
+def test_xss_payload_skips_non_2xx_and_no_query() -> None:
+    """Non-2xx and no-query pages never receive payload probes."""
+    from app.engines.website_engine import WebsiteEngine
+
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    pages = [
+        {"url": "http://x.test/404?q=hi", "status": 404,
+         "body": "not found", "content_type": "text/html", "headers": {}},
+        {"url": "http://x.test/about", "status": 200,
+         "body": "about", "content_type": "text/html", "headers": {}},
+    ]
+    findings = asyncio.run(engine._probe_xss_payloads(pages, headers={}, cookies={}))
+    assert findings == []

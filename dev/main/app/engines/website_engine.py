@@ -29,6 +29,23 @@ log = get_logger("engine.website")
 # site does not cause unbounded probing. Discovery-only findings (no probe)
 # are still reported for ALL discovered endpoints.
 _MAX_PROBED_ENDPOINTS = 10
+# Safety caps for XSS payload probe requests.
+_MAX_XSS_PROBE_REQUESTS = 100
+
+# XSS payload vectors for active reflection confirmation.
+# (payload, context_label, severity)
+_XSS_PAYLOADS: list[tuple[str, str, str]] = [
+    ("<img src=x onerror=alert(1)>",     "html-img-onerror", "high"),
+    ("<svg onload=alert(1)>",            "html-svg-onload",  "high"),
+    ("\"><script>alert(1)</script>",     "attr-script",      "critical"),
+    ("'onfocus=alert(1) autofocus=",     "attr-singlequote", "high"),
+    ("<script>alert(1)</script>",        "raw-script",       "critical"),
+    ("'-alert(1)-'",                     "script-breakout",  "high"),
+    ("\"><img src=x onerror=alert(1)>",  "attr-img-onerror", "critical"),
+    ("'><script>alert(1)</script>",      "sq-attr-script",   "high"),
+    ("</script><script>alert(1)</script>","script-close",    "high"),
+    ("/\"'<>CyenseXSS",                  "universal-marker", "medium"),
+]
 
 
 class WebsiteEngine:
@@ -165,6 +182,18 @@ class WebsiteEngine:
             f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
             xss_findings.append(f)
 
+        # Active XSS payload injection probe — sends actual XSS vectors via
+        # GET param values (read-only, non-destructive). Confirmed unencoded
+        # reflection of the payload = confirmed XSS vulnerability.
+        xss_payload_findings = await self._probe_xss_payloads(
+            pages,
+            headers=headers,
+            cookies=cookies,
+        )
+        for k, f in enumerate(xss_payload_findings, start=len(xss_findings) + 1):
+            f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
+            xss_findings.append(f)
+
         # ------------------------------------------------------------------
         # Stage 4: Report
         # ------------------------------------------------------------------
@@ -206,6 +235,136 @@ class WebsiteEngine:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _probe_xss_payloads(
+        self,
+        pages: list[dict[str, Any]],
+        *,
+        headers: dict[str, str],
+        cookies: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Active XSS payload injection — confirms reflected XSS via GET.
+
+        For each 2xx HTML page with query parameters, sends **actual XSS
+        vectors** as param values (via GET, read-only, non-destructive) and
+        checks whether the payload string appears **raw** (un-encoded) in
+        the response body. If so, the param is a confirmed reflected-XSS
+        sink with the specific working payload.
+
+        The payloads are standard non-destructive XSS probes:
+        ``<img onerror>``, ``<svg onload>``, ``<script>alert(1)</script>``,
+        attribute-breakout variants, and a universal marker. All are safe
+        (no state mutation, no side effects) and well-known industry
+        test vectors.
+
+        Returns XS-LIVE-032 findings with the working payload and evidence.
+        """
+        import html as _html
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        from app.utils.http_client import HttpClient
+
+        findings: list[dict[str, Any]] = []
+
+        html_pages = [
+            p for p in pages
+            if "html" in (p.get("content_type") or "").lower()
+            and 200 <= int(p.get("status") or 0) < 300
+        ]
+        if not html_pages:
+            return findings
+
+        async with HttpClient(
+            timeout=self.settings.request_timeout,
+            headers=headers,
+            cookies=cookies,
+            rate_limit=int(getattr(self.settings, "rate_limit", 10)),
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 5)),
+        ) as client:
+            requests_made = 0
+            for page in html_pages:
+                url = page.get("url", "") or ""
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query, keep_blank_values=True)
+                if not qs:
+                    continue
+                for name, values in qs.items():
+                    if requests_made >= _MAX_XSS_PROBE_REQUESTS:
+                        return findings
+                    for payload, ctx, sev in _XSS_PAYLOADS:
+                        if requests_made >= _MAX_XSS_PROBE_REQUESTS:
+                            return findings
+                        for orig in values:
+                            probe_val = payload if not orig else f"{orig}{payload}"
+                            probe_qs = dict(qs)
+                            probe_qs[name] = [probe_val]
+                            probe_url = urlunparse(
+                                parsed._replace(
+                                    query=urlencode(probe_qs, doseq=True)
+                                )
+                            )
+                            try:
+                                resp = await client.get(probe_url)
+                            except Exception as exc:  # noqa: BLE001
+                                log.warning(
+                                    "xss payload probe failed %s: %s",
+                                    probe_url, exc,
+                                )
+                                continue
+                            requests_made += 1
+                            if resp.status != 200:
+                                continue
+                            body = resp.body or ""
+                            # Check if the payload string appears RAW (un-encoded)
+                            # in the response body. If the server HTML-encodes it,
+                            # the raw payload won't match (e.g. "<" → "&lt;").
+                            if payload not in body:
+                                continue
+                            # Ensure the raw appearance is not just the HTML-encoded
+                            # form happening to contain the payload substring
+                            # (only relevant for payloads without special chars).
+                            encoded_payload = _html.escape(payload)
+                            if encoded_payload != payload and encoded_payload in body:
+                                continue
+                            findings.append({
+                                "rule": "XS-LIVE-032",
+                                "severity": sev,
+                                "confidence": 0.9,
+                                "title": (
+                                    f"Confirmed reflected XSS via payload "
+                                    f"on param {name!r}"
+                                ),
+                                "description": (
+                                    f"Parameter {name!r} reflects the XSS vector "
+                                    f"{payload!r} verbatim without encoding — "
+                                    f"confirmed {ctx} reflected XSS. "
+                                    "An attacker can execute arbitrary JS by "
+                                    "crafting a malicious link."
+                                ),
+                                "evidence": {
+                                    "payload": payload,
+                                    "context": ctx,
+                                    "param": name,
+                                    "probe_url": probe_url,
+                                    "sample": (
+                                        body[
+                                            max(body.find(payload) - 60, 0):
+                                            body.find(payload) + 120
+                                        ][:200]
+                                    ),
+                                },
+                                "remediation": (
+                                    "HTML-escape ALL user input before writing "
+                                    "into the response; prefer parameterized "
+                                    "templates; validate input types and lengths; "
+                                    "deploy a strict Content-Security-Policy."
+                                ),
+                                "location": probe_url,
+                            })
+                            # One finding per parameter (not per payload).
+                            break
+                        break
+        return findings
 
     async def _probe_id_endpoints(
         self,
