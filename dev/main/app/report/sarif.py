@@ -68,6 +68,12 @@ def _normalize_path(path: str | None, tree_root: str | None = None) -> str | Non
     if sep and tail.isdigit():
         path = head
 
+    # 1b. DAST-style URLs (scheme://...) are already valid artifact URIs —
+    # the split/rejoin below would collapse "http://" into "http:/". Return
+    # them untouched so host:port survives (test_sarif regression).
+    if "://" in path:
+        return path.replace("\\", "/")
+
     norm = path.replace("\\", "/")
 
     # 2. Explicit tree_root (github sandbox) wins when it prefixes the path.
