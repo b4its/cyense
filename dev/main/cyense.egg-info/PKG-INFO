@@ -15,10 +15,12 @@ Requires-Dist: typer<1.0,>=0.12
 Requires-Dist: rich<14.0,>=13.7
 Requires-Dist: cvss<4.0,>=3.2
 Requires-Dist: reportlab<5.0,>=4.0
+Requires-Dist: pyyaml<7.0,>=6.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
 Requires-Dist: ruff>=0.4; extra == "dev"
+Requires-Dist: flask>=3.0; extra == "dev"
 
 # 🛡️ Cyense — Cyber Insight Engine
 

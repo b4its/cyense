@@ -7,8 +7,10 @@ typer<1.0,>=0.12
 rich<14.0,>=13.7
 cvss<4.0,>=3.2
 reportlab<5.0,>=4.0
+pyyaml<7.0,>=6.0
 
 [dev]
 pytest>=8.0
 pytest-asyncio>=0.23
 ruff>=0.4
+flask>=3.0

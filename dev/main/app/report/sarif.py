@@ -46,44 +46,61 @@ _CWE_TO_STRIDE = {
 
 
 def _normalize_path(path: str | None, tree_root: str | None = None) -> str | None:
-    """Convert path to repo-relative POSIX. Return synthetic anchor if invalid."""
+    """Convert a finding location to a repo-relative POSIX URI.
+
+    Handles:
+      * the ``":<line>"`` suffix that finding locations carry ("app.py:42")
+        — stripped only when the tail is a plain integer so URLs with a
+        port (host:8080) survive;
+      * sandbox prefixes ``reports/<scan_id>/src/`` (relative form) and the
+        same tree inside an absolute path — the most specific prefix is
+        stripped first so the URI maps to a real repo file;
+      * an explicit ``tree_root`` (github sandbox) — stripped when the
+        location lives under it.
+    Returns a synthetic anchor ("SECURITY.md") when no repo-relative form
+    can be derived (Strix design: never emit an unmappable URI).
+    """
     if not path:
         return None
 
-    # Clean up - remove sandbox prefix like reports/<id>/src/
-    from pathlib import PurePosixPath
-    p = PurePosixPath(path)
+    # 1. Strip trailing ":<line>" (integer-only, keeps host:port intact).
+    head, sep, tail = path.rpartition(":")
+    if sep and tail.isdigit():
+        path = head
 
-    # Check if it's an absolute path or contains traversal
-    if p.is_absolute() or ".." in p.parts:
-        # Try to strip common prefixes first
-        prefixes = [
-            "reports/", f"reports/{p.parts[1]}/" if len(p.parts) > 1 else "",
-            f"reports/{p.parts[1]}/{p.parts[2]}/" if len(p.parts) > 2 else "",
-        ]
+    norm = path.replace("\\", "/")
 
-        cleaned = str(p)
-        for prefix in prefixes:
-            if prefix and cleaned.startswith(prefix):
-                cleaned = cleaned[len(prefix):]
-                try:
-                    cp = PurePosixPath(cleaned)
-                    if not cp.is_absolute() and ".." not in cp.parts:
-                        path = cleaned
-                        break
-                except ValueError:
-                    pass
+    # 2. Explicit tree_root (github sandbox) wins when it prefixes the path.
+    if tree_root:
+        tr = str(tree_root).replace("\\", "/").rstrip("/")
+        if tr and norm.startswith(tr + "/"):
+            norm = norm[len(tr) + 1:]
 
-        # If still invalid, use synthetic location
-        if "/" not in path or ".." in path.split("/"):
-            return "SECURITY.md"  # Synthetic anchor as per Strix design
+    # 3. Absolute path: re-root at the last "/reports/" marker if present
+    #    (keep the "reports/" prefix so step 4 handles it uniformly).
+    if norm.startswith("/"):
+        idx = norm.find("/reports/")
+        if idx != -1:
+            norm = norm[idx + 1:]
+        else:
+            return "SECURITY.md"  # cannot map to anything repo-relative
 
-    # Validate final path
-    p_final = PurePosixPath(path)
-    if p_final.is_absolute() or ".." in p_final.parts:
+    # 4. Relative "reports/<scan_id>/src/..." or "reports/<scan_id>/..." —
+    # strip the most specific sandbox prefix first.
+    parts = [seg for seg in norm.split("/") if seg]
+    if parts and parts[0] == "reports":
+        rest = parts[1:]
+        if len(rest) >= 2 and rest[1] == "src":
+            parts = rest[2:]  # drop <scan_id>/src
+        elif len(rest) >= 2:
+            parts = rest[1:]  # drop <scan_id>
+        # len(rest) == 1 → file directly under reports/ — keep as-is
+
+    if not parts:
         return "SECURITY.md"
-
-    return str(p)
+    if ".." in parts:
+        return "SECURITY.md"
+    return "/".join(parts)
 
 
 def _cwe_to_tags(cwe: str) -> list[str]:
@@ -140,7 +157,9 @@ def build_sarif_report(
     results = []
     for finding in findings:
         rule = finding.get("rule", "UNKNOWN")
-        cwe = finding.get("cwe", "CWE-Unknown")
+        # `cwe` may be present-but-None (Finding.cwe defaults to None after
+        # model_dump) — `or` keeps ruleId a string instead of null.
+        cwe = finding.get("cwe") or "CWE-Unknown"
         sev = finding.get("severity", "info").lower()
 
         level = _SEVERITY_TO_LEVEL.get(sev, "note")
@@ -216,7 +235,7 @@ def build_sarif_report(
         }]
 
     # Build root SARIF structure
-    run = {
+    run: dict[str, Any] = {
         "tool": {
             "driver": {
                 "name": TOOL_NAME,
@@ -225,7 +244,6 @@ def build_sarif_report(
                 "rules": rules,
             }
         },
-        "versionControlProvenance": vcp,
         "results": results,
         "invocations": [{
             "executionSuccessful": True,
@@ -234,6 +252,10 @@ def build_sarif_report(
             }
         }]
     }
+    # Only emit versionControlProvenance when we actually have repo info —
+    # an explicit null is rejected by strict SARIF consumers.
+    if vcp is not None:
+        run["versionControlProvenance"] = vcp
 
     # Wrap in runs array
     return {
