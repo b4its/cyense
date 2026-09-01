@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["remediation"])
@@ -103,7 +104,7 @@ async def get_fixes(session_id: str, request: Request) -> dict[str, Any]:
     }
 
 
-@router.get("/fixes/{session_id}/diff")
+@router.get("/fixes/{session_id}/diff", response_class=PlainTextResponse)
 async def get_diff(session_id: str, request: Request) -> str:
     """Get unified diff of all proposals (text/plain response)."""
     session_store = request.app.state.fix_store
@@ -160,6 +161,7 @@ async def apply_fixes(
     from pathlib import Path
 
     from app.remediation.applier import apply_patch, compute_file_hash, is_same_origin
+    from app.remediation.store import _now_iso
 
     applied: list[str] = []
     failed: list[str] = []
@@ -198,10 +200,13 @@ async def apply_fixes(
                 after_hash = compute_file_hash(Path(target_path))
                 unchanged = before_hash == after_hash
 
-                # Update proposal state
+                # applied_at must be a timestamp, and the proposal needs a
+                # status marker so GET /fixes/{session_id} can distinguish
+                # applied from pending proposals.
                 session_store.update_proposal(session_id, fix_id, {
                     "backup_path": str(backup) if backup else None,
-                    "applied_at": True,
+                    "applied_at": _now_iso(),
+                    "status": "applied",
                     "before_hash": before_hash,
                     "after_hash": after_hash,
                     "unchanged": unchanged,
@@ -214,8 +219,10 @@ async def apply_fixes(
         except Exception:
             failed.append(fix_id)
 
-    # Mark session as completed
-    session_store.complete_session(session_id)
+    # Mark the session completed only when something was actually applied;
+    # a fully-failed batch should stay active so the user can retry.
+    if applied:
+        session_store.complete_session(session_id)
 
     return ApplyResponse(
         applied=applied,
