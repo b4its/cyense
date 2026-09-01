@@ -93,7 +93,11 @@ tests/test_api.py
 tests/test_github_mode_e2e.py
 tests/test_github_scan.py
 tests/test_prober_auto.py
+tests/test_prober_baseline.py
 tests/test_program_rules.py
 tests/test_remediation.py
+tests/test_sarif.py
 tests/test_utils.py
+tests/test_website_engine.py
+tests/test_worker_robustness.py
 tests/test_xss_rules.py
