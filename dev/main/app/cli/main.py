@@ -191,7 +191,10 @@ def scan_github(
         str,
         typer.Option(
             "--scan-mode",
-            help="Mode scan: quick (cepat, IDOR saja), standard (default, IDOR+XSS), deep (komprehensif).",
+            help=(
+                "Mode scan: quick (cepat, IDOR saja), standard "
+                "(default, IDOR+XSS), deep (komprehensif)."
+            ),
         ),
     ] = "standard",
     scope_mode: Annotated[
@@ -206,19 +209,29 @@ def scan_github(
         str,
         typer.Option(
             "--level",
-            help="Kedalaman analisis: low (cepat), medium (default), high (data flow), max (cross-file).",
+            help=(
+                "Kedalaman analisis: low (cepat), medium (default), "
+                "high (data flow), max (cross-file)."
+            ),
         ),
     ] = "medium",
     # Strix-derived features:
     instruction: Annotated[
-        str | None, typer.Option("--instruction", help="Fokus testing khusus (mis. 'Focus on IDOR').")
+        str | None,
+        typer.Option(
+            "--instruction",
+            help="Fokus testing khusus (mis. 'Focus on IDOR').",
+        ),
     ] = None,
     instruction_file: Annotated[
         str | None, typer.Option("--instruction-file", help="Path file berisi instruksi testing.")
     ] = None,
     diff_base: Annotated[
         str | None,
-        typer.Option("--diff-base", help="Override base branch/commit untuk diff-scope (mis. origin/main)."),
+        typer.Option(
+            "--diff-base",
+            help="Override base branch/commit untuk diff-scope (mis. origin/main).",
+        ),
     ] = None,
     resume: Annotated[
         str | None,
@@ -241,7 +254,7 @@ def scan_github(
             resolved_instruction = Path(instruction_file).read_text(encoding="utf-8").strip()
         except OSError as e:
             render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
     # Peringatan keamanan token di argumen (§6.2)
     if token and sys.argv and "--token" in " ".join(sys.argv):
@@ -305,7 +318,10 @@ def scan_program(
         str,
         typer.Option(
             "--scan-mode",
-            help="Mode scan: quick (cepat, IDOR saja), standard (default, IDOR+XSS), deep (komprehensif).",
+            help=(
+                "Mode scan: quick (cepat, IDOR saja), standard "
+                "(default, IDOR+XSS), deep (komprehensif)."
+            ),
         ),
     ] = "standard",
     scope_mode: Annotated[
@@ -320,7 +336,10 @@ def scan_program(
         str,
         typer.Option(
             "--level",
-            help="Kedalaman analisis: low (cepat), medium (default), high (data flow), max (cross-file).",
+            help=(
+                "Kedalaman analisis: low (cepat), medium (default), "
+                "high (data flow), max (cross-file)."
+            ),
         ),
     ] = "medium",
     # Strix-derived features:
@@ -349,7 +368,7 @@ def scan_program(
             resolved_instruction = Path(instruction_file).read_text(encoding="utf-8").strip()
         except OSError as e:
             render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
     payload = {
         "mode": "program",
@@ -392,7 +411,10 @@ def scan_link(
         str,
         typer.Option(
             "--scan-mode",
-            help="Mode scan: quick (cepat, IDOR saja), standard (default, IDOR+XSS), deep (komprehensif).",
+            help=(
+                "Mode scan: quick (cepat, IDOR saja), standard "
+                "(default, IDOR+XSS), deep (komprehensif)."
+            ),
         ),
     ] = "standard",
     scope_mode: Annotated[
@@ -428,7 +450,7 @@ def scan_link(
             resolved_instruction = Path(instruction_file).read_text(encoding="utf-8").strip()
         except OSError as e:
             render_error_panel(_state.console, _state.caps, f"Gagal baca --instruction-file: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
     payload = {
         "mode": "link",
@@ -537,14 +559,20 @@ def scan_api(
         str | None,
         typer.Option(
             "--base-url",
-            help="Override base URL (e.g. http://localhost:8080). If omitted, uses spec servers[].url.",
+            help=(
+                "Override base URL (e.g. http://localhost:8080). "
+                "If omitted, uses spec servers[].url."
+            ),
         ),
     ] = None,
     include_all: Annotated[
         bool,
         typer.Option(
             "--include-all",
-            help="Include endpoints without path parameters too (default: only ID-bearing endpoints).",
+            help=(
+                "Include endpoints without path parameters too "
+                "(default: only ID-bearing endpoints)."
+            ),
         ),
     ] = False,
     dry_run: Annotated[
@@ -596,21 +624,26 @@ def scan_api(
         info = get_spec_info(spec)
     except Exception as e:
         render_error_panel(console, caps, f"Failed to parse OpenAPI spec: {e}")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     if not caps.quiet:
         from app.cli.theme import PALETTE as PAL
-        console.print(f"\n  [{PAL.blue_soft}]API Spec:[/]  [{PAL.ink}]{info['title']} v{info['version']}[/]")
+        console.print(
+            f"\n  [{PAL.blue_soft}]API Spec:[/]  [{PAL.ink}]{info['title']} "
+            f"v{info['version']}[/]"
+        )
         console.print(f"  [{PAL.blue_soft}]OpenAPI:[/]   [{PAL.ink}]{info['openapi_version']}[/]")
-        console.print(f"  [{PAL.blue_soft}]Base URL:[/]  [{PAL.ink}]{info['base_url'] or '(none — use --base-url)'}[/]")
+        console.print(
+            f"  [{PAL.blue_soft}]Base URL:[/]  [{PAL.ink}]"
+            f"{info['base_url'] or '(none — use --base-url)'}[/]"
+        )
         console.print(
             f"  [{PAL.blue_soft}]Endpoints:[/] [{PAL.ink}]{info['total_endpoints']} total, "
             f"{info['idor_candidates']} IDOR candidates[/]"
         )
         if info["security_schemes"]:
-            console.print(
-                f"  [{PAL.blue_soft}]Auth:[/]      [{PAL.ink}]{', '.join(info['security_schemes'])}[/]"
-            )
+            schemes = ", ".join(info["security_schemes"])
+            console.print(f"  [{PAL.blue_soft}]Auth:[/]      [{PAL.ink}]{schemes}[/]")
         console.print()
 
     # Parse endpoints
@@ -618,13 +651,16 @@ def scan_api(
         endpoints = parse_openapi_spec(spec, base_url=base_url, include_all=include_all)
     except Exception as e:
         render_error_panel(console, caps, f"Failed to parse endpoints: {e}")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     if not endpoints:
         render_error_panel(
             console, caps,
             "No IDOR-candidate endpoints found in spec.",
-            "Try --include-all to scan all endpoints, or check that paths use {id}-style parameters.",
+            (
+                "Try --include-all to scan all endpoints, or check that "
+                "paths use {id}-style parameters."
+            ),
         )
         raise typer.Exit(3)
 
@@ -633,6 +669,7 @@ def scan_api(
 
     # Display endpoints table
     from rich.table import Table  # type: ignore[import-untyped]
+
     from app.cli.theme import PALETTE as PAL
 
     table = Table(
@@ -830,7 +867,7 @@ def scan_resume(
                 await c.health()
         except Exception as e:
             render_error_panel(console, caps, f"Service tidak terjangkau: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         # Cek apakah scan_id ada di list resumable
         try:
@@ -838,7 +875,7 @@ def scan_resume(
                 resumable = await c.list_resumable()
         except Exception as e:
             render_error_panel(console, caps, f"Gagal ambil daftar resumable: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         resumable_ids = {r["scan_id"] for r in resumable}
         if scan_id not in resumable_ids:
@@ -882,7 +919,11 @@ def scan_multi(
         str, typer.Argument(help="Path file berisi daftar target (satu per baris).")
     ],
     i_have_permission: Annotated[
-        bool, typer.Option("--i-have-permission", help="[wajib] Konfirmasi izin audit semua target.")
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[wajib] Konfirmasi izin audit semua target.",
+        ),
     ] = False,
     scan_mode: Annotated[str, typer.Option("--scan-mode")] = "standard",
     scope_mode: Annotated[str, typer.Option("--scope-mode")] = "auto",
@@ -904,7 +945,7 @@ def scan_multi(
             targets = parse_targets_file(targets_file)
         except (OSError, ValueError) as e:
             render_error_panel(console, caps, f"Gagal baca targets file: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if not targets:
             render_error_panel(console, caps, "File targets kosong.")
@@ -916,13 +957,14 @@ def scan_multi(
                 await c.health()
         except Exception as e:
             render_error_panel(console, caps, f"Service tidak terjangkau: {e}")
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         from app.cli.theme import PALETTE as PAL
 
         if not caps.quiet:
             console.print(
-                f"  [{PAL.blue_soft}]Targets:[/] [{PAL.ink}]{len(targets)} target dari {targets_file}[/]"
+                f"  [{PAL.blue_soft}]Targets:[/] [{PAL.ink}]{len(targets)} "
+                f"target dari {targets_file}[/]"
             )
 
         # Submit each target as individual scan
@@ -1080,7 +1122,7 @@ async def _run_scan(
             f"Service tidak terjangkau di {_state.api_url}: {e}",
             "Jalankan 'make up' atau set --api-url",
         )
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     # -- Submit scan
     scan_id: str
@@ -1091,10 +1133,10 @@ async def _run_scan(
     except ValueError as e:
         # 422 — mis. i_have_permission = false
         render_error_panel(console, caps, str(e))
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
     except Exception as e:
         render_error_panel(console, caps, f"Gagal submit scan: {e}")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     # -- Render target panel (info awal — akan diperbarui setelah stage resolve)
     ctx = RenderContext(
@@ -1159,10 +1201,10 @@ async def _run_scan(
 
     except TimeoutError as e:
         render_error_panel(console, caps, str(e))
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
     except Exception as e:
         render_error_panel(console, caps, f"Polling error: {e}")
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     # -- Fallback: baca dari disk bila API 404 (§3.6)
     if report is None and final_status == "completed":
@@ -1226,7 +1268,7 @@ async def _run_scan(
                     console, caps,
                     f"--out path di luar direktori kerja: {md_dest}",
                 )
-                raise typer.Exit(3)
+                raise typer.Exit(3) from None
 
         # Jangan timpa tanpa --force-out (basic: cek eksistensi)
         if md_dest.exists():
@@ -1284,7 +1326,7 @@ def report_cmd(
                 report = await c.get_report(scan_id)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if report is None:
             report = load_report_from_disk(scan_id)
@@ -1332,7 +1374,7 @@ def list_cmd() -> None:
                 scans = await c.list_scans()
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if _state.caps.json_out:
             typer.echo(json.dumps(scans, indent=2))
@@ -1396,7 +1438,7 @@ def rules_cmd() -> None:
                 data = await c.rules()
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if _state.caps.json_out:
             typer.echo(json.dumps(data, indent=2))
@@ -1439,7 +1481,7 @@ def fix_cmd(
                 result = await c.propose_fixes(scan_id)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         session_id = result.get("session_id", "")
         if _state.caps.json_out:
@@ -1513,7 +1555,7 @@ def view_cmd(
                     scans = await c.list_scans()
             except Exception as e:
                 render_error_panel(_state.console, _state.caps, str(e))
-                raise typer.Exit(3)
+                raise typer.Exit(3) from None
             if not scans:
                 _state.console.print("  Tidak ada scan yang bisa dilihat.")
                 raise typer.Exit(0)
@@ -1529,7 +1571,7 @@ def view_cmd(
                 f"Service tidak terjangkau: {e}",
                 "Jalankan 'make up' atau set --api-url",
             )
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         url = f"{_state.api_url}/api/v1/viewer/{target_id}"
         from app.cli.theme import PALETTE as PAL
@@ -1564,7 +1606,7 @@ def history_cmd(
                 scans = await c.list_scans()
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if status_filter:
             scans = [s for s in scans if s.get("status") == status_filter]
@@ -1644,7 +1686,7 @@ def compare_cmd(
             new = await _fetch(scan_b)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if old is None or new is None:
             missing = scan_a if old is None else scan_b
@@ -1755,7 +1797,7 @@ def export_csv_cmd(
                 csv_text = await c.get_csv_export(scan_id, include_remediation=not no_remediation)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         dest = Path(out) if out else Path(f"cyense-{scan_id}-findings.csv")
         dest.write_text(csv_text, encoding="utf-8")
@@ -1781,7 +1823,7 @@ def export_pdf_cmd(
                 pdf_bytes = await c.get_pdf_export(scan_id)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         dest = Path(out) if out else Path(f"cyense-{scan_id}-report.pdf")
         dest.write_bytes(pdf_bytes)
@@ -1797,7 +1839,10 @@ def export_pdf_cmd(
 # ---------------------------------------------------------------------------
 # config — persistensi preferensi (enhanced-reporting-viewer.md §3.6)
 
-config_app = typer.Typer(help="Kelola preferensi CLI (~/.cyense/config.json).", no_args_is_help=True)
+config_app = typer.Typer(
+    help="Kelola preferensi CLI (~/.cyense/config.json).",
+    no_args_is_help=True,
+)
 app.add_typer(config_app, name="config")
 
 
@@ -1845,7 +1890,7 @@ def config_set_cmd(
         config_store.set_value(key, parsed)
     except KeyError as e:
         render_error_panel(_state.console, _state.caps, str(e))
-        raise typer.Exit(3)
+        raise typer.Exit(3) from None
 
     from app.cli.theme import PALETTE as PAL
     masked = config_store.printable_config(config_store.load_config()).get(key)
@@ -1856,16 +1901,19 @@ def config_set_cmd(
 
 @config_app.command("reset")
 def config_reset_cmd(
-    confirm: Annotated[bool, typer.Option("--confirm", help="Wajib untuk benar-benar reset.")] = False,
+    confirm: Annotated[
+        bool,
+        typer.Option("--confirm", help="Wajib untuk benar-benar reset."),
+    ] = False,
 ) -> None:
     """Kembalikan seluruh konfigurasi ke default."""
     from app.cli.theme import PALETTE as PAL
     from app.core.config_store import reset_config
 
     if not confirm:
+        app_name = config_app.info.name if hasattr(config_app, "info") else "config"
         _state.console.print(
-            f"  [{PAL.sev_medium}]{config_app.info.name if hasattr(config_app, 'info') else 'config'}: "
-            f"reset butuh --confirm[/]"
+            f"  [{PAL.sev_medium}]{app_name}: reset butuh --confirm[/]"
         )
         raise typer.Exit(3)
     reset_config()
@@ -1930,8 +1978,8 @@ def auth_login(
       cyense auth login github --token ghp_xxxx
       export CYENSE_GITHUB_TOKEN=ghp_xxxx && cyense auth login github
     """
-    from app.core.config_store import load_config, save_config
     from app.cli.theme import PALETTE as PAL
+    from app.core.config_store import load_config, save_config
 
     if provider.lower() != "github":
         render_error_panel(
@@ -1971,8 +2019,8 @@ def auth_login(
 @auth_app.command("status")
 def auth_status() -> None:
     """Show current authentication status."""
-    from app.core.config_store import load_config
     from app.cli.theme import PALETTE as PAL
+    from app.core.config_store import load_config
 
     config = load_config()
     github_token = config.get("github_token")
@@ -1981,7 +2029,10 @@ def auth_status() -> None:
     _state.console.print(f"  {'─' * 40}")
 
     if github_token:
-        masked = f"{github_token[:4]}...{github_token[-4:]}" if len(github_token) > 8 else "[REDACTED]"
+        if len(github_token) > 8:
+            masked = f"{github_token[:4]}...{github_token[-4:]}"
+        else:
+            masked = "[REDACTED]"
         _state.console.print(
             f"  [{PAL.ok}]✓ GitHub[/]    [{PAL.blue_soft}]{masked}[/]"
         )
@@ -2011,8 +2062,8 @@ def auth_logout(
 
     Requires --confirm to prevent accidental removal.
     """
-    from app.core.config_store import load_config, save_config
     from app.cli.theme import PALETTE as PAL
+    from app.core.config_store import load_config, save_config
 
     if provider.lower() != "github":
         render_error_panel(
@@ -2071,7 +2122,7 @@ def ci_junit(
                 report = await c.get_report(scan_id)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if report is None:
             report = load_report_from_disk(scan_id)
@@ -2185,7 +2236,7 @@ def ci_check(
                 report = await c.get_report(scan_id)
         except Exception as e:
             render_error_panel(_state.console, _state.caps, str(e))
-            raise typer.Exit(3)
+            raise typer.Exit(3) from None
 
         if report is None:
             report = load_report_from_disk(scan_id)
@@ -2215,7 +2266,10 @@ def ci_check(
         _state.console.print()
 
         if above:
-            _state.console.print(f"  [{PAL.error}]✗ FAIL[/] — {len(above)} finding(s) above threshold:")
+            _state.console.print(
+                f"  [{PAL.error}]✗ FAIL[/] — {len(above)} finding(s) "
+                "above threshold:"
+            )
             for f in above[:10]:
                 sev = f.get("severity", "info").upper()
                 _state.console.print(

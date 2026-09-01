@@ -62,7 +62,15 @@ def generate_pdf_report(
     meta_data = [
         ["Scan ID:", scan_id],
         ["Generated At:", "Current timestamp"],
-        ["Severity Breakdown:", f"Critical: {summary.get('critical', 0)}, High: {summary.get('high', 0)}, Medium: {summary.get('medium', 0)}, Low: {summary.get('low', 0)}"],
+        [
+            "Severity Breakdown:",
+            (
+                f"Critical: {summary.get('critical', 0)}, "
+                f"High: {summary.get('high', 0)}, "
+                f"Medium: {summary.get('medium', 0)}, "
+                f"Low: {summary.get('low', 0)}"
+            ),
+        ],
     ]
 
     meta_table = Table(meta_data, colWidths=[1.5 * inch, 4.5 * inch])
@@ -80,15 +88,21 @@ def generate_pdf_report(
     elements.append(Spacer(1, 0.3 * inch))
 
     # Severity breakdown
-    elements.append(Paragraph("Findings Overview", ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14)))
+    subtitle_style = ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14)
+    elements.append(Paragraph("Findings Overview", subtitle_style))
     elements.append(Spacer(1, 0.1 * inch))
+
+    total = max(summary.get('total', 1), 1)
+
+    def _pct(key: str) -> str:
+        return f"{summary.get(key, 0) / total * 100:.1f}%"
 
     severity_data = [
         ['Severity', 'Count', 'Percentage'],
-        ['Critical', str(summary.get('critical', 0)), f"{(summary.get('critical', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
-        ['High', str(summary.get('high', 0)), f"{(summary.get('high', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
-        ['Medium', str(summary.get('medium', 0)), f"{(summary.get('medium', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
-        ['Low', str(summary.get('low', 0)), f"{(summary.get('low', 0) / max(summary.get('total', 1), 1)) * 100:.1f}%"],
+        ['Critical', str(summary.get('critical', 0)), _pct('critical')],
+        ['High', str(summary.get('high', 0)), _pct('high')],
+        ['Medium', str(summary.get('medium', 0)), _pct('medium')],
+        ['Low', str(summary.get('low', 0)), _pct('low')],
     ]
 
     severity_table = Table(severity_data, colWidths=[3*inch, 1.2*inch, 1.3*inch])
@@ -106,13 +120,17 @@ def generate_pdf_report(
     elements.append(PageBreak())
 
     # Detailed findings
-    elements.append(Paragraph("Detailed Findings", ParagraphStyle('Subtitle', parent=styles['Heading2'], fontSize=14)))
+    elements.append(Paragraph("Detailed Findings", subtitle_style))
     elements.append(Spacer(1, 0.1 * inch))
 
     for idx, finding in enumerate(findings, 1):
         # Finding header
         finding_title = f"{idx}. {finding.get('rule', '')}: {finding.get('title', '')}"
-        elements.append(Paragraph(finding_title, ParagraphStyle('FindingTitle', parent=styles['Heading3'], fontSize=11, textColor=colors.HexColor('#1a2332'))))
+        title_style = ParagraphStyle(
+            'FindingTitle', parent=styles['Heading3'],
+            fontSize=11, textColor=colors.HexColor('#1a2332'),
+        )
+        elements.append(Paragraph(finding_title, title_style))
         elements.append(Spacer(1, 0.1 * inch))
 
         # Finding details
@@ -138,14 +156,19 @@ def generate_pdf_report(
 
         # Description if available
         if finding.get('description'):
-            desc_style = ParagraphStyle('Description', parent=styles['Normal'], fontSize=9, leading=10)
+            desc_style = ParagraphStyle(
+                'Description', parent=styles['Normal'], fontSize=9, leading=10
+            )
             elements.append(Paragraph('Description:', desc_style))
             elements.append(Paragraph(str(finding.get('description', '')), desc_style))
             elements.append(Spacer(1, 0.2 * inch))
 
         # Remediation if available
         if finding.get('remediation'):
-            rem_style = ParagraphStyle('Remediation', parent=styles['Normal'], fontSize=9, leading=10, textColor=colors.HexColor('#0066cc'))
+            rem_style = ParagraphStyle(
+                'Remediation', parent=styles['Normal'], fontSize=9, leading=10,
+                textColor=colors.HexColor('#0066cc'),
+            )
             elements.append(Paragraph('Remediation:', rem_style))
             elements.append(Paragraph(str(finding.get('remediation', '')), rem_style))
             elements.append(Spacer(1, 0.3 * inch))

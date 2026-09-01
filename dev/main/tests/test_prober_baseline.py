@@ -82,7 +82,7 @@ def test_run_uses_baseline_id_from_ctx(monkeypatch) -> None:
         def __init__(self, **_kwargs) -> None:
             pass
 
-        async def __aenter__(self) -> "_StubClient":
+        async def __aenter__(self) -> _StubClient:
             return self
 
         async def __aexit__(self, *_exc) -> None:

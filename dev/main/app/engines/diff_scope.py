@@ -176,7 +176,10 @@ class DiffScope:
                 if not path.is_file():
                     continue
                 parts = {p.lower() for p in path.parts}
-                if parts & {"node_modules", ".git", "venv", ".venv", "__pycache__", "dist", "build"}:
+                if parts & {
+                    "node_modules", ".git", "venv", ".venv",
+                    "__pycache__", "dist", "build",
+                }:
                     continue
                 rel = path.relative_to(self.base_dir).as_posix()
                 if rel not in included_set:

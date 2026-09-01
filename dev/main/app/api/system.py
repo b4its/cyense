@@ -6,6 +6,42 @@ from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["system"])
 
+# Shared CVSS vectors used by the static-rule catalog below.
+_IDOR_VECTOR = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
+_XSS_VECTOR = "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+_XSS_LOW_VECTOR = "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:N/A:N"
+_XSS_CRIT_VECTOR = "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+
+
+def _program_rule(rule: str, severity: str, lang: str, cwe: str) -> dict[str, object]:
+    return {
+        "rule": rule,
+        "severity": severity,
+        "lang": lang,
+        "cwe": cwe,
+        "cvss_score": 6.5,
+        "cvss_vector": _IDOR_VECTOR,
+    }
+
+
+def _xss_rule(
+    rule: str,
+    severity: str,
+    lang: str,
+    title: str,
+    score: float,
+    vector: str,
+) -> dict[str, object]:
+    return {
+        "rule": rule,
+        "severity": severity,
+        "lang": lang,
+        "cwe": "CWE-79" if rule != "XS004" else "CWE-95",
+        "cvss_score": score,
+        "cvss_vector": vector,
+        "title": title,
+    }
+
 
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
@@ -34,33 +70,33 @@ async def rules() -> dict[str, object]:
             }
         ],
         "program": [
-            {"rule": "CY001", "severity": "high", "lang": "python", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY002", "severity": "high", "lang": "python", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY003", "severity": "high", "lang": "python", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY004", "severity": "high", "lang": "python", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY005", "severity": "high", "lang": "python", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY006", "severity": "critical", "lang": "python", "cwe": "CWE-22", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY007", "severity": "high", "lang": "js", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY008", "severity": "high", "lang": "js", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY009", "severity": "high", "lang": "php", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
-            {"rule": "CY010", "severity": "high", "lang": "php", "cwe": "CWE-639", "cvss_score": 6.5, "cvss_vector": "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"},
+            _program_rule("CY001", "high", "python", "CWE-639"),
+            _program_rule("CY002", "high", "python", "CWE-639"),
+            _program_rule("CY003", "high", "python", "CWE-639"),
+            _program_rule("CY004", "high", "python", "CWE-639"),
+            _program_rule("CY005", "high", "python", "CWE-639"),
+            _program_rule("CY006", "critical", "python", "CWE-22"),
+            _program_rule("CY007", "high", "js", "CWE-639"),
+            _program_rule("CY008", "high", "js", "CWE-639"),
+            _program_rule("CY009", "high", "php", "CWE-639"),
+            _program_rule("CY010", "high", "php", "CWE-639"),
         ],
         "xss": [
-            {"rule": "XS001", "severity": "high", "lang": "js", "cwe": "CWE-79", "cvss_score": 6.1, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-             "title": "innerHTML assigned a dynamic value"},
-            {"rule": "XS002", "severity": "high", "lang": "js", "cwe": "CWE-79", "cvss_score": 6.1, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-             "title": "document.write with a dynamic value"},
-            {"rule": "XS003", "severity": "high", "lang": "js", "cwe": "CWE-79", "cvss_score": 6.1, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-             "title": "dangerouslySetInnerHTML fed a dynamic value"},
-            {"rule": "XS004", "severity": "critical", "lang": "js", "cwe": "CWE-95", "cvss_score": 9.8, "cvss_vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-             "title": "eval/new Function on dynamic input"},
-            {"rule": "XS005", "severity": "high", "lang": "js", "cwe": "CWE-79", "cvss_score": 6.1, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-             "title": "v-html bound to a dynamic expression"},
-            {"rule": "XS006", "severity": "high", "lang": "php", "cwe": "CWE-79", "cvss_score": 6.1, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-             "title": "PHP echo/print of superglobal input"},
-            {"rule": "XS007", "severity": "high", "lang": "python", "cwe": "CWE-79", "cvss_score": 6.1, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
-             "title": "Jinja2 |safe filter disables auto-escaping"},
-            {"rule": "XS008", "severity": "medium", "lang": "python", "cwe": "CWE-79", "cvss_score": 4.7, "cvss_vector": "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:N/A:N",
-             "title": "HTML string composed via f-string/format"},
+            _xss_rule("XS001", "high", "js", "innerHTML assigned a dynamic value",
+                       6.1, _XSS_VECTOR),
+            _xss_rule("XS002", "high", "js", "document.write with a dynamic value",
+                       6.1, _XSS_VECTOR),
+            _xss_rule("XS003", "high", "js", "dangerouslySetInnerHTML fed a dynamic value",
+                       6.1, _XSS_VECTOR),
+            _xss_rule("XS004", "critical", "js", "eval/new Function on dynamic input",
+                       9.8, _XSS_CRIT_VECTOR),
+            _xss_rule("XS005", "high", "js", "v-html bound to a dynamic expression",
+                       6.1, _XSS_VECTOR),
+            _xss_rule("XS006", "high", "php", "PHP echo/print of superglobal input",
+                       6.1, _XSS_VECTOR),
+            _xss_rule("XS007", "high", "python",
+                      "Jinja2 |safe filter disables auto-escaping", 6.1, _XSS_VECTOR),
+            _xss_rule("XS008", "medium", "python",
+                      "HTML string composed via f-string/format", 4.7, _XSS_LOW_VECTOR),
         ],
     }

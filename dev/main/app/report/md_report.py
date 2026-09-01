@@ -202,7 +202,10 @@ def _summary_table(report: dict[str, Any]) -> str:
 
     if rule_counts:
         rule_lines = ["", "| Rule | Jumlah | Severity | Kelas |", "|---|---|---|---|"]
-        for rule, info in sorted(rule_counts.items(), key=lambda x: -_SEV_ORDER.get(x[1]["severity"], 0)):
+        for rule, info in sorted(
+            rule_counts.items(),
+            key=lambda x: -_SEV_ORDER.get(x[1]["severity"], 0),
+        ):
             rule_lines.append(
                 f"| `{rule}` | {info['count']} | {info['severity'].upper()} | {info['class']} |"
             )
@@ -336,7 +339,10 @@ def _recommendations_section(recs: list[Recommendation]) -> str:
         label = rec.label
         aff   = ", ".join(f"`{_esc(a)}`" for a in rec.affected) if rec.affected else "—"
         lines += [
-            f"### {i}. {label} — `{_esc(rec.rule)}` ({rec.occurrences} temuan · {rec.severity.upper()})",
+            (
+                f"### {i}. {label} — `{_esc(rec.rule)}` "
+                f"({rec.occurrences} temuan · {rec.severity.upper()})"
+            ),
             "",
             f"> {_esc(rec.action)}",
             "",

@@ -9,7 +9,8 @@ principles as the rest of Cyense: cheap, reproducible, zero external deps.
 
 Usage:
     endpoints = parse_openapi_spec("openapi.yaml")
-    # → [{"method": "GET", "path": "/users/{userId}", "url_template": "http://api/users/{userId}", ...}, ...]
+    # → [{"method": "GET", "path": "/users/{userId}",
+    #    "url_template": "http://api/users/{userId}", ...}, ...]
 """
 
 from __future__ import annotations

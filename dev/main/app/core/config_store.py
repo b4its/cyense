@@ -86,9 +86,8 @@ def save_config(config: dict[str, Any], path: Path | None = None) -> Path:
 def set_value(key: str, value: Any, path: Path | None = None) -> dict[str, Any]:
     """Set a single key and persist; returns the updated config."""
     if key not in _DEFAULTS:
-        raise KeyError(
-            f"unknown config key: {key!r} (valid: {', '.join(sorted(k for k in _DEFAULTS if k != 'version'))})"
-        )
+        valid = ", ".join(sorted(k for k in _DEFAULTS if k != "version"))
+        raise KeyError(f"unknown config key: {key!r} (valid: {valid})")
     config = load_config(path)
     config[key] = value
     save_config(config, path)

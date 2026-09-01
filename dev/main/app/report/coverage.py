@@ -95,7 +95,10 @@ def build_coverage_document(
     }
 
 
-def _analyze_gaps(findings: list[dict[str, Any]], scope_info: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _analyze_gaps(
+    findings: list[dict[str, Any]],
+    scope_info: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
     """Analyze which rules were active but found nothing."""
 
     rule_to_finding_count = {}
