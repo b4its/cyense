@@ -241,8 +241,11 @@ class ProberAgent(BaseAgent):
         return [str(n) for n in out if n >= 0]
 
     def _load_wordlist(self) -> list[str]:
+        # wordlist_path may be str or Path (callers historically passed Path;
+        # be defensive so a str never crashes with AttributeError).
+        path = Path(self.wordlist_path)
         try:
-            lines = self.wordlist_path.read_text().splitlines()
+            lines = path.read_text().splitlines()
             return [line.strip() for line in lines if line.strip()]
         except OSError:
             return []
