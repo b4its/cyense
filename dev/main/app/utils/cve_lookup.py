@@ -219,6 +219,26 @@ def _parse_version(v: str) -> tuple[tuple[int, ...], int] | None:
     return (nums, patch)
 
 
+def _between(
+    detected: tuple[tuple[int, ...], int],
+    lo: tuple[tuple[int, ...], int],
+    hi: tuple[tuple[int, ...], int],
+) -> bool:
+    """Range check tolerant of missing patch suffixes.
+
+    A detected version without a patch digit (e.g. ``8.5`` = 8.5p0) is
+    treated as matching ANY patch of that release for the LOWER bound, so
+    ``8.5`` is inside ``8.5p1 - 9.7p1`` (OpenSSH banners may omit the patch).
+    """
+    if detected < lo:
+        # Allow equality of the numeric part when detected has no patch and
+        # the lower bound is that same release with a patch suffix.
+        if detected[1] == 0 and detected[0] == lo[0]:
+            return detected <= hi
+        return False
+    return detected <= hi
+
+
 def _version_in_affected(detected: str, affected: str) -> bool:
     """Return True if ``detected`` version falls in the ``affected`` range.
 
@@ -245,7 +265,7 @@ def _version_in_affected(detected: str, affected: str) -> bool:
         if range_m:
             lo = _parse_version(range_m.group(1))
             hi = _parse_version(range_m.group(2))
-            if lo and hi and lo <= detected_p <= hi:
+            if lo and hi and _between(detected_p, lo, hi):
                 return True
             continue
 
@@ -262,6 +282,17 @@ def _version_in_affected(detected: str, affected: str) -> bool:
         if only_m:
             exact = _parse_version(only_m.group(1))
             if exact and detected_p == exact:
+                return True
+            continue
+
+        # "X.x < Y" / "X.Y.x < Y.Z.W" — family prefix + upper bound
+        # (e.g. Joomla "3.x < 3.4.6", Django "2.2.x < 2.2.4").
+        fam_lt = re.match(r"^(\d+(?:\.\d+)*)\.x\s*<\s*(.+)$", part)
+        if fam_lt:
+            fam = tuple(int(x) for x in fam_lt.group(1).split("."))
+            bound = _parse_version(fam_lt.group(2))
+            if (bound and detected_p < bound
+                    and detected_p[0][: len(fam)] == fam):
                 return True
             continue
 

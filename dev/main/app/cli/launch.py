@@ -56,8 +56,13 @@ def is_backend_running(host: str, port: int) -> bool:
 
 
 def start_background_backend(host: str, port: int) -> subprocess.Popen | None:
-    """Start FastAPI in the background (detached). Returns the process."""
-    # Make sure the port is free first.
+    """Start FastAPI in the background (detached). Returns the process.
+
+    Callers must eventually ``proc.terminate()``/``wait()`` if the startup
+    fails, to avoid an orphaned server process.
+    """
+    # Make sure the port is free first (TOCTOU-tolerant: caller re-checks
+    # health after spawn, so a mid-boot backend is handled).
     try:
         sock = socket.socket()
         sock.bind((host, port))
@@ -67,16 +72,16 @@ def start_background_backend(host: str, port: int) -> subprocess.Popen | None:
 
     cmd = _backend_cmd(host, port)
     log_path = Path("backend.log")
-    out = open(log_path, "a", encoding="utf-8")  # noqa: SIM115 — long-lived server log
-    devnull = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
-    return subprocess.Popen(
-        cmd,
-        stdout=out,
-        stderr=subprocess.STDOUT,
-        stdin=devnull,
-        start_new_session=True,
-        cwd=str(Path.cwd()),
-    )
+    with open(log_path, "a", encoding="utf-8") as out, \
+            open(os.devnull, "w", encoding="utf-8") as devnull:
+        return subprocess.Popen(
+            cmd,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            stdin=devnull,
+            start_new_session=True,
+            cwd=str(Path.cwd()),
+        )
 
 
 def run_website_mode(host: str, port: int, *, open_browser: bool) -> int:
@@ -138,6 +143,11 @@ def run_cli_mode(host: str, port: int) -> int:
     else:
         proc = start_background_backend(host, port)
         if proc is None:
+            # Could not bind — but the backend may be mid-boot (port bound,
+            # /health not yet up). Re-check before giving up.
+            if is_backend_running(host, port):
+                print(f"  ✓ Backend FastAPI berjalan: http://{host}:{port}")
+                return 0
             print(f"  ✗ Gagal menjalankan backend (port {port} mungkin terpakai).")
             return 1
         # Wait for health.
@@ -149,6 +159,12 @@ def run_cli_mode(host: str, port: int) -> int:
                 break
             time.sleep(0.5)
         if not ok:
+            # Clean up the spawned process so it doesn't linger as an orphan.
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:  # noqa: BLE001 — best-effort cleanup
+                pass
             print("  ✗ Backend tidak merespons dalam 15 detik. Cek backend.log")
             return 1
         print(f"  ✓ Backend FastAPI dijalankan di background: http://{host}:{port}")

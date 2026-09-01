@@ -223,3 +223,35 @@ def _tech_with_version(category: str, version: str) -> dict:
         "evidence": {"category": category, "url": "http://x.test/",
                      "version": version},
     }
+
+
+def test_version_in_affected_compound_constraints() -> None:
+    """'7.x < 7.32' / '3.x < 3.4.6' / '2.2.x < 2.2.4' must parse."""
+    from app.utils.cve_lookup import _version_in_affected
+
+    assert _version_in_affected("7.31", "7.x < 7.32")
+    assert _version_in_affected("7.0", "7.x < 7.32")
+    assert not _version_in_affected("7.32", "7.x < 7.32")
+    assert not _version_in_affected("8.1", "7.x < 7.32")
+    assert _version_in_affected("3.4.5", "3.x < 3.4.6")
+    assert not _version_in_affected("3.4.6", "3.x < 3.4.6")
+    assert _version_in_affected("2.2.3", "< 2.1.12, 2.2.x < 2.2.4")
+    assert not _version_in_affected("2.2.4", "< 2.1.12, 2.2.x < 2.2.4")
+
+
+def test_version_in_affected_patch_suffix_boundary() -> None:
+    """OpenSSH 8.5 (no patch suffix) is inside '8.5p1 - 9.7p1'."""
+    from app.utils.cve_lookup import _version_in_affected
+
+    assert _version_in_affected("8.5", "8.5p1 - 9.7p1")
+    assert _version_in_affected("8.5p3", "8.5p1 - 9.7p1")
+    assert _version_in_affected("9.6p1", "8.5p1 - 9.7p1")
+    assert not _version_in_affected("9.8p1", "8.5p1 - 9.7p1")
+
+
+def test_lookup_verified_drupal_compound() -> None:
+    """Drupal 7.31 falls in '7.x < 7.32' → CVE-2014-3704 verified."""
+    cves = lookup_cves([_tech_with_version("cms:drupal", "7.31")])
+    d = next(c for c in cves if c["cve"] == "CVE-2014-3704")
+    assert d["verified"] is True
+    assert d["detected_version"] == "7.31"

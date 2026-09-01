@@ -32,8 +32,10 @@ async def list_resumable(request: Request) -> list[dict[str, object]]:
 @router.get("/scans")
 async def list_scans(request: Request) -> list[dict[str, object]]:
     store = request.app.state.store
-    return [
-        {
+    worker = request.app.state.worker
+    out: list[dict[str, object]] = []
+    for job in store.list():
+        item: dict[str, object] = {
             "scan_id": job.scan_id,
             "status": job.status.value,
             "stage": job.stage,
@@ -42,8 +44,14 @@ async def list_scans(request: Request) -> list[dict[str, object]]:
             "created_at": job.created_at,
             "finished_at": job.finished_at,
         }
-        for job in store.list()
-    ]
+        # Include summary for completed scans so the web UI / dashboard can
+        # show severity counts, CVE matched, and open ports per scan card.
+        if job.status == ScanStatus.COMPLETED:
+            report = worker.result(job.scan_id)
+            if report is not None:
+                item["summary"] = report.get("summary", {})
+        out.append(item)
+    return out
 
 
 @router.get("/scans/{scan_id}")

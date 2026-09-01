@@ -25,9 +25,16 @@ def deduplicate_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]
             unique.append(f)
             continue
 
-        # Extract line from location "path:line"
-        parts = loc.rsplit(":", 1)
-        line = int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else 0
+        # Extract line from location "path:line" — but ONLY for non-URL
+        # locations. A URL like "https://host:8080/invoice/123" would
+        # otherwise treat the port/segment digits as a line number, and two
+        # distinct URL findings (different ports / CVEs / IDs) on the same
+        # host would collapse into one.
+        if "://" in loc:
+            line = 0
+        else:
+            parts = loc.rsplit(":", 1)
+            line = int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else 0
 
         # Deterministic key
         key = (rule.lower(), loc.lower().strip("/"), line)

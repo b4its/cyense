@@ -22,10 +22,16 @@
   async function load() {
     loading = true; error = ''
     try {
-      const [r, j] = await Promise.all([api.getReport(scanId), api.getScan(scanId)])
-      report = r; job = j
-      if ((j.status === 'completed' || j.status === 'failed') && !celebrated) {
-        if (j.status === 'completed') { celebrate = true; celebrated = true }
+      job = await api.getScan(scanId)
+      // Report may 404 while a scan is still running — show progress from
+      // getScan and only fetch the report once complete.
+      if (job.status === 'completed' || job.status === 'failed') {
+        try { report = await api.getReport(scanId) } catch { report = null }
+      } else {
+        report = null
+      }
+      if (job.status === 'completed' && !celebrated) {
+        celebrate = true; celebrated = true
       }
     } catch (e) { error = String(e) }
     loading = false

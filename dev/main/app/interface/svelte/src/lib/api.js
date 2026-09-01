@@ -25,7 +25,11 @@ export const api = {
   getCoverage: (id) => req(`/scans/${id}/coverage`),
   proposeFixes: (id) => req(`/scans/${id}/fixes`, { method: 'POST', body: JSON.stringify({}) }),
   getFixes: (session) => req(`/fixes/${session}`),
-  getFixDiff: (session) => req(`/fixes/${session}/diff`),
+  getFixDiff: async (session) => {
+    const res = await fetch(`${BASE}/fixes/${session}/diff`)
+    if (!res.ok) throw new Error(res.statusText)
+    return res.text()
+  },
 }
 
 // Severity ordering + badge mapping used across views.

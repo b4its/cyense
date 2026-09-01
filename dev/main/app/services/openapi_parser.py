@@ -100,12 +100,18 @@ def _parse_text(text: str, suffix: str) -> dict[str, Any]:
     return parsed
 
 
+def _params_of(operation_or_item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the ``parameters`` list, tolerating malformed (non-list) specs."""
+    params = operation_or_item.get("parameters", [])
+    return params if isinstance(params, list) else []
+
+
 def _extract_base_url(spec: dict[str, Any]) -> str:
     """Extract the base URL from an OpenAPI/Swagger spec."""
-    # OpenAPI 3.x: servers[].url
+    # OpenAPI 3.x: servers[].url (guard against malformed types)
     servers = spec.get("servers", [])
-    if servers:
-        return servers[0].get("url", "").rstrip("/")
+    if isinstance(servers, list) and servers and isinstance(servers[0], dict):
+        return str(servers[0].get("url", "")).rstrip("/")
 
     # Swagger 2.0: host + basePath + schemes
     host = spec.get("host", "")
@@ -223,10 +229,7 @@ def parse_openapi_spec(
                         "required": p.get("required", False),
                         "schema": p.get("schema", {}),
                     }
-                    for p in (
-                        operation.get("parameters", [])
-                        + path_item.get("parameters", [])
-                    )
+                    for p in _params_of(operation) + _params_of(path_item)
                     if isinstance(p, dict)
                 ],
             })

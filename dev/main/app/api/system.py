@@ -136,6 +136,10 @@ async def rules() -> dict[str, object]:
             _program_rule("CY008", "high", "js", "CWE-639"),
             _program_rule("CY009", "high", "php", "CWE-639"),
             _program_rule("CY010", "high", "php", "CWE-639"),
+            # Deep rules (high/max levels)
+            _program_rule("CY011", "high", "python", "CWE-639"),
+            _program_rule("CY012", "high", "python", "CWE-306"),
+            _program_rule("CY013", "medium", "python", "CWE-639"),
         ],
         "xss": [
             _xss_rule("XS001", "high", "js", "innerHTML assigned a dynamic value",
@@ -154,6 +158,13 @@ async def rules() -> dict[str, object]:
                       "Jinja2 |safe filter disables auto-escaping", 6.1, _XSS_VECTOR),
             _xss_rule("XS008", "medium", "python",
                       "HTML string composed via f-string/format", 4.7, _XSS_LOW_VECTOR),
+            # Deep XSS rules (high/max levels)
+            _xss_rule("XS009", "high", "js", "document.cookie leaked to external origin",
+                      6.1, _XSS_VECTOR),
+            _xss_rule("XS010", "critical", "python", "eval/exec of user-controlled input",
+                      9.8, _XSS_CRIT_VECTOR),
+            _xss_rule("XS011", "medium", "python", "cross-file XSS via imported template",
+                      4.7, _XSS_LOW_VECTOR),
         ],
         "sqli": [
             _sqli_rule("SQLI001", "python", "cursor.execute() with dynamic SQL"),

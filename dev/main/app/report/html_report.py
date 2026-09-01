@@ -57,7 +57,7 @@ def _finding_card(index: int, finding: dict[str, Any]) -> str:
     finding_id = _esc(finding.get("finding_id", f"F{index:03d}"))
     severity = finding.get("severity", "info")
     title = _esc(finding.get("title", "(untitled)"))
-    confidence = finding.get("confidence", 0)
+    confidence = finding.get("confidence") or 0
     rule = _esc(finding.get("rule", ""))
     location = _esc(finding.get("location") or "-")
     description = _esc(finding.get("description", ""))

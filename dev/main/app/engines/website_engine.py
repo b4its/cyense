@@ -983,6 +983,10 @@ class WebsiteEngine:
 
                         # --- boolean-differential probes --------------------
                         # Send ' AND 1=1 and ' AND 1=2, compare responses.
+                        # Skip when error-based SQLi was already confirmed for
+                        # this param (one finding per vulnerability is enough).
+                        if _sqli_error_probed:
+                            continue
                         if requests_made >= _MAX_XSS_PROBE_REQUESTS:
                             return findings
                         true_qs = dict(qs)

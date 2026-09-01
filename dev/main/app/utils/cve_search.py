@@ -169,11 +169,16 @@ async def _query_nvd(
         return []
 
     out: list[dict[str, Any]] = []
-    for item in (data.get("vulnerabilities") or [])[:_MAX_RESULTS_PER_TECH]:
-        entry = _parse_nvd_cve(item)
-        if entry:
-            entry["detected_version"] = version or None
-            out.append(entry)
+    try:
+        for item in (data.get("vulnerabilities") or [])[:_MAX_RESULTS_PER_TECH]:
+            entry = _parse_nvd_cve(item)
+            if entry:
+                entry["detected_version"] = version or None
+                out.append(entry)
+    except (ValueError, TypeError, KeyError):
+        # A single malformed NVD item must never abort the whole online
+        # search (silent-fallback contract).
+        return []
     return out
 
 
@@ -195,21 +200,32 @@ async def search_cves_online(
         return []
 
     sem = asyncio.Semaphore(max_concurrency)
+    # One shared client reused across techs (connection pooling).
+    client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
 
     async def _bounded(key: str, version: str) -> list[dict[str, Any]]:
         async with sem:
             term = _NVD_SEARCH_TERMS.get(key, key.title())
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
-                return await _query_nvd(c, term, version)
+            return await _query_nvd(client, term, version)
+
+    try:
+        # Run all tech queries CONCURRENTLY (bounded by semaphore) with a
+        # global deadline so a hung upstream cannot stall the scan for
+        # N × timeout.
+        tasks = [_bounded(key, version) for key, version in versions.items()]
+        gathered = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=timeout * 2 + 5,
+        )
+    except TimeoutError:
+        return []
+    finally:
+        await client.aclose()
 
     results: list[dict[str, Any]] = []
-    for key, version in versions.items():
-        try:
-            found = await _bounded(key, version)
-        except (httpx.HTTPError, OSError):
-            found = []
-        results.extend(found)
-        await asyncio.sleep(0.1)  # be polite to the API
+    for found in gathered:
+        if isinstance(found, list):
+            results.extend(found)
 
     # De-duplicate by CVE id (first wins), then sort by severity (CVSS desc).
     seen: set[str] = set()

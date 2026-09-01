@@ -45,6 +45,16 @@ _CVSS_PROFILES: list[dict[str, Any]] = [
     {"rule": "XS008", "cwe": "CWE-79", **_cvss("N", "L", "N", "R", "C", "L", "N", "N")},
     # IDOR-LINK (dynamic)
     {"rule": "IDOR-LINK", "cwe": "CWE-639", **_cvss("N", "L", "L", "N", "U", "H", "N", "N")},
+    # Deep rules (high/max levels)
+    {"rule": "CY011", "cwe": "CWE-639", **_cvss("N", "L", "L", "N", "U", "H", "N", "N")},
+    {"rule": "CY012", "cwe": "CWE-306", **_cvss("N", "L", "L", "N", "U", "H", "N", "N")},
+    {"rule": "CY013", "cwe": "CWE-639", **_cvss("N", "L", "L", "N", "U", "L", "N", "N")},
+    {"rule": "XS009", "cwe": "CWE-79", **_cvss("N", "L", "N", "R", "C", "L", "L", "N")},
+    {"rule": "XS010", "cwe": "CWE-95", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
+    {"rule": "XS011", "cwe": "CWE-79", **_cvss("N", "L", "N", "R", "C", "L", "N", "N")},
+    # CVE-MATCH — cvss_score is promoted from evidence by enrich_finding;
+    # the profile provides cwe so SARIF isn't CWE-Unknown.
+    {"rule": "CVE-MATCH", "cwe": "CWE-1035", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
     # SQLi rules (CWE-89) — AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H → 9.8 critical
     {"rule": "SQLI001", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
     {"rule": "SQLI002", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
@@ -64,7 +74,20 @@ def get_profile(rule: str) -> dict[str, Any] | None:
 
 
 def enrich_finding(finding: dict[str, Any]) -> dict[str, Any]:
-    """Add cwe/cvss_score/cvss_vector to finding dict (in-place)."""
+    """Add cwe/cvss_score/cvss_vector to finding dict (in-place).
+
+    Also promotes a CVSS score stored in ``evidence.cvss_score`` (CVE-MATCH
+    findings) to the top level so CSV/PDF/SARIF/markdown report generators —
+    which read the top-level key — pick it up.
+    """
+    # Promote evidence.cvss_score (CVE-MATCH, PORT-OPEN etc.) when present.
+    evidence_cvss = (finding.get("evidence") or {}).get("cvss_score")
+    if evidence_cvss is not None and finding.get("cvss_score") is None:
+        try:
+            finding["cvss_score"] = float(evidence_cvss)
+        except (TypeError, ValueError):
+            pass
+
     rule = finding.get("rule", "")
     profile = get_profile(rule)
     if not profile:
@@ -79,15 +102,17 @@ def enrich_finding(finding: dict[str, Any]) -> dict[str, Any]:
         c = CVSS3(vec)
         score = c.scores()[0]
 
-        # Add fields — non-breaking: optional, backward-compatible
-        finding["cwe"] = profile["cwe"]
-        finding["cvss_score"] = round(score, 1)
-        finding["cvss_vector"] = vec
+        # Add fields — non-breaking: optional, backward-compatible.
+        # Do NOT overwrite an already-present cvss_score (e.g. CVE-MATCH's
+        # authoritative NVD score promoted from evidence).
+        finding.setdefault("cwe", profile["cwe"])
+        finding.setdefault("cvss_score", round(score, 1))
+        finding.setdefault("cvss_vector", vec)
 
     except ImportError:
         # cvss library not installed; add basic info only
-        finding["cwe"] = profile["cwe"]
-        finding["cvss_vector"] = f"CVSS:3.1/{profile['vector']}"
+        finding.setdefault("cwe", profile["cwe"])
+        finding.setdefault("cvss_vector", f"CVSS:3.1/{profile['vector']}")
 
     return finding
 

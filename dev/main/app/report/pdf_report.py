@@ -139,7 +139,7 @@ def generate_pdf_report(
             ['CVSS Score:', str(finding.get('cvss_score', 'N/A'))],
             ['CWE:', str(finding.get('cwe', 'N/A'))],
             ['Location:', str(finding.get('location', 'N/A'))],
-            ['Confidence:', f"{finding.get('confidence', 0) * 100:.0f}%"],
+            ['Confidence:', f"{(finding.get('confidence') or 0) * 100:.0f}%"],
         ]
 
         details_table = Table(details, colWidths=[1.5 * inch, 5 * inch])

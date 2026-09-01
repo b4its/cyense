@@ -40,7 +40,14 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
     """Build the correct ScanRequest subclass for a target entry."""
     config = {**common_config, **target.get("config", {})}
     # The permission gate is mandatory for every mode (422 otherwise).
-    config.setdefault("i_have_permission", True)
+    # Fail closed: do NOT auto-grant — the caller must supply explicit
+    # consent, matching every other entry point (models._permission_gate).
+    if not config.get("i_have_permission"):
+        raise ValueError(
+            "i_have_permission must be true in target/config: only scan "
+            "targets you are authorized to test"
+        )
+    config["i_have_permission"] = True
 
     ttype = str(target.get("type", "")).lower()
 

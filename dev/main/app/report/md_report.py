@@ -232,7 +232,7 @@ def _finding_section(idx: int, f: dict[str, Any]) -> str:
     rule       = _esc(f.get("rule", "—"))
     sev        = _esc(f.get("severity", "info")).upper()
     title      = _esc(f.get("title", "(untitled)"))
-    conf       = f.get("confidence", 0.0)
+    conf       = f.get("confidence") or 0.0
     desc       = _esc(f.get("description") or "")
     location   = _esc(f.get("location") or "")
     remediation = _esc(f.get("remediation") or "")
