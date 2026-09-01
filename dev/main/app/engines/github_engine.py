@@ -72,20 +72,12 @@ class GithubEngine:
         if not result.ok:
             return self._empty_report(f"resolve/fetch failed: {result.error}", started)
 
-        # Check cache hit response
-        cached = result.data.get("cached", False)
         sha = result.data.get("sha", "")
 
-        if cached and sha:
-            # Return from memory (caller provides stored report)
-            meta = {
-                "scan_id": self.scan_id,
-                "mode": "github",
-                "engine": "github-static",
-                "pipeline": ["resolve"],
-                "meta": {"repo": result.data},
-            }
-            return {"meta": meta, "summary": {}, "findings": [], "cached": True}
+        # NOTE: the fetcher no longer returns a "cached" short-circuit — the
+        # old cache-hit path returned an EMPTY findings list, which a user
+        # could misread as "repo is clean". Scans always run the analyzer;
+        # brain.set_repo_scan_meta below still records repo@sha metadata.
 
         # Extract sandbox path for analyzer
         tree_root = Path(result.data["tree_root"])

@@ -111,19 +111,14 @@ class FetcherAgent(BaseAgent):
 
             self.trajectory.step("ref_resolved", {"ref": ref})
 
-            # Brain cache check (skip if already scanned at this sha)
-            if not ctx.get("force", False) and self.brain:
-                cached_data = self.brain.get_repo_cache(owner, repo, ref, "")
-                if cached_data["hit"]:
-                    self.trajectory.step("cache_hit", {"ref": ref})
-                    # Return cached result info (sha from cache)
-                    return AgentResult(agent=self.name, ok=True, data={
-                        "cached": True,
-                        "sha": cached_data["data"].get("sha", ""),
-                        "url": url,
-                        "owner": owner,
-                        "repo": repo,
-                    })
+            # NOTE on the Brain repo cache: the old code checked
+            # ``get_repo_cache(owner, repo, ref, "")`` here, which could
+            # never hit (the stored sha is never empty), and when manually
+            # forced it would have returned a scan with ZERO findings —
+            # a false "clean" report. The cache metadata is still recorded
+            # via ``brain.set_repo_scan_meta`` after a successful scan
+            # (see github_engine), but skipping a scan based on it is not
+            # safe until previous reports themselves are cached; removed.
 
             # Get metadata first (check size before downloading)
             self.trajectory.step("get_metadata")
