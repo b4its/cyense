@@ -15,6 +15,7 @@ Safety / ethics (PRD ground rules):
 from __future__ import annotations
 
 import asyncio
+import re
 import socket
 from dataclasses import dataclass, field
 from typing import Any
@@ -94,6 +95,29 @@ class PortScanResult:
         }
 
 
+def _extract_banner_version(banner: str, port: int) -> str | None:
+    """Best-effort version extraction from a service banner.
+
+    Handles common formats:
+      * OpenSSH:  ``SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.6`` → ``9.6p1``
+      * nginx:    ``nginx/1.24.0`` → ``1.24.0``
+      * Apache:   ``Apache/2.4.57 (Ubuntu)`` → ``2.4.57``
+      * MySQL:    ``8.0.35-0ubuntu0.22.04.1`` → ``8.0.35``
+      * generic:  ``<name>/<version>`` or ``<name> <version>``
+    """
+    if not banner:
+        return None
+    # SSH banners: SSH-2.0-OpenSSH_9.6p1 ...
+    m = re.search(r"OpenSSH[_-]?([\d\.]+p?\d*)", banner)
+    if m:
+        return m.group(1)
+    # MySQL/PostgreSQL/redis: first dotted numeric token.
+    m = re.search(r"([\d]+\.\d+(?:\.\d+)*)", banner)
+    if m:
+        return m.group(1)
+    return None
+
+
 def host_from_url(url: str) -> str:
     """Extract hostname from a URL (rejects missing/invalid)."""
     parsed = urlparse(url if "://" in url else f"http://{url}")
@@ -146,6 +170,9 @@ async def _probe_one(
             banner_str = banner_text.decode("utf-8", errors="replace").strip()
             if banner_str:
                 info["banner"] = banner_str[:200]
+                version = _extract_banner_version(banner_str, port)
+                if version:
+                    info["version"] = version
         except (TimeoutError, OSError, ValueError):
             pass
 

@@ -133,3 +133,42 @@ def test_no_false_positive_plain_html() -> None:
     findings = detect_technologies("http://simple.example/", {}, body=body)
     # No false positive detection for any framework
     assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# Version extraction
+# ---------------------------------------------------------------------------
+
+def test_extract_version_from_server_header() -> None:
+    findings = detect_technologies(
+        "http://app/", {"Server": "nginx/1.24.0"}, body="",
+    )
+    nginx = [f for f in findings if f["rule"] == "DETECT-SERVER-NGINX"]
+    assert nginx and nginx[0]["evidence"].get("version") == "1.24.0"
+
+
+def test_extract_version_from_wordpress_generator() -> None:
+    body = ('<meta name="generator" content="WordPress 6.3">')
+    findings = detect_technologies("http://blog/", {}, body=body)
+    wp = [f for f in findings if f["rule"] == "DETECT-CMS-WORDPRESS"]
+    assert wp and wp[0]["evidence"].get("version") == "6.3"
+
+
+def test_extract_version_from_jquery_script() -> None:
+    body = '<script src="/static/jquery-3.4.1.min.js"></script>'
+    findings = detect_technologies("http://app/", {}, body=body)
+    jq = [f for f in findings if f["rule"] == "DETECT-LIB-JQUERY"]
+    assert jq and jq[0]["evidence"].get("version") == "3.4.1"
+
+
+def test_detect_drupal_modern_js() -> None:
+    """Drupal 8/9 emits window.drupalSettings (no dot) — must be detected."""
+    body = '<script>window.drupalSettings = {"basePath":"/"};</script>'
+    findings = detect_technologies("http://drupal/", {}, body=body)
+    assert "DETECT-CMS-DRUPAL" in _rules(findings)
+
+
+def test_detect_vue3_create_app() -> None:
+    body = "<script>Vue.createApp({}).mount('#app');</script>"
+    findings = detect_technologies("http://vue/", {}, body=body)
+    assert "DETECT-FRAMEWORK-VUE" in _rules(findings)

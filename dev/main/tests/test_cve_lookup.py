@@ -149,3 +149,64 @@ def test_cve_lookup_stage_no_triggers_for_plain_server() -> None:
     # nginx is neither XSS-prone nor IDOR-prone → scanners not force-activated
     assert xss_rel is False
     assert idor_rel is False
+
+
+# ---------------------------------------------------------------------------
+# Version-aware CVE matching
+# ---------------------------------------------------------------------------
+
+def test_version_in_affected_ranges() -> None:
+    from app.utils.cve_lookup import _version_in_affected
+
+    assert _version_in_affected("3.4.0", "< 3.5.0")
+    assert not _version_in_affected("3.5.0", "< 3.5.0")
+    assert _version_in_affected("9.6p1", "8.5p1 - 9.7p1")
+    assert not _version_in_affected("9.8p1", "8.5p1 - 9.7p1")
+    assert _version_in_affected("2.4.49", "2.4.49 only")
+    assert _version_in_affected("7.3", "7.x, 8.x")
+    assert _version_in_affected("8.1", "7.x, 8.x")
+    assert not _version_in_affected("6.2", "7.x, 8.x")
+    assert _version_in_affected("1.20.0", "0.6.18 - 1.20.0")
+    assert not _version_in_affected("1.21.0", "0.6.18 - 1.20.0")
+
+
+def test_lookup_verified_when_version_affected() -> None:
+    """nginx 1.18.0 falls in the resolver CVE range → verified match."""
+    cves = lookup_cves([_tech_with_version("server:nginx", "1.18.0")])
+    nginx_cve = next(c for c in cves if c["cve"] == "CVE-2021-23017")
+    assert nginx_cve["verified"] is True
+    assert nginx_cve["detected_version"] == "1.18.0"
+    assert nginx_cve["confidence"] == 0.9
+
+
+def test_lookup_not_verified_when_version_ok() -> None:
+    """nginx 1.24.0 is outside the affected range → stays potential."""
+    cves = lookup_cves([_tech_with_version("server:nginx", "1.24.0")])
+    nginx_cve = next(c for c in cves if c["cve"] == "CVE-2021-23017")
+    assert nginx_cve["verified"] is False
+    assert nginx_cve["confidence"] == 0.5
+
+
+def test_lookup_verified_via_ssh_banner_version() -> None:
+    """OpenSSH 9.6p1 (from banner) is in regreSSHion range → verified."""
+    cves = lookup_cves([], open_ports=[
+        {"port": 22, "service": "ssh", "version": "9.6p1"},
+    ])
+    ssh_cve = next(c for c in cves if c["cve"] == "CVE-2024-6387")
+    assert ssh_cve["verified"] is True
+    assert ssh_cve["detected_version"] == "9.6p1"
+    # OpenSSH 9.8p1 is OUTSIDE the range → not verified.
+    cves2 = lookup_cves([], open_ports=[
+        {"port": 22, "service": "ssh", "version": "9.8p1"},
+    ])
+    ssh_cve2 = next(c for c in cves2 if c["cve"] == "CVE-2024-6387")
+    assert ssh_cve2["verified"] is False
+
+
+def _tech_with_version(category: str, version: str) -> dict:
+    return {
+        "rule": "DETECT-X",
+        "severity": "info",
+        "evidence": {"category": category, "url": "http://x.test/",
+                     "version": version},
+    }

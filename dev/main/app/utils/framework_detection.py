@@ -7,7 +7,8 @@ Detects web technologies from live HTTP responses using:
   * CSS framework markers
   * CMS-specific paths and patterns
 
-Returns findings with confidence levels — read-only analysis only.
+Each finding carries an optional detected ``version`` in evidence so the CVE
+lookup can match against affected version ranges (version-aware matching).
 """
 
 from __future__ import annotations
@@ -16,84 +17,106 @@ import re
 from typing import Any
 
 # Pre-compile regexes once at import time (avoids recompiling per page).
-_HEADER_RE = {
-    "server-nginx": re.compile(r"^nginx/[\d\.]+", re.I),
-    "server-apache": re.compile(r"^Apache/[\d\.\-_ ]+", re.I),
-    "stack-express": re.compile(r"^Express$", re.I),
-    "stack-django": re.compile(r"^Django$", re.I),
-    "stack-fastapi": re.compile(r"^FastAPI$", re.I),
-    "stack-flask": re.compile(r"^Werkzeug", re.I),
-    "stack-python": re.compile(r"^Werkzeug|^Python/", re.I),
-    "stack-aspnet": re.compile(r"^Microsoft-IIS|^Kestrel", re.I),
-    "stack-tomcat": re.compile(r"^Apache.*Tomcat", re.I),
-    "stack-nodejs": re.compile(r"^Node\.?[Jj][Ss]$", re.I),
-}
 
-# Header-based detections: (suffix, header, compiled_regex, category, confidence)
-HEADER_INDICATORS: list[tuple[str, str, re.Pattern[str], str, float]] = [
-    ("SERVER-NGINX",   "server",        _HEADER_RE["server-nginx"],  "server:nginx",  0.95),
-    ("SERVER-APACHE",  "server",        _HEADER_RE["server-apache"], "server:apache", 0.95),
-    ("STACK-EXPRESS",  "x-powered-by",  _HEADER_RE["stack-express"], "stack:express", 0.9),
-    ("STACK-DJANGO",   "x-powered-by",  _HEADER_RE["stack-django"],  "stack:django",  0.9),
-    ("STACK-FASTAPI",  "x-powered-by",  _HEADER_RE["stack-fastapi"], "stack:fastapi", 0.9),
-    ("STACK-FLASK",    "server",        _HEADER_RE["stack-flask"],   "stack:flask",   0.85),
-    ("STACK-PYTHON",   "server",        _HEADER_RE["stack-python"],  "stack:python",  0.7),
-    ("STACK-ASPNET",   "server",        _HEADER_RE["stack-aspnet"],  "stack:aspnet",  0.8),
-    ("STACK-TOMCAT",   "server",        _HEADER_RE["stack-tomcat"],  "server:tomcat", 0.85),
-    ("STACK-NODEJS",   "x-powered-by",  _HEADER_RE["stack-nodejs"],  "stack:nodejs",  0.8),
+# Header-based detections: (suffix, header, regex, category, confidence)
+# Each entry also carries a version-extraction regex for the value.
+_HEADER_SPECS: list[tuple[str, str, str, str, float, str | None]] = [
+    ("SERVER-NGINX",  "server", r"^nginx(?:/([\d\.]+))?",
+     "server:nginx", 0.95, r"nginx/([\d\.]+)"),
+    ("SERVER-APACHE", "server", r"^Apache(?:/([\d\.\-_ ]+))?",
+     "server:apache", 0.95, r"Apache/([\d\.]+)"),
+    ("STACK-EXPRESS", "x-powered-by", r"^Express$",
+     "stack:express", 0.9, None),
+    ("STACK-DJANGO",  "x-powered-by", r"^Django$",
+     "stack:django", 0.9, None),
+    ("STACK-FASTAPI", "x-powered-by", r"^FastAPI$",
+     "stack:fastapi", 0.9, None),
+    ("STACK-FLASK",   "server", r"^Werkzeug",
+     "stack:flask", 0.85, r"Werkzeug/([\d\.]+)"),
+    ("STACK-PYTHON",  "server", r"^Werkzeug|^Python/",
+     "stack:python", 0.7, r"Python/([\d\.]+)"),
+    ("STACK-ASPNET",  "server", r"^Microsoft-IIS|^Kestrel",
+     "stack:aspnet", 0.8, r"(?:Microsoft-IIS|Kestrel)/([\d\.]+)"),
+    ("STACK-TOMCAT",  "server", r"^Apache.*Tomcat",
+     "server:tomcat", 0.85, r"Tomcat/([\d\.]+)"),
+    ("STACK-NODEJS",  "x-powered-by", r"^Node\.?[Jj][Ss]$",
+     "stack:nodejs", 0.8, None),
 ]
 
-# CMS patterns: (suffix, body_regex, category, confidence)
-_CMS_RE = {
-    "wordpress": re.compile(
-        r"/wp-content/|/wp-includes/|xmlrpc\.php|"
-        r'<meta[^>]*name="generator"[^>]*content="WordPress', re.I),
-    "joomla": re.compile(
-        r'/media/system/|<meta[^>]*name="generator"[^>]*content="Joomla', re.I),
-    "drupal": re.compile(r"Drupal\.settings\s*=|META.*generator.*Drupal", re.I),
-    "magento": re.compile(r"Magento_Store|skin/frontend/mage", re.I),
-    "shopify": re.compile(r"cdn\.shopify\.com|shopify_shop_url", re.I),
-    "woocommerce": re.compile(r"woocommerce-", re.I),
-}
-
-CMS_PATTERNS: list[tuple[str, re.Pattern[str], str, float]] = [
-    ("CMS-WORDPRESS",   _CMS_RE["wordpress"],   "cms:wordpress",   0.85),
-    ("CMS-JOOMLA",      _CMS_RE["joomla"],      "cms:joomla",      0.9),
-    ("CMS-DRUPAL",      _CMS_RE["drupal"],      "cms:drupal",      0.85),
-    ("CMS-MAGENTO",     _CMS_RE["magento"],     "cms:magento",     0.8),
-    ("CMS-SHOPIFY",     _CMS_RE["shopify"],     "ecommerce:shopify", 0.85),
-    ("CMS-WOOCOMMERCE", _CMS_RE["woocommerce"], "ecommerce:woocommerce", 0.75),
+HEADER_INDICATORS: list[tuple[str, str, re.Pattern[str], str, float, str | None]] = [
+    (suffix, header, re.compile(reg, re.I), cat, conf, vreg)
+    for suffix, header, reg, cat, conf, vreg in _HEADER_SPECS
 ]
 
-# JavaScript/library patterns: (suffix, body_regex, category, confidence)
-_JS_RE = {
-    "react": re.compile(
-        r"React(?:DOM)?\.createRoot|ReactDOM\.(?:render|hydrate|createPortal)"
-        r"|data-reactroot|window\.React|__reactFiber", re.I),
-    "vue": re.compile(
-        r"\bVue\b\s*(?:\.version|=|\()|__VUE__|vue(?:js)?\.(?:production|min)\.js", re.I),
-    "angular": re.compile(
-        r"ng-app|angular(?:\.module|\.bootstrap|\.version)|ng-version", re.I),
-    "nextjs": re.compile(r"__NEXT_DATA__|Next\.Script", re.I),
-    "nuxtjs": re.compile(r"__NUXT__", re.I),
-    "svelte": re.compile(r"svelte-[a-z]+|__svelte", re.I),
-    "jquery": re.compile(r"jQuery\s*\(function\(|\$\.fn\.extend|window\.jQuery", re.I),
-    "jquery-ui": re.compile(r"jquery-ui", re.I),
-    "bootstrap": re.compile(r"bootstrap(-[0-9]+)?\.(min\.)?css|bootstrap\.bundle", re.I),
-    "tailwind": re.compile(r"tailwindcss|tw-elements", re.I),
-}
+# CMS patterns: (suffix, regex, category, confidence, version_regex)
+CMS_PATTERNS: list[tuple[str, re.Pattern[str], str, float, str | None]] = [
+    ("CMS-WORDPRESS",
+     re.compile(r"/wp-content/|/wp-includes/|xmlrpc\.php|"
+                r'<meta[^>]*name="generator"[^>]*content="WordPress', re.I),
+     "cms:wordpress", 0.85, r'WordPress\s+([\d\.]+)'),
+    ("CMS-JOOMLA",
+     re.compile(r'/media/system/|<meta[^>]*name="generator"[^>]*'
+                r'content="Joomla', re.I),
+     "cms:joomla", 0.9, r'Joomla!?\s+([\d\.]+)'),
+    ("CMS-DRUPAL",
+     re.compile(r"Drupal\.settings\s*=|window\.drupalSettings\s*="
+                r"|META.*generator.*Drupal", re.I),
+     "cms:drupal", 0.85, r'Drupal\s+([\d\.]+)'),
+    ("CMS-MAGENTO",
+     re.compile(r"Magento_Store|skin/frontend/mage", re.I),
+     "cms:magento", 0.8, None),
+    ("CMS-SHOPIFY",
+     re.compile(r"cdn\.shopify\.com|shopify_shop_url", re.I),
+     "ecommerce:shopify", 0.85, None),
+    ("CMS-WOOCOMMERCE",
+     re.compile(r"woocommerce-", re.I),
+     "ecommerce:woocommerce", 0.75, None),
+    ("FRAMEWORK-LARAVEL",
+     re.compile(r"laravel_session|csrf-token[^>]*content=[\"']|[<]meta[^>]*name=[\"']csrf", re.I),
+     "stack:laravel", 0.8, None),
+    ("FRAMEWORK-RAILS",
+     re.compile(r'<meta[^>]*name="csrf-param"|rails-\d+\.\d+|data-remote=', re.I),
+     "stack:rails", 0.75, None),
+    ("STACK-DJANGO",
+     re.compile(r"csrftoken=|django\.middleware|__admin__", re.I),
+     "stack:django", 0.7, None),
+]
 
-JS_PATTERNS: list[tuple[str, re.Pattern[str], str, float]] = [
-    ("FRAMEWORK-REACT",   _JS_RE["react"],     "framework:react",   0.9),
-    ("FRAMEWORK-VUE",     _JS_RE["vue"],       "framework:vue",     0.85),
-    ("FRAMEWORK-ANGULAR", _JS_RE["angular"],   "framework:angular", 0.85),
-    ("FRAMEWORK-NEXTJS",  _JS_RE["nextjs"],    "framework:nextjs",  0.8),
-    ("FRAMEWORK-NUXTJS",  _JS_RE["nuxtjs"],    "framework:nuxtjs",  0.8),
-    ("FRAMEWORK-SVELTE",  _JS_RE["svelte"],    "framework:svelte",  0.7),
-    ("LIB-JQUERY",        _JS_RE["jquery"],    "lib:jquery",        0.85),
-    ("LIB-JQUERY-UI",     _JS_RE["jquery-ui"], "lib:jquery-ui",     0.7),
-    ("LIB-BOOTSTRAP",     _JS_RE["bootstrap"], "framework:bootstrap", 0.8),
-    ("LIB-TAILWIND",      _JS_RE["tailwind"],  "framework:tailwind", 0.7),
+# JavaScript/library patterns: (suffix, regex, category, confidence, version_regex)
+JS_PATTERNS: list[tuple[str, re.Pattern[str], str, float, str | None]] = [
+    ("FRAMEWORK-REACT",
+     re.compile(r"React(?:DOM)?\.createRoot|ReactDOM\.(?:render|hydrate|createPortal)"
+                r"|data-reactroot|window\.React|__reactFiber", re.I),
+     "framework:react", 0.9, None),
+    ("FRAMEWORK-VUE",
+     re.compile(r"\bVue\b\s*(?:\.version|=|\()|__VUE__|Vue\.createApp"
+                r"|vue(?:js)?\.(?:production|min)\.js", re.I),
+     "framework:vue", 0.85, r'Vue\.version\s*=\s*["\']([\d\.]+)["\']'),
+    ("FRAMEWORK-ANGULAR",
+     re.compile(r"ng-app|angular(?:\.module|\.bootstrap|\.version)|ng-version", re.I),
+     "framework:angular", 0.85, r'angular\.version\s*=\s*["\']([\d\.]+)["\']'),
+    ("FRAMEWORK-NEXTJS",
+     re.compile(r"__NEXT_DATA__|Next\.Script", re.I),
+     "framework:nextjs", 0.8, None),
+    ("FRAMEWORK-NUXTJS",
+     re.compile(r"__NUXT__", re.I),
+     "framework:nuxtjs", 0.8, None),
+    ("FRAMEWORK-SVELTE",
+     re.compile(r"svelte-[a-z]+|__svelte", re.I),
+     "framework:svelte", 0.7, None),
+    ("LIB-JQUERY",
+     re.compile(r"jQuery\s*\(function\(|\$\.fn\.extend|window\.jQuery"
+                r"|jquery(?:-[\d\.]+)?(?:\.min)?\.js", re.I),
+     "lib:jquery", 0.85, r"jquery[.-]([\d\.]+)(?:\.min)?\.js"),
+    ("LIB-JQUERY-UI",
+     re.compile(r"jquery-ui", re.I),
+     "lib:jquery-ui", 0.7, r"jquery-ui[.-]([\d\.]+)"),
+    ("LIB-BOOTSTRAP",
+     re.compile(r"bootstrap(-[0-9]+)?\.(min\.)?css|bootstrap\.bundle", re.I),
+     "framework:bootstrap", 0.8, r"bootstrap-?([\d\.]+)"),
+    ("LIB-TAILWIND",
+     re.compile(r"tailwindcss|tw-elements", re.I),
+     "framework:tailwind", 0.7, None),
 ]
 
 # Meta generator tags
@@ -110,6 +133,14 @@ def _search(pattern: re.Pattern[str] | str, text: str) -> re.Match | None:
     return re.search(pattern, text, re.I | re.S)
 
 
+def _extract_version(text: str, version_regex: str | None) -> str | None:
+    """Extract a version string from header/body text using a version regex."""
+    if not version_regex or not text:
+        return None
+    m = re.search(version_regex, text)
+    return m.group(1) if m else None
+
+
 def detect_technologies(
     url: str,
     headers: dict[str, str],
@@ -117,53 +148,77 @@ def detect_technologies(
 ) -> list[dict[str, Any]]:
     """Analyze one page's response for technology/fingerprint signals.
 
-    Returns findings with rule IDs DETECT-*.
+    Returns findings with rule IDs DETECT-*, each carrying an optional
+    ``evidence.version`` when a version could be extracted.
     """
     findings: list[dict[str, Any]] = []
     headers_lc = {k.lower(): v for k, v in headers.items()}
 
-    # --- 1. HTTP Headers ---
-    for suffix, header_name, value_regex, category, confidence in HEADER_INDICATORS:
+    # --- 1. HTTP Headers (with version extraction) ---
+    for suffix, header_name, regex, category, confidence, vreg in HEADER_INDICATORS:
         value = headers_lc.get(header_name)
-        if value and _search(value_regex, value):
+        if value and _search(regex, value):
+            version = _extract_version(value, vreg)
             cat_name = category.split(":")[-1]
             title = f"{cat_name.capitalize()} detected via HTTP header"
+            evidence: dict[str, Any] = {
+                "header": header_name, "value": value[:120],
+                "category": category, "url": url,
+            }
+            if version:
+                evidence["version"] = version
             findings.append(_finding(
                 rule=f"DETECT-{suffix}",
                 confidence=confidence,
                 title=title,
-                description=f"HTTP {header_name!r} contains {category} fingerprint.",
-                evidence={"header": header_name, "value": value[:120],
-                         "category": category, "url": url},
+                description=(
+                    f"HTTP {header_name!r} contains {category} fingerprint"
+                    + (f" (version {version})" if version else "") + "."
+                ),
+                evidence=evidence,
                 remediation="Obfuscate version headers to reduce disclosure.",
             ))
 
     if not body:
         return findings
 
-    # --- 2. CMS patterns ---
-    for suffix, pattern, category, confidence in CMS_PATTERNS:
+    # --- 2. CMS / backend patterns (with version extraction) ---
+    for suffix, pattern, category, confidence, vreg in CMS_PATTERNS:
         if _search(pattern, body):
+            version = _extract_version(body, vreg)
             cat_name = category.split(":")[-1]
+            evidence: dict[str, Any] = {"category": category, "url": url}
+            if version:
+                evidence["version"] = version
             findings.append(_finding(
                 rule=f"DETECT-{suffix}",
                 confidence=min(confidence + 0.1, 1.0),
-                title=f"CMS detected: {cat_name}",
-                description=f"Page fingerprint matches {cat_name}.",
-                evidence={"category": category, "url": url},
-                remediation="Patch CMS and harden per security guides.",
+                title=f"CMS/framework detected: {cat_name}",
+                description=(
+                    f"Page fingerprint matches {cat_name}"
+                    + (f" (version {version})" if version else "") + "."
+                ),
+                evidence=evidence,
+                remediation="Patch the component and harden per security guides.",
             ))
 
-    # --- 3. JavaScript/library patterns ---
-    for suffix, pattern, category, confidence in JS_PATTERNS:
+    # --- 3. JavaScript/library patterns (with version extraction) ---
+    for suffix, pattern, category, confidence, vreg in JS_PATTERNS:
         if _search(pattern, body):
+            version = _extract_version(body, vreg)
             cat_name = category.split(":")[-1]
+            evidence: dict[str, Any] = {"category": category, "url": url}
+            if version:
+                evidence["version"] = version
             findings.append(_finding(
                 rule=f"DETECT-{suffix}",
                 confidence=min(confidence + 0.05, 0.95),
                 title=f"JavaScript technology: {cat_name}",
-                description=f"Page includes {cat_name}.",
-                evidence={"category": category, "url": url},
+                description=(
+                    f"Page includes {cat_name}"
+                    + (f" (version {version})" if version else "") + "."
+                ),
+                evidence=evidence,
                 remediation="Review library versions for known CVEs.",
             ))
 

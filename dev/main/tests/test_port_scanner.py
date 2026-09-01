@@ -155,3 +155,13 @@ def test_port_scan_findings_no_ports() -> None:
     scan = PortScanResult(host="example.com", open_ports=[], scanned=50)
     findings = WebsiteEngine._port_scan_findings(scan, "https://example.com/")
     assert findings == []
+
+
+def test_extract_banner_version() -> None:
+    from app.utils.port_scanner import _extract_banner_version
+
+    assert _extract_banner_version("SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu", 22) == "9.6p1"
+    assert _extract_banner_version("nginx/1.24.0", 80) == "1.24.0"
+    assert _extract_banner_version("8.0.35-0ubuntu0.22.04", 3306) == "8.0.35"
+    assert _extract_banner_version("220 (vsFTPd 3.0.3)", 21) == "3.0.3"
+    assert _extract_banner_version("", 22) is None

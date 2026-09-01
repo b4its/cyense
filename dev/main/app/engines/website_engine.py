@@ -331,11 +331,25 @@ class WebsiteEngine:
         cves = lookup_cves(tech_findings, open_ports)
         cve_findings: list[dict[str, Any]] = []
         for i, cve in enumerate(cves, start=1):
-            # Version-blind matches are potential, not confirmed: reduce
-            # confidence and phrase the severity accordingly.
+            # Version-aware: a match whose detected version falls in the
+            # affected range is CONFIRMED (full severity + confidence);
+            # otherwise it stays potential (medium, reduced confidence).
             verified = cve.get("verified", False)
-            confidence = 0.9 if verified else 0.5
+            confidence = cve.get("confidence", 0.9 if verified else 0.5)
             severity = cve.get("severity", "medium") if verified else "medium"
+            detected_version = cve.get("detected_version")
+            description = (
+                f"{cve['cve']}: {cve['description']} "
+                f"(affects {cve['component']} {cve['affected']})."
+            )
+            if detected_version:
+                description += (
+                    f" Detected version {detected_version} "
+                    + ("IS in the affected range (confirmed)."
+                       if verified else "could not be confirmed — verify.")
+                )
+            elif not verified:
+                description += " Version not confirmed — treat as potential."
             cve_findings.append({
                 "finding_id": f"{scan_id}-WCVE{i:03d}",
                 "rule": "CVE-MATCH",
@@ -343,17 +357,13 @@ class WebsiteEngine:
                 "confidence": confidence,
                 "cwe": "CWE-1035",  # "using components with known vulnerabilities"
                 "title": f"{cve['cve']} — {cve['title']}",
-                "description": (
-                    f"{cve['cve']}: {cve['description']} "
-                    f"(affects {cve['component']} {cve['affected']})."
-                    + ("" if verified else " Version not confirmed — "
-                        "treat as potential, verify the deployed version.")
-                ),
+                "description": description,
                 "evidence": {
                     "cve": cve["cve"],
                     "component": cve["component"],
                     "affected": cve["affected"],
                     "verified": verified,
+                    "detected_version": detected_version,
                     "type": cve.get("type", "other"),
                     "ref": cve["ref"],
                     "url": url,

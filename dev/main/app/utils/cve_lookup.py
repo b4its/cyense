@@ -24,6 +24,7 @@ Workflow (as designed):
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -208,6 +209,78 @@ IDOR_PRONE_TECHNOLOGIES = {
 }
 
 
+def _parse_version(v: str) -> tuple[tuple[int, ...], int] | None:
+    """Parse "9.6p1" → ((9,6), 1); "1.24.0" → ((1,24,0), 0). Returns None."""
+    m = re.match(r"(\d+(?:\.\d+)*)(?:p(\d+))?", v.strip())
+    if not m:
+        return None
+    nums = tuple(int(x) for x in m.group(1).split("."))
+    patch = int(m.group(2) or 0)
+    return (nums, patch)
+
+
+def _version_in_affected(detected: str, affected: str) -> bool:
+    """Return True if ``detected`` version falls in the ``affected`` range.
+
+    Handles the free-form constraints used by the curated database:
+      * ``"< 3.5.0"`` / ``"< 5.0.1"`` → detected < bound
+      * ``"8.5p1 - 9.7p1"`` / ``"0.6.18 - 1.20.0"`` → between
+      * ``"2.4.49 only"`` → equals
+      * ``"5.1.x, 5.5.x, 5.6.x"`` / ``"7.x, 8.x"`` → major family match
+      * ``"3.7.0"`` → equals
+    Unknown/non-version constraints (e.g. "Debian/Ubuntu builds") return
+    False — we cannot confirm, so the CVE stays "potential".
+    """
+    detected_p = _parse_version(detected)
+    if detected_p is None:
+        return False
+
+    for part in affected.split(","):
+        part = part.strip()
+        if not part:
+            continue
+
+        # Range: "A - B"
+        range_m = re.match(r"^(.+?)\s*-\s*(.+?)$", part)
+        if range_m:
+            lo = _parse_version(range_m.group(1))
+            hi = _parse_version(range_m.group(2))
+            if lo and hi and lo <= detected_p <= hi:
+                return True
+            continue
+
+        # "< X"
+        lt_m = re.match(r"^<\s*(.+)$", part)
+        if lt_m:
+            bound = _parse_version(lt_m.group(1))
+            if bound and detected_p < bound:
+                return True
+            continue
+
+        # "X only"
+        only_m = re.match(r"^(.+?)\s+only$", part)
+        if only_m:
+            exact = _parse_version(only_m.group(1))
+            if exact and detected_p == exact:
+                return True
+            continue
+
+        # "X.x" / "5.1.x, ..." family match (e.g. "7.x", "5.1.x")
+        family_m = re.match(r"^(\d+(?:\.\d+)*)(?:\.x)?$", part)
+        if family_m:
+            fam = tuple(int(x) for x in family_m.group(1).split("."))
+            if detected_p[0][: len(fam)] == fam:
+                return True
+            continue
+
+        # bare version "3.7.0" → equality
+        exact = _parse_version(part)
+        if exact and detected_p == exact:
+            return True
+
+    return False
+
+
 def _tech_keys(
     technologies: list[dict[str, Any]] | None,
     open_ports: list[dict[str, Any]] | None,
@@ -232,24 +305,56 @@ def lookup_cves(
 ) -> list[dict[str, Any]]:
     """Return CVEs matching detected technologies / open-port services.
 
-    Version-dependent CVEs are matched on technology key only (we rarely
-    have a reliable version), but flagged ``verified=False`` so callers can
-    reduce confidence / severity. A host with an open SSH port yields
-    "potential" OpenSSH CVEs — not unconditional criticals.
+    Version-aware: when a technology/port carries a detected ``version``
+    (from framework_detection evidence or a port banner), the CVE is only
+    ``verified=True`` (full severity/confidence) if the version falls in the
+    affected range. Without a version, the match stays ``verified=False``
+    (potential, medium severity, reduced confidence) — a host with an open
+    SSH port is never reported as a confirmed regreSSHion.
     """
-    keys = _tech_keys(technologies, open_ports)
+    # Collect technology key → detected version (if any).
+    tech_versions: dict[str, str] = {}
+    for tech in technologies or []:
+        category = (tech.get("evidence") or {}).get("category", "")
+        key = category.split(":")[-1].lower()
+        if not key:
+            continue
+        version = (tech.get("evidence") or {}).get("version")
+        # First detection wins; later detections only fill a missing version.
+        if key not in tech_versions and isinstance(version, str) and version:
+            tech_versions[key] = version
+
+    port_versions: dict[str, str] = {}
+    for port in open_ports or []:
+        service = (port.get("service") or "").lower()
+        if not service:
+            continue
+        version = port.get("version")
+        if service not in port_versions and isinstance(version, str) and version:
+            port_versions[service] = version
+
+    keys = set(tech_versions) | set(port_versions) | _tech_keys(technologies, open_ports)
     if not keys:
         return []
 
     matched: list[dict[str, Any]] = []
     for cve in CVE_DATABASE:
-        if cve["technology"] in keys:
-            entry = dict(cve)
-            # Version-blind match: without a version we cannot confirm the
-            # affected range — mark as potential.
+        if cve["technology"] not in keys:
+            continue
+        entry = dict(cve)
+        version = tech_versions.get(cve["technology"]) or port_versions.get(
+            cve["technology"]
+        )
+        if version and _version_in_affected(version, cve["affected"]):
+            entry["verified"] = True
+            entry["confidence"] = 0.9
+            entry["detected_version"] = version
+        else:
             entry["verified"] = False
             entry["confidence"] = 0.5
-            matched.append(entry)
+            if version:
+                entry["detected_version"] = version
+        matched.append(entry)
     return matched
 
 
