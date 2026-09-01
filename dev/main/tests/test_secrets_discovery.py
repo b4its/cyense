@@ -241,3 +241,88 @@ def test_common_dir_and_admin_paths() -> None:
     assert any(p == "/phpmyadmin" for p, _, _ in ADMIN_PATHS)
     assert any(p == "/wp-json/wp/v2/users" for p, _, _ in WP_PATHS)
     assert "/login" in COMMON_DIR_PATHS
+
+
+# ---------------------------------------------------------------------------
+# Route discovery (robots.txt / sitemap / OpenAPI / classification)
+# ---------------------------------------------------------------------------
+
+def test_parse_robots_paths() -> None:
+    from app.utils.route_discovery import parse_robots_paths
+
+    body = (
+        "User-agent: *\n"
+        "Disallow: /admin\n"
+        "Disallow: /private\n"
+        "Allow: /public\n"
+        "Disallow: /\n"
+    )
+    paths = parse_robots_paths(body)
+    assert "/admin" in paths
+    assert "/private" in paths
+    assert "/public" in paths
+    assert "/" not in paths  # root allow-all is skipped
+
+
+def test_parse_sitemap_urls() -> None:
+    from app.utils.route_discovery import parse_sitemap_urls
+
+    body = (
+        "<urlset><url><loc>https://x.test/page1</loc></url>"
+        "<url><loc>https://x.test/deep/page2</loc></url></urlset>"
+    )
+    urls = parse_sitemap_urls(body)
+    assert "https://x.test/page1" in urls
+    assert "https://x.test/deep/page2" in urls
+
+
+def test_extract_paths_from_urls_same_domain() -> None:
+    from app.utils.route_discovery import extract_paths_from_urls
+
+    paths = extract_paths_from_urls(
+        ["https://x.test/a", "https://x.test/b?x=1", "https://evil.test/c"],
+        "x.test",
+    )
+    assert "/a" in paths
+    assert "/b?x=1" in paths
+    assert "/c" not in paths  # off-domain filtered
+
+
+def test_classify_route() -> None:
+    from app.utils.route_discovery import classify_route
+
+    assert classify_route("/admin/users") == "sensitive"
+    assert classify_route("/internal/health") == "sensitive"
+    assert classify_route("/api/v1/users") == "api"
+    assert classify_route("/graphql") == "sensitive"
+    assert classify_route("/about") == "page"
+
+
+def test_discover_routes_robots_and_openapi(monkeypatch) -> None:
+    import asyncio
+
+    from app.utils.route_discovery import discover_routes
+
+    async def _get(url: str, extra_headers=None):
+        if url.endswith("/robots.txt"):
+            return 200, "Disallow: /admin\nDisallow: /console"
+        if url.endswith("/openapi.json"):
+            return 200, '{"paths": {"/api/users": {}, "/api/orders": {}}}'
+        return 404, ""
+
+    result = asyncio.run(
+        discover_routes("http://x.test/", _get, extra_paths=["/crawled-page"])
+    )
+    paths = {r["path"] for r in result["routes"]}
+    assert "/admin" in paths
+    assert "/console" in paths
+    assert "/api/users" in paths
+    assert "/api/orders" in paths
+    assert "/crawled-page" in paths
+    # classification
+    by_path = {r["path"]: r for r in result["routes"]}
+    assert by_path["/admin"]["classification"] == "sensitive"
+    assert by_path["/api/users"]["classification"] == "api"
+    assert by_path["/crawled-page"]["classification"] == "page"
+    assert by_path["/admin"]["source"] == "robots.txt"
+    assert by_path["/api/users"]["source"] == "/openapi.json"

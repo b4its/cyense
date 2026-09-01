@@ -703,6 +703,29 @@ def render_discovery_table(
             console.print(f"  [{p.blue_mist}]▸[/] {ev.get('path','?')}")
         console.print()
 
+    # Routes (routing enumeration)
+    routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
+    api_routes = [f for f in findings if f.get("rule") == "API-ROUTE"]
+    if routes_f or api_routes:
+        console.print(f"  [bold {p.blue_soft}]ROUTING / ENDPOINTS[/]")
+        for f in routes_f:
+            routes_list = (f.get("evidence") or {}).get("routes", [])
+            console.print(
+                f"  [{p.blue_mist}]▸[/] {len(routes_list)} route ditemukan "
+                f"(robots/sitemap/openapi/crawl/JS/wayback):"
+            )
+            shown = [r.get("path", "?") for r in routes_list[:14]]
+            console.print("  " + "  ".join(f"[{p.blue_mist}]{pth}[/]" for pth in shown))
+            if len(routes_list) > 14:
+                console.print(f"  [{p.muted}]  … dan {len(routes_list) - 14} lainnya[/]")
+        for f in api_routes:
+            ev = f.get("evidence", {})
+            console.print(
+                f"  [{p.sev_high}]▸[/] route sensitif: {ev.get('path','?')} "
+                f"[{p.muted}]({ev.get('source','?')})[/]"
+            )
+        console.print()
+
     # JS URLs / wayback / vhost / hidden params
     misc_rows = []
     if js:

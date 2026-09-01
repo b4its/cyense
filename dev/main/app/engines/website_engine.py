@@ -313,6 +313,10 @@ class WebsiteEngine:
             "exposed_files": sum(
                 1 for f in discovery_findings if f.get("rule") == "EXPOSED-FILE"
             ),
+            "routes_discovered": sum(
+                (f.get("evidence") or {}).get("count", 0)
+                for f in discovery_findings if f.get("rule") == "DISC-ROUTE"
+            ),
             "xss_scan_activated": has_html and (xss_relevant or _pages_have_query_params(pages)),
             "idor_scan_activated": bool(id_endpoints),
             "domain": domain,
@@ -962,6 +966,99 @@ class WebsiteEngine:
                     "evidence": {"url": _urljoin(url.rstrip('/') + '/', 'graphql')},
                     "remediation": (
                         "Nonaktifkan introspection di production."
+                    ),
+                    "location": url,
+                })
+
+        # 14. Route discovery — comprehensive routing enumeration
+        # (robots.txt + sitemap + OpenAPI + crawl/JS/Wayback corpus).
+        from app.utils.route_discovery import discover_routes
+        try:
+            # Reuse the client2 getter when available; sections 7-10 close
+            # it, so probe with a fresh short-lived client here.
+            async with HttpClient(
+                timeout=self.settings.request_timeout,
+                headers=headers,
+                cookies=cookies,
+                rate_limit=rate,
+                max_concurrency=int(getattr(self.settings, "max_concurrency", 10)),
+            ) as route_client:
+
+                async def _get_route(u: str, extra_headers=None):
+                    resp = await route_client.get(u)
+                    return resp.status, resp.body
+
+                # Combine the crawled/JS/wayback corpora into extra_paths —
+                # normalize through extract_paths_from_urls with the target
+                # hostname so off-domain wayback noise never pollutes routes.
+                from urllib.parse import urlparse as _urlparse
+
+                from app.utils.route_discovery import extract_paths_from_urls
+
+                corpus_urls: list[str] = []
+                for page in pages:
+                    corpus_urls.append(page.get("url", "") or "")
+                for u in js_urls:
+                    corpus_urls.append(u)
+                for wb in wb_urls[:30]:
+                    corpus_urls.append(wb)
+                target_host = _urlparse(url).hostname or ""
+                extra_paths = extract_paths_from_urls(corpus_urls, target_host)
+
+                route_result = await discover_routes(
+                    url, _get_route, extra_paths=extra_paths,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("route discovery failed: %s", exc)
+            route_result = {"routes": [], "count": 0}
+
+        route_list = route_result.get("routes", [])
+        if route_list:
+            findings.append({
+                "rule": "DISC-ROUTE",
+                "severity": "info",
+                "confidence": 0.65,
+                "cwe": "CWE-200",
+                "title": f"{len(route_list)} route/endpoint ditemukan",
+                "description": (
+                    "Permukaan routing target (adaptasi Kiterunner/gau): "
+                    + ", ".join(r["path"] for r in route_list[:12])
+                ),
+                "evidence": {
+                    "routes": [
+                        {"path": r["path"], "source": r["source"],
+                         "classification": r["classification"]}
+                        for r in route_list[:50]
+                    ],
+                    "count": len(route_list),
+                    "url": url,
+                },
+                "remediation": (
+                    "Audit seluruh route; pastikan auth pada jalur admin/api "
+                    "dan hapus endpoint yang tidak perlu publik."
+                ),
+                "location": url,
+            })
+            # Sensitive routes get their own elevated finding.
+            sensitive_routes = [
+                r for r in route_list if r["classification"] == "sensitive"
+            ]
+            for sr in sensitive_routes[:5]:
+                findings.append({
+                    "rule": "API-ROUTE",
+                    "severity": "medium",
+                    "confidence": 0.55,
+                    "cwe": "CWE-200",
+                    "title": f"Route sensitif ditemukan: {sr['path']}",
+                    "description": (
+                        f"Path {sr['path']} terlihat sensitif (sumber: "
+                        f"{sr['source']}) — periksa akses dan autentikasi."
+                    ),
+                    "evidence": {"path": sr["path"], "source": sr["source"],
+                                 "url": url},
+                    "remediation": (
+                        "Batasi akses ke route sensitif (auth/allowlist); "
+                        "hapus jika tidak diperlukan."
                     ),
                     "location": url,
                 })

@@ -215,6 +215,8 @@ async def rules() -> dict[str, object]:
             _detect_rule("WP-EXPOSED", "WordPress surface exposed (Wpscan-style)"),
             _detect_rule("SSRF-SINK", "SSRF-sink parameter detected (passive)"),
             _detect_rule("GRAPHQL-INTROSPECTION", "GraphQL introspection enabled"),
+            _detect_rule("DISC-ROUTE", "Route/endpoint discovered (routing enumeration)"),
+            _detect_rule("API-ROUTE", "Sensitive route discovered"),
         ],
         "domain": [
             _detect_rule(
