@@ -83,6 +83,18 @@ def _port_rule(rule: str, title: str) -> dict[str, object]:
     }
 
 
+def _cve_rule(rule: str, title: str) -> dict[str, object]:
+    return {
+        "rule": rule,
+        "severity": "high",
+        "lang": "all",
+        "cwe": "CWE-1035",
+        "cvss_score": 7.5,
+        "cvss_vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        "title": title,
+    }
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -171,5 +183,8 @@ async def rules() -> dict[str, object]:
         "port_scan": [
             _port_rule("PORT-OPEN", "Open TCP port detected (nmap-style connect)"),
             _port_rule("PORT-SCAN-SUMMARY", "Summary of open ports on target host"),
+        ],
+        "cve_lookup": [
+            _cve_rule("CVE-MATCH", "Known CVE matched to detected technology"),
         ],
     }

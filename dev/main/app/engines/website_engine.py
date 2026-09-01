@@ -22,6 +22,13 @@ from typing import Any
 from app.agents.crawler import CrawlerAgent
 from app.engines.live_sqli import SQLI_PAYLOADS, detect_sql_errors, is_boolean_differential
 from app.engines.live_xss import analyze_page_xss
+from app.utils.cve_lookup import (
+    cves_trigger_idor,
+    cves_trigger_xss,
+    lookup_cves,
+    techs_trigger_idor,
+    techs_trigger_xss,
+)
 from app.utils.framework_detection import detect_technologies
 from app.utils.http_client import HttpClient
 from app.utils.logger import get_logger
@@ -112,7 +119,57 @@ class WebsiteEngine:
         domain = crawl_result.data.get("domain", "")
 
         # ------------------------------------------------------------------
-        # Stage 2: IDOR probing on discovered ID-bearing endpoints
+        # Stage 2: Technology/Framework Detection
+        # ------------------------------------------------------------------
+        await self._notify("analyze")
+        tech_findings: list[dict[str, Any]] = []
+        for page in pages:
+            header_dict = dict(page.get("headers", {}))
+            page_technologies = detect_technologies(
+                url=page.get("url", ""),
+                headers=header_dict,
+                body=page.get("body"),
+            )
+            for k, f in enumerate(page_technologies, start=len(tech_findings) + 1):
+                f["finding_id"] = f"{self.scan_id}-WTECH{k:03d}"
+                tech_findings.append(f)
+
+        # ------------------------------------------------------------------
+        # Stage 2b: Open port scan (nmap-style TCP connect) on the target host
+        # ------------------------------------------------------------------
+        port_findings: list[dict[str, Any]] = []
+        open_ports_data: list[dict[str, Any]] = []
+        try:
+            target_host = host_from_url(url)
+            port_scan = await scan_ports(
+                target_host,
+                timeout=float(getattr(self.settings, "port_scan_timeout", 1.5)),
+                max_concurrency=int(getattr(self.settings, "port_scan_concurrency", 50)),
+                banner=True,
+            )
+            open_ports_data = port_scan.open_ports
+            port_findings = self._port_scan_findings(port_scan, url)
+            for k, f in enumerate(port_findings, start=len(port_findings)):
+                f["finding_id"] = f"{self.scan_id}-PPORT{k:03d}"
+        except Exception as exc:  # noqa: BLE001 — port scan must never fail scan
+            log.warning("port scan failed for %s: %s", url, exc)
+
+        # ------------------------------------------------------------------
+        # Stage 2c: CVE lookup — match detected tech + open ports to known CVEs,
+        # and decide whether to activate the XSS / IDOR scanners.
+        # ------------------------------------------------------------------
+        await self._notify("cve")
+        cve_findings, xss_relevant, idor_relevant = self._cve_lookup_stage(
+            tech_findings, open_ports_data, url,
+        )
+        log.info(
+            "cve stage: %d tech, %d ports → %d CVEs; xss_relevant=%s idor_relevant=%s",
+            len(tech_findings), len(open_ports_data), len(cve_findings),
+            xss_relevant, idor_relevant,
+        )
+
+        # ------------------------------------------------------------------
+        # Stage 3: IDOR probing (active, gated on endpoints or IDOR signals)
         # ------------------------------------------------------------------
         await self._notify("probe")
         idor_findings: list[dict[str, Any]] = []
@@ -146,13 +203,14 @@ class WebsiteEngine:
                 "location": ep["url"],
             })
 
-        # Optional active probing via Prober + Verifier (best-effort). If it
-        # fails (no credentials, weird endpoint shape, etc.) we keep the
-        # discovery-only findings without failing the whole scan.
+        # Active probing via Prober + Verifier — only when there are ID-bearing
+        # endpoints to probe, or a detected technology / CVE points to an IDOR
+        # surface (e.g. WordPress, Drupal, Django with an IDOR CVE).
         probed: list[dict[str, Any]] = []
-        if id_endpoints:
+        if id_endpoints or idor_relevant:
             probed = await self._probe_id_endpoints(
-                id_endpoints[:_MAX_PROBED_ENDPOINTS],
+                id_endpoints[:_MAX_PROBED_ENDPOINTS] if id_endpoints else
+                await self._discover_id_endpoints(pages, url),
                 headers=headers,
                 cookies=cookies,
             )
@@ -163,39 +221,12 @@ class WebsiteEngine:
                 idor_findings.append(f)
 
         # ------------------------------------------------------------------
-        # Stage 3: Technology/Framework Detection + XSS analysis
+        # Stage 4: XSS analysis — passive always; active probes gated on
+        # XSS-prone technology / XSS CVE signal.
         # ------------------------------------------------------------------
-        await self._notify("analyze")
-
-        # --- 3a: Framework/Technology Detection (read-only fingerprinting) ---
-        tech_findings = []
-        for page in pages:
-            header_dict = dict(page.get("headers", {}))
-            page_technologies = detect_technologies(
-                url=page.get("url", ""),
-                headers=header_dict,
-                body=page.get("body"),
-            )
-            for k, f in enumerate(page_technologies, start=len(tech_findings) + 1):
-                f["finding_id"] = f"{self.scan_id}-WTECH{k:03d}"
-                tech_findings.append(f)
-
-        # --- 3b: Open port scan (nmap-style TCP connect) on the target host ---
-        port_findings: list[dict[str, Any]] = []
-        try:
-            target_host = host_from_url(url)
-            port_scan = await scan_ports(
-                target_host,
-                timeout=float(getattr(self.settings, "port_scan_timeout", 1.5)),
-                max_concurrency=int(getattr(self.settings, "port_scan_concurrency", 50)),
-                banner=True,
-            )
-            port_findings = self._port_scan_findings(port_scan, url)
-            for k, f in enumerate(port_findings, start=len(port_findings)):
-                f["finding_id"] = f"{self.scan_id}-PPORT{k:03d}"
-        except Exception as exc:  # noqa: BLE001 — port scan must never fail scan
-            log.warning("port scan failed for %s: %s", url, exc)
-
+        has_html = any(
+            "html" in (p.get("content_type") or "").lower() for p in pages
+        )
         xss_findings: list[dict[str, Any]] = []
         for page in pages:
             page_findings = analyze_page_xss(page)
@@ -203,49 +234,42 @@ class WebsiteEngine:
                 f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
                 xss_findings.append(f)
 
-        # Active (but read-only + benign) reflection check: re-request pages
-        # that carry query params with a unique alphanumeric marker appended
-        # to each param value and see if it is echoed back unencoded.
-        reflected = await self._probe_reflected_xss(
-            pages,
-            headers=headers,
-            cookies=cookies,
-        )
-        for k, f in enumerate(reflected, start=len(xss_findings) + 1):
-            f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
-            xss_findings.append(f)
+        if has_html and (xss_relevant or _pages_have_query_params(pages)):
+            # Active (read-only + benign) reflection check.
+            reflected = await self._probe_reflected_xss(
+                pages, headers=headers, cookies=cookies,
+            )
+            for k, f in enumerate(reflected, start=len(xss_findings) + 1):
+                f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
+                xss_findings.append(f)
 
-        # Active XSS payload injection probe — sends actual XSS vectors via
-        # GET param values (read-only, non-destructive). Confirmed unencoded
-        # reflection of the payload = confirmed XSS vulnerability.
-        xss_payload_findings = await self._probe_xss_payloads(
-            pages,
-            headers=headers,
-            cookies=cookies,
-        )
-        for k, f in enumerate(xss_payload_findings, start=len(xss_findings) + 1):
-            f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
-            xss_findings.append(f)
+            # Active XSS payload injection probe (read-only, non-destructive).
+            xss_payload_findings = await self._probe_xss_payloads(
+                pages, headers=headers, cookies=cookies,
+            )
+            for k, f in enumerate(xss_payload_findings, start=len(xss_findings) + 1):
+                f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
+                xss_findings.append(f)
 
         # ------------------------------------------------------------------
-        # Stage 3b: SQL injection probing on pages with query parameters
-        # (error-based detection + boolean-differential check).
+        # Stage 5: SQL injection probing (error-based + boolean differential)
         # ------------------------------------------------------------------
         await self._notify("sqli")
         sqli_findings = await self._probe_sqli(
-            pages,
-            headers=headers,
-            cookies=cookies,
+            pages, headers=headers, cookies=cookies,
         )
         for k, f in enumerate(sqli_findings, start=len(xss_findings) + 1):
             f["finding_id"] = f"{self.scan_id}-WSQLI{k:03d}"
             xss_findings.append(f)
 
         # ------------------------------------------------------------------
-        # Stage 4: Report
+        # Stage 6: Report
         # ------------------------------------------------------------------
         await self._notify("report")
-        all_findings = idor_findings + tech_findings + port_findings + xss_findings
+        all_findings = (
+            idor_findings + tech_findings + port_findings
+            + cve_findings + xss_findings
+        )
         all_findings.sort(
             key=lambda f: (
                 _severity_rank(f.get("severity", "info")),
@@ -263,7 +287,10 @@ class WebsiteEngine:
             "pages_crawled": len(pages),
             "id_endpoints_found": len(id_endpoints),
             "id_endpoints_probed": len(probed),
-            "open_ports": len(port_findings),
+            "open_ports": len(open_ports_data),
+            "cves_matched": len(cve_findings),
+            "xss_scan_activated": has_html and (xss_relevant or _pages_have_query_params(pages)),
+            "idor_scan_activated": bool(id_endpoints or idor_relevant),
             "domain": domain,
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
@@ -274,8 +301,8 @@ class WebsiteEngine:
                 "mode": "website",
                 "engine": "website-crawler",
                 "pipeline": [
-                    "crawl", "probe", "analyze", "framework",
-                    "port-scan", "sqli", "report",
+                    "crawl", "analyze", "framework", "port-scan",
+                    "cve", "probe", "sqli", "report",
                 ],
                 "url": url,
             },
@@ -286,6 +313,65 @@ class WebsiteEngine:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _cve_lookup_stage(
+        tech_findings: list[dict[str, Any]],
+        open_ports: list[dict[str, Any]],
+        url: str,
+    ) -> tuple[list[dict[str, Any]], bool, bool]:
+        """Match detected technologies + open ports against known CVEs.
+
+        Returns (cve_findings, xss_relevant, idor_relevant).
+        ``xss_relevant`` / ``idor_relevant`` gate the active XSS / IDOR
+        scanners (the CVE-driven activation step of the workflow).
+        """
+        cves = lookup_cves(tech_findings, open_ports)
+        cve_findings: list[dict[str, Any]] = []
+        for i, cve in enumerate(cves, start=1):
+            cve_findings.append({
+                "finding_id": f"CVE-{i:03d}",
+                "rule": "CVE-MATCH",
+                "severity": cve.get("severity", "medium"),
+                "confidence": 0.85,
+                "title": f"{cve['cve']} — {cve['title']}",
+                "description": (
+                    f"{cve['cve']}: {cve['description']} "
+                    f"(affects {cve['component']} {cve['affected']})."
+                ),
+                "evidence": {
+                    "cve": cve["cve"],
+                    "component": cve["component"],
+                    "affected": cve["affected"],
+                    "type": cve.get("type", "other"),
+                    "ref": cve["ref"],
+                    "url": url,
+                },
+                "remediation": (
+                    f"Upgrade {cve['component']} to a patched version and "
+                    "review the advisory: {cve['ref']}"
+                ),
+                "location": url,
+            })
+
+        xss_relevant = cves_trigger_xss(cves) or techs_trigger_xss(tech_findings)
+        idor_relevant = cves_trigger_idor(cves) or techs_trigger_idor(tech_findings)
+        return cve_findings, xss_relevant, idor_relevant
+
+    async def _discover_id_endpoints(
+        self,
+        pages: list[dict[str, Any]],
+        url: str,
+    ) -> list[dict[str, Any]]:
+        """Re-derive ID-bearing endpoint templates from crawled page URLs.
+
+        Used when the crawler found no explicit id_endpoints but an IDOR-prone
+        technology/CVE is present — we still want to probe any ID-like URL.
+        """
+        from app.agents.crawler import _find_id_endpoints
+
+        page_urls = [p.get("url", "") for p in pages]
+        return _find_id_endpoints(page_urls)
 
     @staticmethod
     def _port_scan_findings(
@@ -916,6 +1002,16 @@ class WebsiteEngine:
                             })
                         break  # one value per param is enough
         return findings
+
+
+def _pages_have_query_params(pages: list[dict[str, Any]]) -> bool:
+    """True if any page URL carries query parameters (a reflection surface)."""
+    from urllib.parse import parse_qs, urlparse
+
+    for page in pages:
+        if parse_qs(urlparse(page.get("url", "")).query):
+            return True
+    return False
 
 
 _SEV_RANK = {
