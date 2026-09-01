@@ -149,7 +149,7 @@ class WebsiteEngine:
             )
             open_ports_data = port_scan.open_ports
             port_findings = self._port_scan_findings(port_scan, url)
-            for k, f in enumerate(port_findings, start=len(port_findings)):
+            for k, f in enumerate(port_findings, start=1):
                 f["finding_id"] = f"{self.scan_id}-PPORT{k:03d}"
         except Exception as exc:  # noqa: BLE001 — port scan must never fail scan
             log.warning("port scan failed for %s: %s", url, exc)
@@ -160,7 +160,7 @@ class WebsiteEngine:
         # ------------------------------------------------------------------
         await self._notify("cve")
         cve_findings, xss_relevant, idor_relevant = self._cve_lookup_stage(
-            tech_findings, open_ports_data, url,
+            self.scan_id, tech_findings, open_ports_data, url,
         )
         log.info(
             "cve stage: %d tech, %d ports → %d CVEs; xss_relevant=%s idor_relevant=%s",
@@ -316,6 +316,7 @@ class WebsiteEngine:
 
     @staticmethod
     def _cve_lookup_stage(
+        scan_id: str,
         tech_findings: list[dict[str, Any]],
         open_ports: list[dict[str, Any]],
         url: str,
@@ -329,27 +330,35 @@ class WebsiteEngine:
         cves = lookup_cves(tech_findings, open_ports)
         cve_findings: list[dict[str, Any]] = []
         for i, cve in enumerate(cves, start=1):
+            # Version-blind matches are potential, not confirmed: reduce
+            # confidence and phrase the severity accordingly.
+            verified = cve.get("verified", False)
+            confidence = 0.9 if verified else 0.5
+            severity = cve.get("severity", "medium") if verified else "medium"
             cve_findings.append({
-                "finding_id": f"CVE-{i:03d}",
+                "finding_id": f"{scan_id}-WCVE{i:03d}",
                 "rule": "CVE-MATCH",
-                "severity": cve.get("severity", "medium"),
-                "confidence": 0.85,
+                "severity": severity,
+                "confidence": confidence,
                 "title": f"{cve['cve']} — {cve['title']}",
                 "description": (
                     f"{cve['cve']}: {cve['description']} "
                     f"(affects {cve['component']} {cve['affected']})."
+                    + ("" if verified else " Version not confirmed — "
+                        "treat as potential, verify the deployed version.")
                 ),
                 "evidence": {
                     "cve": cve["cve"],
                     "component": cve["component"],
                     "affected": cve["affected"],
+                    "verified": verified,
                     "type": cve.get("type", "other"),
                     "ref": cve["ref"],
                     "url": url,
                 },
                 "remediation": (
                     f"Upgrade {cve['component']} to a patched version and "
-                    "review the advisory: {cve['ref']}"
+                    f"review the advisory: {cve['ref']}"
                 ),
                 "location": url,
             })
