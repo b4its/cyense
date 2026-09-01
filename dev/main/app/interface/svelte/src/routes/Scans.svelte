@@ -18,6 +18,7 @@
     try {
       const payload = { mode, i_have_permission: true }
       if (mode === 'website' || mode === 'link') payload.url = url
+      if (mode === 'domain') { payload.domain = url; delete payload.url }
       if (mode === 'program') payload.source_type = 'sample'
       if (mode === 'github') payload.repo_url = url
       const r = await api.submitScan(payload)
@@ -35,13 +36,14 @@
     <p class="lead">Kirim scan baru (sama dengan <code class="inline">cyense scan …</code>) atau telusuri hasil sebelumnya.</p>
     <form onsubmit={(e) => { e.preventDefault(); submit() }} style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
       <div class="field" style="flex:1;min-width:240px">
-        <label for="target-url">URL target</label>
+        <label for="target-url">URL / domain target</label>
         <input id="target-url" bind:value={url} placeholder="http://example.com" />
       </div>
       <div class="field">
         <label for="scan-mode">Mode</label>
         <select id="scan-mode" bind:value={mode}>
           <option value="website">website</option>
+          <option value="domain">domain</option>
           <option value="link">link</option>
           <option value="program">program</option>
           <option value="github">github</option>

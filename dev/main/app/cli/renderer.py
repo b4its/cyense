@@ -753,3 +753,67 @@ def render_discovery_table(
         for row in misc_rows:
             console.print(f"  {row}")
         console.print()
+
+
+# ---------------------------------------------------------------------------
+# Route table — focused routing enumeration display
+
+def render_route_table(
+    console: Console,
+    caps: TermCaps,
+    routes: list[dict[str, Any]],
+    sensitive_findings: list[dict[str, Any]],
+) -> None:
+    """Render the enumerated route surface, grouped by classification."""
+    p = PALETTE
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    sensitive = [r for r in routes if r.get("classification") == "sensitive"]
+    api = [r for r in routes if r.get("classification") == "api"]
+    pages = [r for r in routes if r.get("classification") == "page"]
+    other = [r for r in routes
+             if r.get("classification") not in ("sensitive", "api", "page")]
+
+    console.print(f"  [bold {p.blue_primary}]ROUTING / ENDPOINTS[/]")
+    console.print(
+        f"  [{p.muted}]Sumber: robots.txt · sitemap.xml · OpenAPI · crawl · JS · wayback[/]"
+    )
+    console.print(sep)
+
+    def _block(title: str, color: str, items: list[dict[str, Any]]) -> None:
+        if not items:
+            return
+        console.print(f"  [bold {color}]{title} ({len(items)})[/]")
+        for r in items[:15]:
+            src = r.get("source", "?")
+            console.print(
+                f"  [{color}]▸[/] {r.get('path','?')}  [{p.muted}]({src})[/]"
+            )
+        if len(items) > 15:
+            console.print(f"  [{p.muted}]  … dan {len(items) - 15} lainnya[/]")
+        console.print()
+
+    _block("SENSITIVE", p.sev_high, sensitive)
+    _block("API", p.blue_soft, api)
+    _block("PAGE", p.blue_mist, pages)
+    _block("LAIN", p.muted, other)
+
+    # Dedicated sensitive-route findings (API-ROUTE) with remediation hints.
+    if sensitive_findings:
+        console.print(f"  [bold {p.sev_high}]ROUTE SENSITIF TER-EXPOSE[/]")
+        for f in sensitive_findings:
+            ev = f.get("evidence", {})
+            console.print(
+                f"  [{p.sev_high}]⚠[/] {ev.get('path','?')} "
+                f"[{p.muted}]({ev.get('source','?')})[/]"
+            )
+        console.print()
+
+    total = len(routes)
+    console.print(
+        f"  [{p.muted}]Total {total} route "
+        f"({len(sensitive)} sensitive · {len(api)} api · "
+        f"{len(pages)} page · {len(other)} lain)[/]"
+    )
+    console.print()

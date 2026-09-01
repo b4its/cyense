@@ -59,6 +59,8 @@
   $: xss = findings.filter((f) => f.rule?.startsWith('XS'))
   $: sqli = findings.filter((f) => f.rule?.includes('SQLI'))
   $: idor = findings.filter((f) => f.rule?.startsWith('IDOR'))
+  $: routesF = findings.filter((f) => f.rule === 'DISC-ROUTE')
+  $: apiRoutes = findings.filter((f) => f.rule === 'API-ROUTE')
   $: discovery = findings.filter((f) =>
     f.rule === 'SECRET-LEAK' || f.rule === 'EXPOSED-FILE' ||
     f.rule === 'WP-EXPOSED' || f.rule === 'SSRF-SINK' ||
@@ -229,6 +231,36 @@
                 <div id="f-recon-{i}"><FindingCard f={f} /></div>
               {/each}
             </div>
+          </section>
+        {/if}
+
+        {#if routesF.length || apiRoutes.length}
+          <section class="block" id="routes">
+            <h2>Routing / Endpoints</h2>
+            <p class="sub">Enumerasi: robots.txt · sitemap · OpenAPI · crawl · JS · wayback.</p>
+            {#if routesF.length}
+              {#each routesF as rf}
+                {#if rf.evidence?.routes?.length}
+                  <table class="tbl">
+                    <thead><tr><th>Path</th><th>Sumber</th><th>Klasifikasi</th></tr></thead>
+                    <tbody>
+                    {#each rf.evidence.routes.slice(0, 30) as r}
+                      <tr>
+                        <td class="mono">{r.path}</td>
+                        <td>{r.source}</td>
+                        <td><span class="badge {r.classification === 'sensitive' ? 'critical' : r.classification === 'api' ? 'high' : 'info'}">{r.classification}</span></td>
+                      </tr>
+                    {/each}
+                    </tbody>
+                  </table>
+                {/if}
+              {/each}
+            {/if}
+            {#if apiRoutes.length}
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+                {#each apiRoutes as f, i}<div id="f-apiroute-{i}"><FindingCard f={f} /></div>{/each}
+              </div>
+            {/if}
           </section>
         {/if}
 

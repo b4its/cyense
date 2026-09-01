@@ -846,6 +846,123 @@ async def _recon_flow(
     )
 
 
+# ---------------------------------------------------------------------------
+# routes — focused routing enumeration (robots/sitemap/openapi/crawl/JS)
+# ---------------------------------------------------------------------------
+
+@app.command("routes")
+def cli_routes(
+    url: Annotated[
+        str,
+        typer.Argument(
+            help="Website URL untuk enumerasi routing menyeluruh "
+            "(robots.txt, sitemap, OpenAPI, crawl, JS, wayback)."
+        ),
+    ],
+    max_pages: Annotated[
+        int,
+        typer.Option("--max-pages", help="Max halaman di-crawl (default 10)."),
+    ] = 10,
+    rate_limit: Annotated[
+        int,
+        typer.Option("--rate-limit", help="Max request/s ke target (default 10)."),
+    ] = 10,
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[wajib] Konfirmasi izin eksplisit untuk memindai website ini.",
+        ),
+    ] = False,
+) -> None:
+    """Enumerasi keseluruhan routing/endpoint website target.
+
+    Menjalankan website scan lalu menampilkan tabel route terkelompok:
+    sensitive (admin/internal/console), api (/api, /v1, /rest), dan page —
+    lengkap dengan sumber (robots/sitemap/openapi/crawl/JS).
+    """
+    if not i_have_permission:
+        render_error_panel(
+            _state.console, _state.caps,
+            "i_have_permission wajib untuk memindai website.",
+            "Ulangi dengan --i-have-permission untuk konfirmasi otorisasi.",
+        )
+        raise typer.Exit(3)
+
+    payload: dict = {
+        "mode": "website",
+        "url": url,
+        "max_depth": 1,
+        "max_pages": max_pages,
+        "rate_limit": rate_limit,
+        "i_have_permission": True,
+    }
+    _run(_routes_flow(payload))
+
+
+async def _routes_flow(payload: dict) -> None:
+    """Submit a website scan and render the routing enumeration table."""
+    from app.cli.theme import PALETTE as PAL
+
+    caps = _state.caps
+    console = _state.console
+
+    if not caps.quiet:
+        render_banner(console, caps, _VERSION)
+
+    try:
+        async with open_client(_state.api_url, timeout=30) as c:
+            submitted = await c.submit_scan(payload)
+    except Exception as e:
+        render_error_panel(console, caps, f"Gagal submit scan routing: {e}")
+        raise typer.Exit(3) from None
+
+    scan_id = submitted["scan_id"]
+    if not caps.quiet:
+        console.print(f"  [{PAL.blue_soft}]Scan routing diajukan:[/] {scan_id}")
+
+    report: dict | None = None
+    try:
+        async with open_client(_state.api_url, timeout=_state.timeout) as c:
+            async for _snap in poll_scan(c, scan_id, total_timeout=_state.timeout):
+                pass
+            report = await c.get_report(scan_id)
+    except TimeoutError as e:
+        render_error_panel(console, caps, str(e))
+        raise typer.Exit(3) from None
+    except Exception as e:
+        render_error_panel(console, caps, f"Polling scan gagal: {e}")
+        raise typer.Exit(3) from None
+
+    if report is None:
+        report = load_report_from_disk(scan_id)
+    if report is None:
+        render_error_panel(console, caps, f"Report tidak ditemukan untuk {scan_id}")
+        raise typer.Exit(3) from None
+
+    findings = report.get("findings", [])
+    routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
+    sensitive_f = [f for f in findings if f.get("rule") == "API-ROUTE"]
+
+    all_routes: list[dict] = []
+    for f in routes_f:
+        all_routes.extend((f.get("evidence") or {}).get("routes", []))
+
+    if all_routes:
+        from app.cli.renderer import render_route_table
+        render_route_table(console, caps, all_routes, sensitive_f)
+    else:
+        console.print(f"  [{PAL.ok}]Tidak ada route yang ditemukan.[/]")
+        console.print()
+
+    import time as _time
+    _t0 = getattr(_state, "_routes_t0", _time.monotonic())
+    render_footer(
+        console, caps, scan_id, None, _state.api_url,
+        _time.monotonic() - _t0, 0,
+    )
+
+
 async def _cve_scan_flow(
     payload: dict,
     *,
