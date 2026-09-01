@@ -7,6 +7,7 @@ rejecting malicious entries before they touch filesystem.
 from __future__ import annotations
 
 import io
+import sys
 import tarfile
 from pathlib import Path
 
@@ -124,11 +125,12 @@ class SafeTarExtractor:
                 # Path validation
                 validate_member_path(member.name, dest_resolved)
 
-                # Python 3.12+ has filter='data'; fall back to manual on 3.11
-                try:
+                # Python 3.12+ supports filter='data'; on older versions
+                # (3.11, the shipped image) it raises TypeError — feature-detect
+                # instead of guessing the exception type.
+                if sys.version_info >= (3, 12):
                     tar.extract(member, self.dest, filter="data")
-                except AttributeError:
-                    # Manual extraction for older pythons
+                else:
                     tar.extract(member, self.dest)
 
 

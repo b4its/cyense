@@ -24,12 +24,17 @@ def build_coverage_document(
     summary = report.get("summary", {})
     findings = report.get("findings", [])
 
-    status = meta.get("status", "completed")
-
-    # Determine completeness flag
+    # Determine completeness flag.
+    # Engines never write meta["status"] (default is the lowercase
+    # "completed"), so normalize before comparing — previously the
+    # uppercase "COMPLETED" comparison made `complete` always False and
+    # every coverage.json reported an unfinished scan. Check the cap/budget
+    # flags structurally instead of substring-scanning the whole report
+    # (which flipped the flag when a finding text merely mentioned them).
+    status = str(meta.get("status", "completed")).lower()
     complete = (
-        status == "COMPLETED" and
-        not any(k in str(report) for k in ["cap_reached", "budget_exceeded"])
+        status == "completed"
+        and not (meta.get("cap_reached") or meta.get("budget_exceeded"))
     )
 
     # Machine-observed facts only (no LLM claims)
