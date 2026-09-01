@@ -2090,7 +2090,11 @@ def ci_junit(
         # Build JUnit XML
         testsuite = ET.Element("testsuite")
         testsuite.set("name", f"cyense-{meta.get('mode', 'scan')}")
-        testsuite.set("tests", str(max(1, len(findings) + 1)))
+        # `tests` must equal the number of <testcase> elements emitted below:
+        # a clean scan emits exactly 1 passing case, a findings scan emits
+        # len(findings) cases. The previous "len(findings) + 1" produced a
+        # phantom test that CI consumers (GitHub Actions/Jenkins) reject.
+        testsuite.set("tests", str(max(1, len(findings))))
         testsuite.set("failures", str(len(findings)))
         testsuite.set("errors", "0")
         testsuite.set("time", f"{summary.get('duration_ms', 0) / 1000:.2f}")

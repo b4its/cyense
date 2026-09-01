@@ -159,6 +159,7 @@ class ScanWorker:
                     diff_base=request_dict.get("diff_base"),
                     scope_mode=request_dict.get("scope_mode", "auto"),
                     level=request_dict.get("level", "medium"),
+                    scan_mode=request_dict.get("scan_mode", "standard"),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -186,17 +187,36 @@ class ScanWorker:
                     request_dict.get("source_type", "mounted"),
                     str(self.settings.workspace_dir),
                 )
+
+                # Scan-mode presets (quick|standard|deep) actually drive the
+                # analyzer now — previously scan_mode was stored but never
+                # passed to run_program_scan, so --scan-mode had zero effect.
+                from app.core.scan_modes import get_profile
+
+                scan_mode = request_dict.get("scan_mode", "standard")
+                mode_profile = get_profile(scan_mode)
+                if mode_profile is None:
+                    await self.store.mark_failed(
+                        scan_id, f"invalid scan mode: {scan_mode}"
+                    )
+                    return
+                scan_types = list(mode_profile.scan_types)
+                max_files = mode_profile.max_files if mode_profile.max_files > 0 else None
+
                 await self.store.mark_stage(scan_id, "probe", 50)
                 await on_stage("probe")
                 result = run_program_scan(
                     lang=request_dict.get("lang", "python"),
                     source_dir=source_dir,
                     scan_id=scan_id,
+                    scan_types=scan_types,
+                    max_files=max_files,
                     level=request_dict.get("level", "medium"),
                 )
                 await self.store.mark_stage(scan_id, "report", 80)
                 await on_stage("report")
                 report = self._program_report(scan_id, result, started)
+                report.setdefault("meta", {})["scan_mode"] = scan_mode
 
             # If resuming, merge previous checkpoint findings and mark as resumed.
             if checkpoint:
@@ -417,6 +437,7 @@ async def run_github_scan(
     diff_base: str | None = None,
     scope_mode: str = "auto",
     level: str = "medium",
+    scan_mode: str = "standard",
     brain: Any = None,
     reports_dir: str = "",
     settings: Any = None,
@@ -440,6 +461,7 @@ async def run_github_scan(
         diff_base=diff_base,
         scope_mode=scope_mode,
         level=level,
+        scan_mode=scan_mode,
     )
 
 

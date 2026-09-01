@@ -52,6 +52,7 @@ class GithubEngine:
         diff_base: str | None = None,
         scope_mode: str = "auto",
         level: str = "medium",
+        scan_mode: str = "standard",
     ) -> dict[str, Any]:
         """Run full github scan pipeline."""
         started = time.monotonic()
@@ -118,11 +119,24 @@ class GithubEngine:
 
         # Stage 2: ANALYZE (reuse program engine)
         await self._notify("analyze")
+
+        # Scan-mode presets (quick|standard|deep) drive scan_types/max_files
+        # — previously scan_mode was stored but never applied to the analyzer.
+        from app.core.scan_modes import get_profile
+
+        mode_profile = get_profile(scan_mode)
+        if mode_profile is None:
+            return self._empty_report(f"invalid scan mode: {scan_mode}", started)
+        scan_types = list(mode_profile.scan_types)
+        max_files = mode_profile.max_files if mode_profile.max_files > 0 else None
+
         analysis_result = run_program_scan(
             lang=lang,
             source_dir=tree_root,
             scan_id=self.scan_id,
             include_paths=include_paths,
+            scan_types=scan_types,
+            max_files=max_files,
             level=level,
         )
 
@@ -153,6 +167,7 @@ class GithubEngine:
             "scan_id": self.scan_id,
             "mode": "github",
             "engine": "github-static",
+            "scan_mode": scan_mode,
             "pipeline": ["resolve", "analyze", "report"],
             "repo": {
                 "url": repo_url,
