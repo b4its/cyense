@@ -125,16 +125,25 @@ def list_resumable_scans(reports_dir: Path) -> list[dict[str, Any]]:
             continue
         try:
             data = json.loads(cp.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                continue  # malformed checkpoint — skip, don't crash endpoint
+            request_data = data.get("request")
+            mode = (
+                request_data.get("mode", "unknown")
+                if isinstance(request_data, dict) else "unknown"
+            )
+            findings = data.get("findings")
+            findings_count = len(findings) if isinstance(findings, list) else 0
             results.append({
                 "scan_id": data.get("scan_id", scan_dir.name),
                 "stage": data.get("stage"),
                 "progress": data.get("progress", 0),
                 "timestamp": data.get("timestamp", ""),
-                "mode": data.get("request", {}).get("mode", "unknown"),
-                "findings_count": len(data.get("findings", [])),
+                "mode": mode,
+                "findings_count": findings_count,
                 "error": data.get("error"),
             })
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, TypeError):
             continue
 
     # Sort by timestamp descending (most recent first)

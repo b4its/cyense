@@ -45,6 +45,13 @@ _CVSS_PROFILES: list[dict[str, Any]] = [
     {"rule": "XS008", "cwe": "CWE-79", **_cvss("N", "L", "N", "R", "C", "L", "N", "N")},
     # IDOR-LINK (dynamic)
     {"rule": "IDOR-LINK", "cwe": "CWE-639", **_cvss("N", "L", "L", "N", "U", "H", "N", "N")},
+    # SQLi rules (CWE-89) — AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H → 9.8 critical
+    {"rule": "SQLI001", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
+    {"rule": "SQLI002", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
+    {"rule": "SQLI003", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
+    {"rule": "SQLI004", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
+    {"rule": "SQLI005", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
+    {"rule": "SQLI006", "cwe": "CWE-89", **_cvss("N", "L", "N", "N", "U", "H", "H", "H")},
 ]
 
 #: Lookup table by rule id

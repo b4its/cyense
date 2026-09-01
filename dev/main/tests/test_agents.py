@@ -108,14 +108,13 @@ def test_link_scan_detects_invoice_idor_and_rejects_generic_200(tmp_path) -> Non
         verify_retries = 2
         control_id = "99999999"
 
-    async def scenario() -> dict:
+    async def _scan(url: str, scan_id: str) -> dict:
+        from app.utils import http_client as hc
+
         transport = httpx.ASGITransport(app=AsgiShim(_lab_app().app))
         async with httpx.AsyncClient(
             transport=transport, base_url="http://lab"
         ) as probe_client:
-            # patch HttpClient so the pipeline talks to the lab via ASGI
-            from app.utils import http_client as hc
-
             original_aenter = hc.HttpClient.__aenter__
 
             async def patched_aenter(self):
@@ -131,10 +130,10 @@ def test_link_scan_detects_invoice_idor_and_rejects_generic_200(tmp_path) -> Non
             hc.HttpClient.__aexit__ = patched_aexit  # type: ignore[method-assign]
             try:
                 return await run_link_scan(
-                    scan_id="testscan1",
+                    scan_id=scan_id,
                     request_dict={
                         "mode": "link",
-                        "url": "http://lab/invoice/{ID}",
+                        "url": url,
                         "headers": {},
                         "cookies": {},
                         "baseline_id": "1",
@@ -149,14 +148,29 @@ def test_link_scan_detects_invoice_idor_and_rejects_generic_200(tmp_path) -> Non
                 hc.HttpClient.__aenter__ = original_aenter  # type: ignore[method-assign]
                 hc.HttpClient.__aexit__ = original_aexit  # type: ignore[method-assign]
 
-    report = asyncio.run(scenario())
-
+    # Case 1: /invoice/{ID} — cross-account PII (bob) must be confirmed.
+    report = asyncio.run(_scan("http://lab/invoice/{ID}", "testscan-invoice"))
     assert report["meta"]["mode"] == "link"
     assert report["summary"]["total"] >= 1
     critical = [f for f in report["findings"] if f["severity"] == "critical"]
     assert critical, "expected cross-account PII finding for /invoice/{ID}"
-    assert any("bob@example.com" in (f.get("verification", {}).get("pii_matches") or [""])
-               or f["verification"]["pii_matches"] for f in critical)
+    # Assert bob's PII specifically — the `or`-vacuous assertion was removed
+    # so a regression that flags the WRONG account would now fail.
+    bob_hits = [
+        f for f in critical
+        if "bob@example.com" in (f.get("verification", {}).get("pii_matches") or [])
+    ]
+    assert bob_hits, "expected bob@example.com in PII matches of critical findings"
+
+    # Case 4: /docs/{ID} — generic-200 trap must be rejected (no findings).
+    docs_report = asyncio.run(_scan("http://lab/docs/{ID}", "testscan-docs"))
+    assert docs_report["summary"]["total"] == 0, (
+        "generic-200 trap must produce no confirmed findings, got "
+        f"{docs_report['summary']['total']}"
+    )
+    assert docs_report["summary"].get("rejected_false_positives", 0) >= 1, (
+        "expected rejected false positives for the /docs generic-200 trap"
+    )
 
 
 def _lab_app():

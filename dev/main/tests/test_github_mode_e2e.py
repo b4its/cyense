@@ -145,8 +145,10 @@ async def test_github_mode_detects_idor_and_xss_from_fetched_repo(
     assert "XS002" in rules  # document.write
     assert "XS004" in rules  # eval (critical)
 
-    # Severity distribution reasonable
-    assert result["summary"]["total"] >= 9
+    # Severity distribution reasonable. CY004 (FastAPI-specific) does NOT
+    # double-report the Flask-style `def invoice(id)` view (already CY001), so
+    # 8 is the correct baseline for this fixture.
+    assert result["summary"]["total"] >= 8
     assert result["summary"]["critical"] >= 1  # eval → critical
 
 

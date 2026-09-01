@@ -2226,7 +2226,10 @@ def ci_check(
       3 = error (scan not found, service unreachable)
     """
     _sev_order = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
-    fail_sev_val = _sev_order.get(fail_on, 4)
+    # --fail-on none means "never fail the gate" (default 0), consistent with
+    # the other scan commands; the previous default of 4 made --fail-on none
+    # behave like --fail-on high.
+    fail_sev_val = _sev_order.get(fail_on, 0)
 
     async def _do():
         from app.cli.theme import PALETTE as PAL

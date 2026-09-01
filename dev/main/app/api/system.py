@@ -47,13 +47,17 @@ def _xss_rule(
 _SQLI_VECTOR = "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
 
 
+# SQLi CVSS vector (AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H == 9.8)
+_SQLI_VECTOR = "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+
+
 def _sqli_rule(rule: str, lang: str, title: str) -> dict[str, object]:
     return {
         "rule": rule,
-        "severity": "high",
+        "severity": "critical",
         "lang": lang,
         "cwe": "CWE-89",
-        "cvss_score": 8.6,
+        "cvss_score": 9.8,
         "cvss_vector": _SQLI_VECTOR,
         "title": title,
     }

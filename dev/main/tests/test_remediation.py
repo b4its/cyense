@@ -283,19 +283,17 @@ def test_symlink_escape_rejected(tmp_path: Path) -> None:
     link_target = tmp_path / "target.py"
     link_target.write_text("# Target\n")
 
-    # Symlink inside src pointing outside
+    # Symlink inside src pointing outside the source root
     link_path = source_root / "link.py"
     try:
         link_path.symlink_to(link_target)
-
-        # This should be rejected by is_same_origin check on symlink resolution
-        is_ok, error = is_same_origin(str(link_path), source_root)
-        # Depending on OS behavior, symlink may resolve correctly or fail
-        # Either way, no crash expected
-        pass
     except OSError:
-        # No symlink support in this environment
-        pass
+        return  # No symlink support in this environment
+
+    # Resolving the symlink escapes the source root → must be rejected.
+    is_ok, error = is_same_origin(str(link_path), source_root)
+    assert is_ok is False, f"symlink escape must be rejected, got ok={is_ok} err={error!r}"
+    assert error, "expected a rejection error message"
 
 
 def test_path_validation_with_special_chars(tmp_path: Path) -> None:

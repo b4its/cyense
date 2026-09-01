@@ -249,6 +249,13 @@ def analyze_python_file(path: Any, source: str, scan_id: str) -> list[Finding]:
             continue
         if _function_has_auth_guard(func):
             continue
+        # CY004 is FastAPI-specific: require a FastAPI-style signal so a
+        # Django view (`def view(request): .get(id=request.GET['id'])`) or a
+        # Flask route is NOT double-reported as CY004 (it is already CY001/
+        # CY003). FastAPI routes are typically `async def` with an HTTP-method
+        # decorator or use Depends().
+        if not _is_fastapi_style(func, source):
+            continue
         params = {
             a.arg for a in list(func.args.args) + list(func.args.kwonlyargs)
         }
@@ -273,6 +280,49 @@ def analyze_python_file(path: Any, source: str, scan_id: str) -> list[Finding]:
             )
 
     return findings
+
+
+# -- FastAPI style detection ------------------------------------------------
+
+_FASTAPI_HTTP_DECORATORS = frozenset({"get", "post", "put", "delete", "patch", "api_route"})
+
+
+def _is_fastapi_style(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    source: str,
+) -> bool:
+    """True if the function looks like a FastAPI route.
+
+    Signals: ``async def`` + an HTTP-method decorator (``@app.get``), or a
+    ``Depends(...)`` in the signature, or the source references ``fastapi``
+    / ``APIRouter``. Excludes Django views (sync ``def view(request)``) and
+    Flask routes (sync ``def``) so CY004 does not double-report them.
+    """
+    # Depends() is a strong FastAPI-only signal.
+    sig = ast.unparse(func.args) if hasattr(ast, "unparse") else ""
+    if "Depends" in sig or "BackgroundTasks" in sig:
+        return True
+    # Async def + HTTP-method decorator.
+    is_async = isinstance(func, ast.AsyncFunctionDef)
+    if not is_async:
+        return False
+    for dec in func.decorator_list:
+        name = _decorator_name(dec)
+        if name in _FASTAPI_HTTP_DECORATORS:
+            return True
+    # Async route via @app.route(...) is ambiguous — require fastapi import.
+    return "fastapi" in source or "APIRouter" in source
+
+
+def _decorator_name(dec: ast.expr) -> str | None:
+    """Best-effort decorator base name, e.g. @app.get(...) -> 'get'."""
+    if isinstance(dec, ast.Call):
+        return _decorator_name(dec.func)
+    if isinstance(dec, ast.Attribute):
+        return dec.attr
+    if isinstance(dec, ast.Name):
+        return dec.id
+    return None
 
 
 # -- call-shape matchers -----------------------------------------------------

@@ -14,10 +14,16 @@ def test_numeric_neighbours_returns_ids() -> None:
     assert all(i.isdigit() for i in ids)
 
 
-def test_numeric_neighbours_falls_back_to_wordlist() -> None:
-    prober = ProberAgent("t", "/tmp")
+def test_numeric_neighbours_falls_back_to_wordlist(tmp_path) -> None:
+    """Non-numeric seed falls back to the wordlist (not a tautology)."""
+    # Create a real wordlist so the fallback has content to return.
+    wordlist = tmp_path / "ids.txt"
+    wordlist.write_text("alpha\nbeta\n42\n")
+    prober = ProberAgent("t", tmp_path, wordlist_path=wordlist)
     ids = prober._numeric_neighbours("not-a-number", 3)
-    assert isinstance(ids, list)
+    # Must return wordlist entries, not []; a regression that returns an
+    # empty list would now fail (previously only checked isinstance(list)).
+    assert ids == ["alpha", "beta", "42"]
 
 
 def test_baseline_hint_is_numeric_default() -> None:

@@ -244,9 +244,15 @@ async def apply_fixes(
 @router.post("/fixes/{session_id}/revert")
 async def revert_fixes(
     session_id: str,
+    body: ApplyRequest,
     request: Request,
 ) -> dict[str, list]:
-    """Revert applied patches using backups."""
+    """Revert applied patches using backups (requires confirm=true)."""
+    # Security gate: mirror apply_fixes — revert writes to the filesystem and
+    # must be explicitly confirmed.
+    if not body.confirm:
+        raise HTTPException(status_code=422, detail="confirm must be true to revert patches")
+
     session_store = request.app.state.fix_store
 
     session_data = session_store.get_session(session_id)
