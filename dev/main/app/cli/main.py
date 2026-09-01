@@ -280,6 +280,17 @@ def scan_github(
         payload["subdir"] = subdir
     if token:
         payload["github_token"] = token  # tidak pernah dicetak (redaksi di api/engine)
+    else:
+        # auth login menyimpan token di ~/.cyense/config.json — pakai bila
+        # tidak diberikan via --token/lingkungan (sebelumnya token tersimpan
+        # diabaikan dan user terdorong memakai --token di command line).
+        try:
+            from app.core.config_store import load_config
+            stored_token = load_config().get("github_token")
+            if stored_token:
+                payload["github_token"] = stored_token
+        except Exception:  # noqa: BLE001 — config store is best-effort
+            pass
     if resolved_instruction:
         payload["instruction"] = resolved_instruction
     if diff_base:

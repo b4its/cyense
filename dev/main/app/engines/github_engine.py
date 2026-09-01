@@ -163,6 +163,12 @@ class GithubEngine:
             "files_analyzed": analysis_result.get("files_scanned", len(findings)),
         }
 
+        # Sanitize the repo URL before persisting in reports/SARIF/MD —
+        # query-string tokens (?token=...) must never hit artifacts.
+        from app.utils.redact import redact_url_credentials
+        safe_repo_url = redact_url_credentials(
+            repo_url.split("?")[0]
+        )
         meta = {
             "scan_id": self.scan_id,
             "mode": "github",
@@ -170,7 +176,7 @@ class GithubEngine:
             "scan_mode": scan_mode,
             "pipeline": ["resolve", "analyze", "report"],
             "repo": {
-                "url": repo_url,
+                "url": safe_repo_url,
                 "owner": result.data["owner"],
                 "repo": result.data["repo"],
                 "ref": result.data.get("ref", ref or "unknown"),

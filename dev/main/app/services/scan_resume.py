@@ -53,10 +53,26 @@ def save_checkpoint(
     dest = _checkpoint_path(reports_dir, scan_id)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
+    # Sanitize the persisted request — NEVER write raw tokens/credentials
+    # to disk (checkpoints survive until scan deletion and are listed by
+    # /scans/resumable).
+    from app.utils.redact import redact_headers
+
+    safe_request = dict(request_dict or {})
+    for key in ("github_token", "token", "password", "secret",
+                "api_key", "apikey"):
+        if safe_request.get(key):
+            safe_request[key] = "[REDACTED]"
+    if isinstance(safe_request.get("headers"), dict):
+        safe_request["headers"] = redact_headers(safe_request["headers"])
+    if isinstance(safe_request.get("cookies"), dict):
+        safe_request["cookies"] = {k: "[REDACTED]"
+                                   for k in safe_request["cookies"]}
+
     payload: dict[str, Any] = {
         "version": _CHECKPOINT_VERSION,
         "scan_id": scan_id,
-        "request": request_dict,
+        "request": safe_request,
         "stage": stage,
         "progress": progress,
         "findings": findings_so_far or [],
@@ -66,7 +82,8 @@ def save_checkpoint(
     if extra:
         payload["extra"] = extra
 
-    # Atomic write: temp file in same dir + os.replace
+    # Atomic write: temp file in same dir + os.replace (mkstemp already
+    # gives 0o600 permissions).
     fd, tmp_path = tempfile.mkstemp(
         suffix=".tmp", prefix=".checkpoint_", dir=str(dest.parent),
     )
