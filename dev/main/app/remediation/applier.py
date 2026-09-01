@@ -78,23 +78,34 @@ def apply_patch(
     if not backup:
         return False, "Failed to create backup", None
 
-    # Parse diff into replacement pairs
-    replacements: list[tuple[str, str]] = []
+    # Parse diff into replacement blocks. Each "- <line>" is replaced by ALL
+    # consecutive "+ <line>" and ">> <line>" lines that follow it. The extra
+    # lines carry the security guard (e.g. CY008's ownership check, CY007's
+    # guard clause) — dropping them made the patch "succeed" while leaving the
+    # vulnerability in place.
+    replacements: list[tuple[str, list[str]]] = []
     diff_lines = diff_text.splitlines()
     i = 0
     while i < len(diff_lines):
         line = diff_lines[i]
         if line.startswith("- ") and not line.startswith("---"):
             old_line = line[2:].rstrip()
-            # Look ahead for matching + line
-            new_line = ""
-            if i + 1 < len(diff_lines):
-                next_line = diff_lines[i + 1]
-                if next_line.startswith("+ ") and not next_line.startswith("+++"):
-                    new_line = next_line[2:].rstrip()
-                    i += 1
-            replacements.append((old_line, new_line))
-        i += 1
+            i += 1
+            new_block: list[str] = []
+            while i < len(diff_lines):
+                nxt = diff_lines[i]
+                if nxt.startswith("+ ") and not nxt.startswith("+++"):
+                    new_block.append(nxt[2:].rstrip())
+                elif nxt.startswith(">> "):
+                    new_block.append(nxt[3:].rstrip())
+                else:
+                    break
+                i += 1
+            if not new_block:
+                new_block = [""]  # pure deletion
+            replacements.append((old_line, new_block))
+        else:
+            i += 1
 
     if not replacements:
         return False, "No valid replacements found in diff", backup
@@ -108,10 +119,10 @@ def apply_patch(
 
     patched_lines = list(original_lines)
     applied_count = 0
-    for old_line, new_line in replacements:
+    for old_line, new_block in replacements:
         for idx, file_line in enumerate(patched_lines):
             if file_line.rstrip() == old_line:
-                patched_lines[idx] = new_line
+                patched_lines[idx : idx + 1] = new_block
                 applied_count += 1
                 break
         else:
