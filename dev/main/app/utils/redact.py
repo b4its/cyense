@@ -43,8 +43,10 @@ def redact_cookies(cookies: dict[str, str]) -> dict[str, str]:
 def redact_url_credentials(url: str | None) -> str:
     if not isinstance(url, str):
         return "[REDACTED]"
-    # Case-insensitive, any scheme, optional scheme.
-    result = re.sub(r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^/@\s]+)@", r"\1[REDACTED]@", url, flags=re.I)
-    # Scheme-relative or no-scheme user:pass@host
-    result = re.sub(r"^([^/@\s]+)@", r"[REDACTED]@", result)
+    # Case-insensitive, any scheme, optional scheme. The credential span is
+    # anything up to '@' (passwords may contain '/'); over-redaction is
+    # preferred over leaking.
+    result = re.sub(r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^@\s]+)@", r"\1[REDACTED]@", url, flags=re.I)
+    # Scheme-relative (//user:pass@host) or no-scheme (user:pass@host).
+    result = re.sub(r"((?:^|//))([^@\s]+)@", r"\1[REDACTED]@", result)
     return result

@@ -7,6 +7,7 @@ Every agent (PRD v2.0 §1.2) records its reasoning steps to
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +56,13 @@ class TrajectoryRecorder:
                     indent=2,
                 )
             )
+            # Trajectories may contain masked credentials / request metadata —
+            # restrict permissions (default write_text gives 0o644).
+            os.chmod(path, 0o600)
+            try:
+                os.chmod(out_dir, 0o700)
+            except OSError:
+                pass
             return path
         except OSError:
             return None
