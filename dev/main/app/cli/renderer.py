@@ -620,9 +620,11 @@ def render_discovery_table(
     vhosts = [f for f in findings if f.get("rule") == "DISC-VHOST"]
     dirs = [f for f in findings if f.get("rule") == "DISC-PATH"]
 
+    routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
+    api_routes = [f for f in findings if f.get("rule") == "API-ROUTE"]
     total = len(secrets) + len(exposed) + len(wp) + len(ssrf) + len(graphql) \
         + len(subs) + len(api) + len(js) + len(params) + len(wayback) \
-        + len(vhosts) + len(dirs)
+        + len(vhosts) + len(dirs) + len(routes_f) + len(api_routes)
     if total == 0:
         console.print(f"  [{p.ok}]Tidak ada temuan discovery (recon bersih).[/]")
         console.print()
@@ -703,9 +705,7 @@ def render_discovery_table(
             console.print(f"  [{p.blue_mist}]▸[/] {ev.get('path','?')}")
         console.print()
 
-    # Routes (routing enumeration)
-    routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
-    api_routes = [f for f in findings if f.get("rule") == "API-ROUTE"]
+    # Routes (routing enumeration) — computed above the gate
     if routes_f or api_routes:
         console.print(f"  [bold {p.blue_soft}]ROUTING / ENDPOINTS[/]")
         for f in routes_f:

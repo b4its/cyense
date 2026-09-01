@@ -78,13 +78,18 @@ def test_domain_engine_aggregates_per_host(monkeypatch) -> None:
         return {
             "meta": {"scan_id": f"s-{host}", "mode": "website"},
             "summary": {"total": 1, "critical": 0, "high": 1, "medium": 0,
-                        "low": 0, "info": 0},
+                        "low": 0, "info": 0, "pages_crawled": 1},
             "findings": findings,
         }
 
     monkeypatch.setattr(de, "fetch_wayback_urls", _fake_wayback)
     monkeypatch.setattr(de, "discover_subdomains", _fake_dns)
     monkeypatch.setattr(de.WebsiteEngine, "run", _fake_website_run)
+
+    async def _fake_scheme(host: str, rate_limit: int):
+        return "https"
+
+    monkeypatch.setattr(de, "_pick_scheme", _fake_scheme)
 
     engine = DomainEngine("dom-1", None, "/tmp", _Settings())
     report = asyncio.run(engine.run(domain="example.com", max_hosts=10))
@@ -128,13 +133,18 @@ def test_domain_engine_host_failure_does_not_fail_all(monkeypatch) -> None:
         return {
             "meta": {"scan_id": "s", "mode": "website"},
             "summary": {"total": 0, "critical": 0, "high": 0, "medium": 0,
-                        "low": 0, "info": 0},
+                        "low": 0, "info": 0, "pages_crawled": 1},
             "findings": [],
         }
 
     monkeypatch.setattr(de, "fetch_wayback_urls", _fake_wayback)
     monkeypatch.setattr(de, "discover_subdomains", _fake_dns)
     monkeypatch.setattr(de.WebsiteEngine, "run", _fake_website_run)
+
+    async def _fake_scheme(host: str, rate_limit: int):
+        return "https"
+
+    monkeypatch.setattr(de, "_pick_scheme", _fake_scheme)
 
     engine = DomainEngine("dom-3", None, "/tmp", _Settings())
     report = asyncio.run(engine.run(domain="example.com", max_hosts=10))

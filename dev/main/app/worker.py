@@ -120,6 +120,10 @@ class ScanWorker:
                 "analyze": 75,
                 "report": 90,
                 "crawl": 30,
+                # Domain-scan stages
+                "enumerate": 15,
+                "hosts": 35,
+                "host": 60,
             }.get(
                 stage if isinstance(stage, str) else str(stage),
                 {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0),

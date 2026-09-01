@@ -17,6 +17,7 @@ domain scan.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -37,6 +38,8 @@ _PUBLIC_SUFFIXES = (
     "ac.id", "co.jp", "ne.jp", "or.jp", "com.au", "net.au", "org.au",
     "co.nz", "net.nz", "org.nz", "com.br", "com.mx", "com.sg", "com.hk",
     "com.tr", "co.in", "co.za", "co.kr", "com.cn", "com.tw", "com.my",
+    "com.ar", "net.cn", "org.cn", "co.th", "co.il", "co.ke", "com.ph",
+    "com.ng", "com.eg", "com.pk", "com.vn", "com.ua", "com.uy",
 )
 
 
@@ -45,21 +48,39 @@ def normalize_domain(domain: str) -> str:
 
     ``https://www.example.com/path`` → ``example.com``
     ``sub.example.co.uk`` → ``example.co.uk``
+
+    Conservative by design: only strips a label when a KNOWN public suffix
+    matches — unlisted multi-label suffixes are returned as-is instead of
+    being over-narrowed (which previously re-scoped scans to entire
+    registries like ``com.ar``). IPv4/IPv6 literals are rejected.
     """
+    import ipaddress
+
     domain = domain.strip().lower()
     if "://" in domain:
         domain = urlparse(domain).hostname or domain
     domain = domain.split("/")[0].split(":")[0].rstrip(".")
+    if not domain:
+        return ""
+    # Reject IP literals — scanning an IP as a "domain" is a wrong-target risk.
+    try:
+        ipaddress.ip_address(domain)
+        return ""  # caller treats empty as invalid
+    except ValueError:
+        pass
     if domain.startswith("www."):
         domain = domain[4:]
     parts = domain.split(".")
     if len(parts) <= 2:
         return domain
-    # Keep the longest public suffix + one label before it.
+    # Keep the longest known public suffix + one label before it.
     for suffix in _PUBLIC_SUFFIXES:
         sfx = suffix.split(".")
         if parts[-len(sfx):] == sfx and len(parts) > len(sfx):
             return ".".join(parts[-(len(sfx) + 1):])
+    # Unknown suffix: standard assumption — last two labels are registrable
+    # (the expanded suffix list above covers the common registry-namespace
+    # cases like com.ar / co.th / net.cn).
     return ".".join(parts[-2:])
 
 
@@ -126,7 +147,10 @@ class DomainEngine:
         except Exception as exc:  # noqa: BLE001
             log.warning("DNS enumeration failed: %s", exc)
 
-        host_list = sorted(hosts)[: max_hosts]
+        # Apex domain first (sorted() would let subdomains evict the actual
+        # target when the cap is reached).
+        host_list = [base_domain] + sorted(h for h in hosts if h != base_domain)
+        host_list = host_list[: max_hosts]
         log.info(
             "domain scan: %s → %d hosts discovered (cap %d)",
             base_domain, len(hosts), max_hosts,
@@ -141,15 +165,28 @@ class DomainEngine:
         for i, host in enumerate(host_list, start=1):
             await self._notify("host")
             log.info("scanning host %d/%d: %s", i, len(host_list), host)
+            # HTTPS first (common for api./admin. subdomains), fall back to
+            # HTTP — hosts that answer neither are marked unreachable.
+            scheme = await _pick_scheme(host, rate_limit)
+            if scheme is None:
+                per_host.append({
+                    "host": host,
+                    "status": "unreachable",
+                    "error": "no HTTP/HTTPS listener",
+                    "findings_count": 0,
+                })
+                continue
             try:
                 engine = WebsiteEngine(
                     scan_id=f"{self.scan_id}-h{i}",
                     brain=self.brain,
-                    reports_dir=self.reports_dir,
+                    reports_dir=str(
+                        Path(self.reports_dir) / self.scan_id / "hosts"
+                    ),
                     settings=self.settings,
                 )
                 host_report = await engine.run(
-                    url=f"http://{host}",
+                    url=f"{scheme}://{host}",
                     max_depth=max_depth,
                     max_pages=max_pages,
                     rate_limit=rate_limit,
@@ -176,9 +213,13 @@ class DomainEngine:
                 all_findings.append(f)
 
             summary = host_report.get("summary", {})
+            pages_crawled = summary.get("pages_crawled", 0)
             per_host.append({
                 "host": host,
-                "status": "failed" if host_error else "completed",
+                "status": (
+                    "unreachable" if pages_crawled == 0 and not host_error
+                    else ("failed" if host_error else "completed")
+                ),
                 "error": host_error,
                 "findings_count": len(findings),
                 "summary": summary,
@@ -229,6 +270,28 @@ _SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
 def _sev_rank(sev: str) -> int:
     return _SEV_ORDER.get(str(sev).lower(), 5)
+
+
+async def _pick_scheme(host: str, rate_limit: int) -> str | None:
+    """Probe which scheme (https/http) the host listens on."""
+
+    import httpx
+
+    async def _probe(scheme: str) -> bool:
+        try:
+            async with httpx.AsyncClient(
+                timeout=4.0, follow_redirects=False,
+            ) as c:
+                resp = await c.get(f"{scheme}://{host}")
+                return resp.status_code < 600
+        except httpx.HTTPError:
+            return False
+
+    if await _probe("https"):
+        return "https"
+    if await _probe("http"):
+        return "http"
+    return None
 
 
 def _empty_report(

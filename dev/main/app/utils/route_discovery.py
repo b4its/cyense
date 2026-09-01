@@ -28,7 +28,7 @@ _ROBOTS_LINE_RE = re.compile(r"^\s*(?:Disallow|Allow)\s*:\s*(\S+)", re.I | re.M)
 _SITEMAP_LOC_RE = re.compile(r"<loc>\s*([^<]+)\s*</loc>", re.I)
 
 # Sitemap entry points to probe.
-_SITEMAP_PATHS = ["/sitemap.xml", "/sitemap.xml.gz", "/sitemap_index.xml"]
+_SITEMAP_PATHS = ["/sitemap.xml", "/sitemap.xml.gz"]
 
 # OpenAPI spec entry points to probe.
 _OPENAPI_PATHS = [
@@ -50,14 +50,24 @@ _API_PATTERNS = (
 
 
 def parse_robots_paths(body: str) -> list[str]:
-    """Extract Disallow/Allow paths from a robots.txt body."""
+    """Extract Disallow/Allow paths from a robots.txt body.
+
+    Pure wildcard patterns (``*``, ``/*.pdf$``) are skipped — they are
+    patterns, not routes.
+    """
     if not body:
         return []
     paths: list[str] = []
     for m in _ROBOTS_LINE_RE.finditer(body):
         path = m.group(1).strip()
-        if path and path != "/":
-            paths.append(path)
+        if not path or path == "/":
+            continue
+        if "*" in path:
+            continue  # wildcard pattern, not a concrete route
+        # RFC: "admin" means "/admin"
+        if not path.startswith("/"):
+            path = "/" + path
+        paths.append(path)
     return paths
 
 
@@ -119,7 +129,12 @@ async def discover_routes(
 
     def add(path: str, source: str, classification: str | None = None) -> None:
         path = path.strip()
-        if not path or path in routes:
+        if not path or path == "/":
+            return
+        # Normalize to an absolute path form (robots "admin" → "/admin").
+        if not path.startswith(("/", "http://", "https://")):
+            path = "/" + path
+        if path in routes:
             return
         routes[path] = {
             "path": path,
@@ -150,10 +165,15 @@ async def discover_routes(
                 continue
             if sp.endswith(".gz"):
                 try:
-                    body = gzip.decompress(body.encode("latin-1")).decode(
-                        "utf-8", errors="replace"
-                    )
-                except (OSError, ValueError):
+                    import httpx
+                    parsed0 = urlparse(base_url)
+                    gz_url = f"{parsed0.scheme}://{parsed0.netloc}{sp}"
+                    async with httpx.AsyncClient(
+                        timeout=8.0, follow_redirects=True,
+                    ) as c:
+                        raw = (await c.get(gz_url)).content
+                    body = gzip.decompress(raw).decode("utf-8", errors="replace")
+                except (OSError, ValueError, httpx.HTTPError, ImportError):
                     continue
             for url in parse_sitemap_urls(body):
                 for p in extract_paths_from_urls([url], parsed.hostname):
