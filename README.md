@@ -176,7 +176,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-51 passed in 0.99s — api, agents, rules, utils, github, remediation
+94 passed in ~1.2s — api, agents, rules, utils, github, remediation, worker, sarif, website
 ruff check: All checks passed (0 errors)
 ```
 
@@ -255,7 +255,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 51 tests via pytest
+make test       # 94 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -352,7 +352,7 @@ cyense/
 │   │   │   ├── services/              ← multi_scan, scan_resume
 │   │   │   └── utils/                 ← http_client, sandbox, github_client, pii, etc.
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 51 tests + lab app fixture
+│   │   ├── tests/                     ← 94 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml
 │   │   └── README.md                  ← service-level README
@@ -400,11 +400,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 51 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 94 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 51/51 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 51/51 tests
+- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 94/94 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 94/94 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
