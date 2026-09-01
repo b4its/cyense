@@ -2,7 +2,7 @@
 # Install dependencies first: pip install -r requirements.txt pytest ruff
 # Usage: make up / make down / make logs / make test / make shell
 
-.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run
+.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run recon
 
 SHELL := /bin/bash
 APP_DIR := dev/main
@@ -143,3 +143,7 @@ demo: ## Demo end-to-end: scan a public repo (requires internet + service up)
 
 run: ## Jalankan Cyense — pilih mode Website atau CLI (launcher)
 	cd $(APP_DIR) && $(PYTHON) -m app.cli.main launch
+
+recon: ## Recon menyeluruh ke URL (adaptasi BBHT: semua tool recon dalam 1 scan)
+	@if [ -z "$(URL)" ]; then echo "Pakai: make recon URL=https://target.example"; exit 1; fi
+	cd $(APP_DIR) && $(PYTHON) -m app.cli.main cve "$(URL)" --i-have-permission

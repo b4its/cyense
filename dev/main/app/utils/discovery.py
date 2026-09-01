@@ -213,3 +213,174 @@ async def discover_vhosts(
         if 200 <= status < 300 and abs(len(body or "") - base_len) > 100:
             found.append(candidate)
     return found
+
+
+# ---------------------------------------------------------------------------
+# Extended tool adaptations (full HackerOne 104 coverage)
+# ---------------------------------------------------------------------------
+
+# Subdomain prefixes (Subfinder/Shuffledns/Dnscan-style active enumeration).
+COMMON_SUBDOMAINS: list[str] = [
+    "www", "api", "admin", "dev", "staging", "stage", "test", "mail",
+    "blog", "docs", "app", "web", "portal", "git", "ci", "cdn", "static",
+    "assets", "status", "help", "support", "shop", "store", "auth",
+    "login", "vpn", "old", "new", "beta", "demo", "uat", "qa",
+]
+
+# API endpoint candidates (Kiterunner-style route discovery).
+API_PATHS: list[str] = [
+    "/api", "/api/v1", "/api/v2", "/api/v3", "/v1", "/v2", "/v3",
+    "/health", "/healthz", "/status", "/version", "/metrics", "/ping",
+    "/info", "/debug", "/internal", "/private", "/graphql", "/rest",
+    "/rest/v1", "/oauth", "/oauth/token", "/swagger", "/openapi.json",
+    "/docs", "/redoc", "/actuator", "/actuator/health",
+]
+
+# Admin panel / management interfaces (Nuclei-style exposure checks).
+ADMIN_PATHS: list[tuple[str, str, str]] = [
+    ("/admin", "Admin panel ter-expose.", "high"),
+    ("/administrator", "Admin panel (Joomla-style) ter-expose.", "high"),
+    ("/manage", "Management interface ter-expose.", "high"),
+    ("/cpanel", "cPanel login ter-expose.", "medium"),
+    ("/webmail", "Webmail ter-expose.", "medium"),
+    ("/phpmyadmin", "phpMyAdmin ter-expose.", "critical"),
+    ("/jenkins", "Jenkins ter-expose.", "critical"),
+    ("/jenkins/script", "Jenkins script console ter-expose.", "critical"),
+    ("/grafana", "Grafana ter-expose.", "high"),
+    ("/kibana", "Kibana ter-expose.", "high"),
+    ("/solr", "Apache Solr ter-expose.", "critical"),
+    ("/_cat/indices", "Elasticsearch indices ter-expose.", "critical"),
+    ("/actuator/env", "Spring Boot env ter-expose.", "critical"),
+]
+
+# WordPress-specific checks (Wpscan-style).
+WP_PATHS: list[tuple[str, str, str]] = [
+    ("/wp-json/wp/v2/users", "WordPress user enumeration via REST.", "medium"),
+    ("/wp-json", "WordPress REST API ter-expose.", "low"),
+    ("/readme.html", "WordPress readme.html membocorkan versi.", "low"),
+    ("/wp-content/plugins", "Daftar plugin WordPress ter-expose.", "medium"),
+    ("/wp-content/uploads", "Direktori upload ter-list.", "low"),
+]
+
+# Parameters likely used as SSRF sinks (SSRFTest-style passive detection).
+SSRF_PARAM_NAMES: list[str] = [
+    "url", "uri", "link", "redirect", "redirect_uri", "callback",
+    "target", "host", "domain", "proxy", "next", "dest", "destination",
+    "image", "img", "avatar", "file", "path", "fetch", "load", "remote",
+    "webhook", "endpoint", "source", "origin", "ref",
+]
+
+# Common directories (Ffuf/Wfuzz/Dirsearch-style wordlist fuzzing).
+COMMON_DIR_PATHS: list[str] = [
+    "/login", "/admin", "/uploads", "/upload", "/images", "/img",
+    "/assets", "/static", "/js", "/css", "/fonts", "/download",
+    "/downloads", "/files", "/media", "/content", "/data", "/backup",
+    "/backups", "/config", "/conf", "/database", "/db", "/dump",
+    "/logs", "/log", "/temp", "/tmp", "/cache", "/old", "/new",
+    "/test", "/tests", "/dev", "/development", "/staging", "/vendor",
+    "/node_modules", "/.git", "/.svn", "/.hg",
+]
+
+# GraphQL introspection query (Altair-style, read-only POST).
+GRAPHQL_INTROSPECTION_QUERY = (
+    "{\"query\": \"query { __schema { queryType { name } } }\"}"
+)
+GRAPHQL_INTROSPECTION_HEADERS = {"Content-Type": "application/json"}
+
+
+def extract_subdomains_from_urls(urls: list[str], base_domain: str) -> list[str]:
+    """Extract subdomains belonging to base_domain from a list of URLs
+    (passive subdomain discovery, Subfinder-style)."""
+    subdomains: set[str] = set()
+    for url in urls:
+        try:
+            host = urlparse(url if "://" in url else f"http://{url}").hostname or ""
+        except ValueError:
+            continue
+        if host.endswith("." + base_domain) and host != base_domain:
+            subdomains.add(host)
+    return sorted(subdomains)
+
+
+async def discover_subdomains(domain: str, prefixes: list[str] | None = None) -> list[str]:
+    """Active DNS enumeration of common subdomain prefixes.
+
+    Uses getaddrinfo (non-intrusive, no zone transfer). Returns resolvable
+    subdomains. Best-effort — DNS failures yield fewer results, never raise.
+    """
+    import asyncio
+
+    found: list[str] = []
+
+    async def _resolve(sub: str) -> str | None:
+        try:
+            await asyncio.get_event_loop().getaddrinfo(sub, None)
+            return sub
+        except OSError:
+            return None
+
+    results = await asyncio.gather(
+        *(_resolve(f"{p}.{domain}") for p in (prefixes or COMMON_SUBDOMAINS)),
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, str):
+            found.append(r)
+    return sorted(found)
+
+
+async def check_api_endpoints(
+    base_url: str, get_body, paths: list[str] | None = None,
+) -> list[str]:
+    """Probe common API paths (Kiterunner-style); return those that answer
+    with a non-404 status."""
+    found: list[str] = []
+    parsed = urlparse(base_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    for path in (paths or API_PATHS):
+        url = urljoin(origin + "/", path.lstrip("/"))
+        try:
+            status, _ = await get_body(url)
+        except Exception:  # noqa: BLE001
+            continue
+        if status not in (404, 0):
+            found.append(path)
+    return found
+
+
+def detect_ssrf_params(page_url: str, body: str | None = None) -> list[str]:
+    """Passive SSRF-sink detection: query/body params with sink-like names."""
+    import urllib.parse as up
+
+    found: set[str] = set()
+    parsed = urlparse(page_url)
+    for key in up.parse_qs(parsed.query).keys():
+        if key.lower() in SSRF_PARAM_NAMES:
+            found.add(key)
+    # Form field names in the body
+    if body:
+        for m in re.finditer(r'name=["\']([^"\']+)["\']', body, re.I):
+            if m.group(1).lower() in SSRF_PARAM_NAMES:
+                found.add(m.group(1))
+    return sorted(found)
+
+
+async def check_graphql_introspection(base_url: str) -> bool:
+    """POST a GraphQL introspection query; return True if introspection
+    is enabled (schema returned). Read-only — no mutation."""
+    import httpx
+
+    url = urljoin(base_url.rstrip("/") + "/", "graphql")
+    try:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as c:
+            resp = await c.post(
+                url,
+                content=GRAPHQL_INTROSPECTION_QUERY,
+                headers=GRAPHQL_INTROSPECTION_HEADERS,
+            )
+            if resp.status_code != 200:
+                return False
+            data = resp.json()
+    except (httpx.HTTPError, ValueError):
+        return False
+    return isinstance(data, dict) and "__schema" in data.get("data", {})

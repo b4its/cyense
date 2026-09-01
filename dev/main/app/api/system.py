@@ -208,5 +208,12 @@ async def rules() -> dict[str, object]:
             _detect_rule("DISC-JS-URL", "Endpoints extracted from JavaScript"),
             _detect_rule("DISC-HIDDEN-PARAM", "Hidden HTTP parameter discovered"),
             _detect_rule("DISC-WAYBACK", "Historical URLs from Wayback Machine"),
+            _detect_rule("DISC-SUBDOMAIN", "Subdomain discovered (passive/DNS)"),
+            _detect_rule("DISC-API-ENDPOINT", "API endpoint discovered (Kiterunner-style)"),
+            _detect_rule("DISC-PATH", "Directory discovered (Ffuf/Dirsearch-style)"),
+            _detect_rule("DISC-VHOST", "Virtual host discovered"),
+            _detect_rule("WP-EXPOSED", "WordPress surface exposed (Wpscan-style)"),
+            _detect_rule("SSRF-SINK", "SSRF-sink parameter detected (passive)"),
+            _detect_rule("GRAPHQL-INTROSPECTION", "GraphQL introspection enabled"),
         ],
     }

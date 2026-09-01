@@ -176,3 +176,68 @@ def test_discover_hidden_params(monkeypatch) -> None:
     )
     assert "debug" in found
     assert "q" not in found
+
+
+# ---------------------------------------------------------------------------
+# Extended tool adaptations (full HackerOne 104 coverage)
+# ---------------------------------------------------------------------------
+
+def test_extract_subdomains_from_urls() -> None:
+    from app.utils.discovery import extract_subdomains_from_urls
+
+    subs = extract_subdomains_from_urls(
+        ["http://api.example.com/x", "http://www.example.com/",
+         "http://evil.com/y", "http://example.com/"],
+        "example.com",
+    )
+    assert "api.example.com" in subs
+    assert "www.example.com" in subs
+    assert "evil.com" not in subs
+    assert "example.com" not in subs
+
+
+def test_detect_ssrf_params_url_and_form() -> None:
+    from app.utils.discovery import detect_ssrf_params
+
+    params = detect_ssrf_params(
+        "http://x.test/fetch?url=https://a.b",
+        '<form><input name="callback" /></form>',
+    )
+    assert "url" in params
+    assert "callback" in params
+    assert detect_ssrf_params("http://x.test/?q=1") == []
+
+
+def test_check_api_endpoints(monkeypatch) -> None:
+    import asyncio
+
+    from app.utils.discovery import check_api_endpoints
+
+    async def _get(url: str, extra_headers=None):
+        if "/api/v1" in url:
+            return 200, "{}"
+        return 404, ""
+
+    hits = asyncio.run(
+        check_api_endpoints("http://x.test/", _get, paths=["/api/v1", "/api/v2"])
+    )
+    assert hits == ["/api/v1"]
+
+
+def test_discover_subdomains_offline() -> None:
+    """DNS enumeration must degrade gracefully (no external DNS in tests)."""
+    import asyncio
+
+    from app.utils.discovery import discover_subdomains
+
+    # .invalid TLD never resolves — must return [] without raising.
+    subs = asyncio.run(discover_subdomains("nonexistent.invalid"))
+    assert subs == []
+
+
+def test_common_dir_and_admin_paths() -> None:
+    from app.utils.discovery import ADMIN_PATHS, COMMON_DIR_PATHS, WP_PATHS
+
+    assert any(p == "/phpmyadmin" for p, _, _ in ADMIN_PATHS)
+    assert any(p == "/wp-json/wp/v2/users" for p, _, _ in WP_PATHS)
+    assert "/login" in COMMON_DIR_PATHS

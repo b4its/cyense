@@ -686,6 +686,269 @@ class WebsiteEngine:
                 "location": url,
             })
 
+            # 5b. Passive subdomains from wayback corpus (Subfinder-style).
+            from app.utils.discovery import extract_subdomains_from_urls
+            subdomains = extract_subdomains_from_urls(wb_urls, host)
+            if subdomains:
+                findings.append({
+                    "rule": "DISC-SUBDOMAIN",
+                    "severity": "info",
+                    "confidence": 0.65,
+                    "cwe": "CWE-200",
+                    "title": f"{len(subdomains)} subdomain ditemukan (pasif)",
+                    "description": (
+                        "Subdomain dari arsip URL (adaptasi Subfinder/Amass): "
+                        + ", ".join(subdomains[:10])
+                    ),
+                    "evidence": {"subdomains": subdomains[:20],
+                                 "count": len(subdomains), "url": url},
+                    "remediation": (
+                        "Audit subdomain untuk aset lama/terlupakan; pastikan "
+                        "semua masuk scope keamanan."
+                    ),
+                    "location": url,
+                })
+
+        # 6. Active subdomain enumeration (Dnscan/Shuffledns-style, DNS only).
+        if getattr(self.settings, "discovery_enabled", True) and host:
+            try:
+                from app.utils.discovery import discover_subdomains
+                active_subs = await discover_subdomains(host)
+            except Exception:  # noqa: BLE001
+                active_subs = []
+            if active_subs:
+                findings.append({
+                    "rule": "DISC-SUBDOMAIN",
+                    "severity": "info",
+                    "confidence": 0.7,
+                    "cwe": "CWE-200",
+                    "title": f"{len(active_subs)} subdomain aktif (DNS)",
+                    "description": (
+                        "Subdomain yang resolve via DNS: "
+                        + ", ".join(active_subs[:10])
+                    ),
+                    "evidence": {"subdomains": active_subs[:20],
+                                 "count": len(active_subs), "url": url},
+                    "remediation": (
+                        "Perluas permukaan serangan yang dipantau ke subdomain "
+                        "aktif ini."
+                    ),
+                    "location": url,
+                })
+
+        # 7. API endpoint discovery (Kiterunner-style).
+        if getattr(self.settings, "discovery_enabled", True):
+            from app.utils.discovery import check_api_endpoints
+            try:
+                api_hits = await check_api_endpoints(url, _get)
+            except Exception:  # noqa: BLE001
+                api_hits = []
+            if api_hits:
+                findings.append({
+                    "rule": "DISC-API-ENDPOINT",
+                    "severity": "info",
+                    "confidence": 0.6,
+                    "cwe": "CWE-200",
+                    "title": f"{len(api_hits)} endpoint API terdeteksi",
+                    "description": (
+                        "Endpoint API yang merespons (adaptasi Kiterunner): "
+                        + ", ".join(api_hits[:10])
+                    ),
+                    "evidence": {"endpoints": api_hits, "count": len(api_hits), "url": url},
+                    "remediation": (
+                        "Audit setiap endpoint API; pastikan auth + rate limit "
+                        "pada jalur yang tidak perlu publik."
+                    ),
+                    "location": url,
+                })
+
+            # 8. Admin panel / management interface checks (Nuclei-style).
+            from app.utils.discovery import ADMIN_PATHS
+            try:
+                admin_hits = await check_sensitive_paths(
+                    url, _get, paths=ADMIN_PATHS,
+                )
+            except Exception:  # noqa: BLE001
+                admin_hits = []
+            for hit in admin_hits:
+                findings.append({
+                    "rule": "EXPOSED-FILE",
+                    "severity": hit["severity"],
+                    "confidence": 0.85,
+                    "cwe": "CWE-200",
+                    "title": f"Interface admin ter-expose: {hit['path']}",
+                    "description": (
+                        f"{hit['description']} HTTP {hit['status']}."
+                    ),
+                    "evidence": {"path": hit["path"], "status": hit["status"],
+                                 "url": hit["url"]},
+                    "remediation": (
+                        "Batasi akses admin dengan IP allowlist/VPN; nonaktifkan "
+                        "panel yang tidak diperlukan."
+                    ),
+                    "location": hit["url"],
+                })
+
+            # 9. WordPress-specific checks (Wpscan-style).
+            from app.utils.discovery import WP_PATHS
+            try:
+                wp_hits = await check_sensitive_paths(url, _get, paths=WP_PATHS)
+            except Exception:  # noqa: BLE001
+                wp_hits = []
+            for hit in wp_hits:
+                findings.append({
+                    "rule": "WP-EXPOSED",
+                    "severity": hit["severity"],
+                    "confidence": 0.8,
+                    "cwe": "CWE-200",
+                    "title": f"WordPress ter-expose: {hit['path']}",
+                    "description": (
+                        f"{hit['description']} HTTP {hit['status']}."
+                    ),
+                    "evidence": {"path": hit["path"], "status": hit["status"],
+                                 "url": hit["url"]},
+                    "remediation": (
+                        "Sembunyikan enumerasi user/plugin (disable REST users, "
+                        "blokir readme, nonaktifkan xmlrpc bila tidak perlu)."
+                    ),
+                    "location": hit["url"],
+                })
+
+            # 10. Common directory fuzzing (Ffuf/Dirsearch-style, capped).
+            from app.utils.discovery import COMMON_DIR_PATHS
+            dir_targets = [
+                (p, f"Direktori {p} dapat diakses.", "low")
+                for p in COMMON_DIR_PATHS[:25]
+            ]
+            try:
+                dir_hits = await check_sensitive_paths(url, _get, paths=dir_targets)
+            except Exception:  # noqa: BLE001
+                dir_hits = []
+            for hit in dir_hits:
+                findings.append({
+                    "rule": "DISC-PATH",
+                    "severity": hit["severity"],
+                    "confidence": 0.6,
+                    "cwe": "CWE-200",
+                    "title": f"Direktori ditemukan: {hit['path']}",
+                    "description": (
+                        f"{hit['description']} HTTP {hit['status']} "
+                        "(adaptasi Ffuf/Dirsearch)."
+                    ),
+                    "evidence": {"path": hit["path"], "status": hit["status"],
+                                 "url": hit["url"]},
+                    "remediation": (
+                        "Hapus/blokir direktori yang tidak perlu publik."
+                    ),
+                    "location": hit["url"],
+                })
+
+        # 11. SSRF sink detection (SSRFTest-style, passive).
+        from app.utils.discovery import detect_ssrf_params
+        ssrf_params: list[str] = []
+        for page in pages:
+            try:
+                ssrf_params.extend(
+                    detect_ssrf_params(page.get("url", ""), page.get("body"))
+                )
+            except Exception:  # noqa: BLE001
+                continue
+        ssrf_params = list(dict.fromkeys(ssrf_params))
+        if ssrf_params:
+            findings.append({
+                "rule": "SSRF-SINK",
+                "severity": "medium",
+                "confidence": 0.45,
+                "cwe": "CWE-918",
+                "title": "Parameter SSRF-sink ditemukan (pasif)",
+                "description": (
+                    "Parameter dengan nama mirip sink SSRF (url/redirect/"
+                    "callback/…): " + ", ".join(ssrf_params[:10])
+                    + " — uji manual dengan target internal."
+                ),
+                "evidence": {"params": ssrf_params, "url": url},
+                "remediation": (
+                    "Validasi scheme+host URL yang di-fetch server; blokir "
+                    "alamat internal (169.254.169.254, localhost, RFC1918)."
+                ),
+                "location": url,
+            })
+
+        # 12. Virtual-host discovery (virtual-host-discovery).
+        if getattr(self.settings, "discovery_enabled", True) and host:
+            import httpx as _httpx
+
+            from app.utils.discovery import COMMON_VHOSTS
+            parsed0 = _up(url)
+            port_part = f":{parsed0.port}" if parsed0.port else ""
+            base_body_len = None
+            vhost_hits: list[str] = []
+            try:
+                async with _httpx.AsyncClient(
+                    timeout=float(self.settings.request_timeout),
+                    follow_redirects=False,
+                ) as vc:
+                    r0 = await vc.get(url)
+                    base_body_len = len(r0.text or "")
+                    for vh in COMMON_VHOSTS:
+                        try:
+                            rv = await vc.get(
+                                url,
+                                headers={"Host": f"{vh}.{host}{port_part}"},
+                            )
+                        except _httpx.HTTPError:
+                            continue
+                        if (200 <= rv.status_code < 300
+                                and abs(len(rv.text or "") - (base_body_len or 0)) > 100):
+                            vhost_hits.append(f"{vh}.{host}")
+            except _httpx.HTTPError:
+                pass
+            if vhost_hits:
+                findings.append({
+                    "rule": "DISC-VHOST",
+                    "severity": "info",
+                    "confidence": 0.5,
+                    "cwe": "CWE-200",
+                    "title": f"{len(vhost_hits)} virtual host terdeteksi",
+                    "description": (
+                        "Virtual host dengan respons berbeda: "
+                        + ", ".join(vhost_hits[:10])
+                    ),
+                    "evidence": {"vhosts": vhost_hits, "url": url},
+                    "remediation": (
+                        "Audit vhost lama/tersembunyi; pastikan tidak ada "
+                        "kode usang yang ter-expose."
+                    ),
+                    "location": url,
+                })
+
+        # 13. GraphQL introspection (Altair-style, read-only POST).
+        if getattr(self.settings, "discovery_enabled", True):
+            from urllib.parse import urljoin as _urljoin
+
+            from app.utils.discovery import check_graphql_introspection
+            try:
+                introspectable = await check_graphql_introspection(url)
+            except Exception:  # noqa: BLE001
+                introspectable = False
+            if introspectable:
+                findings.append({
+                    "rule": "GRAPHQL-INTROSPECTION",
+                    "severity": "medium",
+                    "confidence": 0.8,
+                    "cwe": "CWE-200",
+                    "title": "GraphQL introspection aktif",
+                    "description": (
+                        "Endpoint /graphql merespons query __schema — skema "
+                        "aplikasi dapat di-enumerasi penuh."
+                    ),
+                    "evidence": {"url": _urljoin(url.rstrip('/') + '/', 'graphql')},
+                    "remediation": (
+                        "Nonaktifkan introspection di production."
+                    ),
+                    "location": url,
+                })
+
         # Assign finding_ids
         for k, f in enumerate(findings, start=1):
             f["finding_id"] = f"{self.scan_id}-WDISC{k:03d}"
