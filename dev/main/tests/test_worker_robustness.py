@@ -50,10 +50,10 @@ def test_worker_survives_job_deleted_mid_processing(tmp_path, monkeypatch) -> No
         reports_dir = tmp_path / "reports"
         workspace_dir = tmp_path / "workspace"
 
-    async def exploding_link_scan(**_kwargs):
+    async def exploding_link_scan(*, scan_id, **_kwargs):
         # Simulate: job is deleted (by a concurrent DELETE request) while
         # the engine is still running, then the engine crashes.
-        store.delete(job.scan_id)
+        store.delete(scan_id)
         raise RuntimeError("engine exploded mid-scan")
 
     monkeypatch.setattr("app.worker.run_link_scan", exploding_link_scan)

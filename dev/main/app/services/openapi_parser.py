@@ -18,7 +18,6 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
 
 import yaml  # type: ignore[import-untyped]
 
@@ -57,8 +56,13 @@ def _load_spec(spec_source: str) -> dict[str, Any]:
         suffix = ".yaml" if ".yaml" in spec_source or ".yml" in spec_source else ".json"
         return _parse_text(text, suffix)
 
-    # Try as raw string
-    return _parse_text(spec_source, ".json")
+    # Try as raw string — auto-detect JSON vs YAML. A raw YAML string forced
+    # through json.loads() would raise JSONDecodeError, contradicting the
+    # "raw JSON/YAML strings (auto-detected)" contract.
+    try:
+        return json.loads(spec_source)
+    except json.JSONDecodeError:
+        return yaml.safe_load(spec_source)
 
 
 def _parse_text(text: str, suffix: str) -> dict[str, Any]:

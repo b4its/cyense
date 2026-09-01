@@ -702,7 +702,7 @@ def scan_api(
         }
 
         try:
-            async def _submit():
+            async def _submit(payload=payload):
                 async with open_client(_state.api_url, timeout=30) as c:
                     return await c.submit_scan(payload)
 
