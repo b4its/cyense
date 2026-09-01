@@ -74,11 +74,16 @@ class VerifierAgent(BaseAgent):
                 verdict["verification"]["similarity_to_control"] = (
                     round(sim_to_control, 3) if sim_to_control is not None else None
                 )
-                generic = (
-                    not control_blocked
-                    and not verdict["verification"]["pii_matches"]
-                    and self._same_shape(hit.body, control.body)
-                )
+                # Control-ID negative control: if control-id returns 200 (not blocked),
+                # compare hit body to control. Same structural shape = generic-200
+                # placeholder page (false positive from placeholder). Different shape
+                # means actual object access possible; accept regardless of PII.
+                if not control_blocked:
+                    same_shape = self._same_shape(hit.body, control.body)
+                    generic = not verdict["verification"]["pii_matches"] and same_shape
+                else:
+                    # Control-id blocked means we can't use generic-200 test
+                    generic = False
                 if generic:
                     verdict["severity"] = None
                     verdict["confidence"] = 0.1

@@ -474,7 +474,16 @@ def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
             if isinstance(sub.func, ast.Name):
                 callee = sub.func.id
             elif isinstance(sub.func, ast.Attribute):
-                callee = sub.func.attr  # method name, not object name (bug fix)
+                # `module.helper(...)` — the OBJECT (`module`) must be imported
+                # for this to be a call into an imported module. Previously we
+                # used `sub.func.attr` (the method name), which is not in the
+                # `imported` set when the module is imported as `import module`.
+                obj = sub.func.value
+                obj_name = obj.id if isinstance(obj, ast.Name) else None
+                if obj_name and obj_name in imported:
+                    callee = sub.func.attr
+                else:
+                    callee = None
             if not callee or callee not in imported:
                 continue
             args_user_input = False
@@ -543,7 +552,16 @@ def _check_xs011(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
             if isinstance(sub.func, ast.Name):
                 callee = sub.func.id
             elif isinstance(sub.func, ast.Attribute):
-                callee = sub.func.attr
+                # `module.helper(...)`: object must be imported, OR the method
+                # is a known render helper (e.g. module.render_template).
+                obj = sub.func.value
+                obj_name = obj.id if isinstance(obj, ast.Name) else None
+                if sub.func.attr in render_helpers:
+                    callee = sub.func.attr
+                elif obj_name and obj_name in imported:
+                    callee = sub.func.attr
+                else:
+                    callee = None
             if not callee or callee not in (imported | render_helpers):
                 continue
             if callee not in render_helpers:
