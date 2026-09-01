@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 router = APIRouter(prefix="/viewer", tags=["viewer"])
 
@@ -39,8 +39,12 @@ def _load_report_from_disk(scan_id: str, request: Request) -> dict[str, Any] | N
 # NOTE: static route is registered *before* /{scan_id} so "/viewer/static/..."
 # can never be captured by the scan_id path parameter.
 @router.get("/static/{file_path:path}")
-async def serve_static(file_path: str) -> FileResponse:
-    """Serve viewer static assets with a traversal guard."""
+async def serve_static(file_path: str) -> Response:
+    """Serve viewer static assets with a traversal guard.
+
+    Adds ``Cache-Control: no-cache`` so the browser always revalidates with
+    the server, preventing stale JS/CSS after container rebuilds.
+    """
     static_path = (_STATIC_DIR / file_path).resolve()
 
     try:
@@ -51,7 +55,10 @@ async def serve_static(file_path: str) -> FileResponse:
     if not static_path.is_file():
         raise HTTPException(status_code=404, detail=f"Static file not found: {file_path}")
 
-    return FileResponse(path=static_path)
+    return FileResponse(
+        path=static_path,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @router.get("/{scan_id}", response_class=HTMLResponse)
@@ -86,6 +93,14 @@ async def serve_viewer(scan_id: str, request: Request) -> HTMLResponse:
     viewer_prefix = request.scope.get("root_path", "") + "/api/v1/viewer/static/"
     html = html.replace('href="static/', f'href="{viewer_prefix}')
     html = html.replace('src="static/', f'src="{viewer_prefix}')
+    # Cache-bust static assets so browser always loads the latest version
+    # after container rebuilds. Uses the file mtime of index.html as version.
+    try:
+        asset_version = int(index_path.stat().st_mtime)
+    except OSError:
+        asset_version = 0
+    html = html.replace('.css"', f'.css?v={asset_version}"')
+    html = html.replace('.js"', f'.js?v={asset_version}"')
     return HTMLResponse(content=html, status_code=200)
 
 
@@ -146,3 +161,38 @@ async def get_scan_data(scan_id: str, request: Request) -> dict[str, Any]:
         "meta": report.get("meta", {}),
         "source": source,
     }
+
+
+@router.get("/{scan_id}/trajectories")
+async def get_trajectories(scan_id: str, request: Request) -> dict[str, Any]:
+    """Aggregate all agent trajectories for a scan.
+
+    Reads ``reports/<scan_id>/trajectories/*.json`` files and returns them
+    as a single dict keyed by agent name. Each trajectory is a list of
+    steps with timestamp, action, and detail fields.
+
+    Returns empty dict if no trajectories exist (e.g. scan failed before
+    any agent ran).
+    """
+    reports_dir: Path = request.app.state.settings.reports_dir
+    traj_dir = (reports_dir / scan_id / "trajectories").resolve()
+
+    # Path traversal guard
+    try:
+        traj_dir.relative_to(reports_dir.resolve())
+    except ValueError:
+        return {"scan_id": scan_id, "agents": {}}
+
+    if not traj_dir.is_dir():
+        return {"scan_id": scan_id, "agents": {}}
+
+    agents: dict[str, Any] = {}
+    for traj_file in sorted(traj_dir.glob("*.json")):
+        try:
+            data = json.loads(traj_file.read_text(encoding="utf-8"))
+            agent_name = traj_file.stem  # e.g. "verifier" from "verifier.json"
+            agents[agent_name] = data
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    return {"scan_id": scan_id, "agents": agents}

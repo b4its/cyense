@@ -394,3 +394,172 @@ body {
         margin: 2% auto;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   Agent Trajectory Visualization (Strix-inspired)
+   --------------------------------------------------------------------------- */
+
+.trajectories-section {
+    margin-top: 2rem;
+}
+
+.section-subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.trajectories-container {
+    background: var(--navy);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.agent-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 20px;
+    border: 1.5px solid;
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 0.85rem;
+}
+
+.agent-icon {
+    font-size: 1rem;
+}
+
+.agent-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.agent-steps {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.trajectory-duration {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.trajectory-duration strong {
+    color: var(--blue-accent);
+}
+
+.timeline {
+    position: relative;
+    max-height: 500px;
+    overflow-y: auto;
+    padding-left: 0.5rem;
+}
+
+.timeline-step {
+    position: relative;
+    border-left: 3px solid var(--border);
+    padding: 0.5rem 0 0.5rem 1rem;
+    margin-bottom: 0.25rem;
+    transition: background 0.15s ease;
+}
+
+.timeline-step:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 0 4px 4px 0;
+}
+
+.step-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.step-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+
+.step-agent {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.step-action {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+}
+
+.step-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-left: auto;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.step-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.8rem;
+    margin-top: 0.3rem;
+    padding-left: 2.1rem;
+    font-size: 0.78rem;
+}
+
+.detail-item {
+    color: var(--text-secondary);
+}
+
+.detail-key {
+    color: var(--blue-soft);
+    font-weight: 500;
+}
+
+.detail-val {
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.72rem;
+}
+
+.detail-more {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.no-data {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 2rem;
+    font-style: italic;
+}
+
+.loading {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 2rem;
+}

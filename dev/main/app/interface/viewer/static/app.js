@@ -57,6 +57,7 @@ async function loadScanData(scanId) {
         }
 
         renderScanData();
+        loadTrajectories(scanId);
     } catch (error) {
         console.error('Failed to load scan data:', error);
         showError(`Failed to load scan: ${error.message}`);
@@ -254,4 +255,146 @@ function escapeHtml(text) {
 function showError(message) {
     const tbody = document.getElementById('findingsTableBody');
     tbody.innerHTML = `<tr><td colspan="6" class="loading" style="color: var(--critical);">${escapeHtml(message)}</td></tr>`;
+}
+
+// ---------------------------------------------------------------------------
+// Agent Trajectory Visualization (Strix-inspired agent graph)
+// ---------------------------------------------------------------------------
+
+const AGENT_ICONS = {
+    recon: '🎯',
+    prober: '🕵️',
+    verifier: '⚖️',
+    fetcher: '🐙',
+    fixer: '🔧',
+    brain: '🧠',
+    crawler: '🕸️',
+    orchestrator: '🎼',
+};
+
+const AGENT_COLORS = {
+    recon: '#4a9eff',
+    prober: '#ff9f43',
+    verifier: '#2ed573',
+    fetcher: '#a55eea',
+    fixer: '#ff6b6b',
+    brain: '#ffd93d',
+    crawler: '#6c5ce7',
+    orchestrator: '#00cec9',
+};
+
+async function loadTrajectories(scanId) {
+    const container = document.getElementById('trajectoriesContainer');
+    if (!container) return;
+
+    try {
+        const response = await fetch(`/api/v1/viewer/${encodeURIComponent(scanId)}/trajectories`);
+        if (!response.ok) {
+            container.innerHTML = '<div class="no-data">No trajectory data available</div>';
+            return;
+        }
+
+        const data = await response.json();
+        const agents = data.agents || {};
+
+        if (Object.keys(agents).length === 0) {
+            container.innerHTML = '<div class="no-data">No agent trajectories recorded for this scan</div>';
+            return;
+        }
+
+        renderTrajectories(agents);
+    } catch (error) {
+        console.error('Failed to load trajectories:', error);
+        container.innerHTML = '<div class="no-data">Failed to load trajectory data</div>';
+    }
+}
+
+function renderTrajectories(agents) {
+    const container = document.getElementById('trajectoriesContainer');
+
+    // Collect all steps across all agents and sort by timestamp
+    const allSteps = [];
+    for (const [agentName, trajData] of Object.entries(agents)) {
+        const steps = trajData.steps || [];
+        for (const step of steps) {
+            allSteps.push({
+                agent: agentName,
+                ...step,
+            });
+        }
+    }
+
+    // Sort by timestamp
+    allSteps.sort((a, b) => (a.t || 0) - (b.t || 0));
+
+    if (allSteps.length === 0) {
+        container.innerHTML = '<div class="no-data">No steps recorded in trajectories</div>';
+        return;
+    }
+
+    const minTime = allSteps[0].t || 0;
+    const maxTime = allSteps[allSteps.length - 1].t || 0;
+    const duration = maxTime - minTime;
+
+    // Build HTML
+    let html = '';
+
+    // Agent summary bar
+    html += '<div class="agent-summary">';
+    const agentNames = Object.keys(agents);
+    for (const name of agentNames) {
+        const icon = AGENT_ICONS[name] || '🤖';
+        const color = AGENT_COLORS[name] || '#888';
+        const stepCount = (agents[name].steps || []).length;
+        html += `<span class="agent-badge" style="border-color: ${color}">`;
+        html += `<span class="agent-icon">${icon}</span>`;
+        html += `<span class="agent-name">${escapeHtml(name)}</span>`;
+        html += `<span class="agent-steps">${stepCount}</span>`;
+        html += '</span>';
+    }
+    html += '</div>';
+
+    // Duration info
+    html += `<div class="trajectory-duration">`;
+    html += `Duration: <strong>${duration.toFixed(2)}s</strong> · ${allSteps.length} steps · ${agentNames.length} agents`;
+    html += '</div>';
+
+    // Timeline
+    html += '<div class="timeline">';
+    for (const step of allSteps) {
+        const icon = AGENT_ICONS[step.agent] || '🤖';
+        const color = AGENT_COLORS[step.agent] || '#888';
+        const elapsed = ((step.t || 0) - minTime).toFixed(2);
+        const action = step.action || 'unknown';
+        const detail = step.detail || {};
+        const detailKeys = Object.keys(detail);
+
+        html += `<div class="timeline-step" style="border-left-color: ${color}">`;
+        html += `<div class="step-header">`;
+        html += `<span class="step-icon" style="background: ${color}22; color: ${color}">${icon}</span>`;
+        html += `<span class="step-agent" style="color: ${color}">${escapeHtml(step.agent)}</span>`;
+        html += `<span class="step-action">${escapeHtml(action)}</span>`;
+        html += `<span class="step-time">t+${elapsed}s</span>`;
+        html += '</div>';
+
+        if (detailKeys.length > 0) {
+            html += '<div class="step-detail">';
+            for (const key of detailKeys.slice(0, 5)) {
+                const val = detail[key];
+                const displayVal = typeof val === 'object'
+                    ? JSON.stringify(val).slice(0, 100)
+                    : String(val).slice(0, 100);
+                html += `<span class="detail-item"><span class="detail-key">${escapeHtml(key)}</span>: <span class="detail-val">${escapeHtml(displayVal)}</span></span>`;
+            }
+            if (detailKeys.length > 5) {
+                html += `<span class="detail-more">+${detailKeys.length - 5} more</span>`;
+            }
+            html += '</div>';
+        }
+
+        html += '</div>';
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
 }
