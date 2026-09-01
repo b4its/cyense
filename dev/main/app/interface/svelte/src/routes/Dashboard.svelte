@@ -22,6 +22,7 @@
     total: scans.length,
     cves: scans.reduce((a, x) => a + (x.summary?.cves_matched || 0), 0),
     ports: scans.reduce((a, x) => a + (x.summary?.open_ports || 0), 0),
+    secrets: scans.reduce((a, x) => a + (x.summary?.secrets_found || 0), 0),
   }
   $: featured = scans[0] || null
   $: recent = scans.slice(0, 6)

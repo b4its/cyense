@@ -202,4 +202,11 @@ async def rules() -> dict[str, object]:
         "cve_lookup": [
             _cve_rule("CVE-MATCH", "Known CVE matched to detected technology"),
         ],
+        "discovery": [
+            _detect_rule("SECRET-LEAK", "Hard-coded secret exposed in response"),
+            _detect_rule("EXPOSED-FILE", "Sensitive file/path publicly accessible"),
+            _detect_rule("DISC-JS-URL", "Endpoints extracted from JavaScript"),
+            _detect_rule("DISC-HIDDEN-PARAM", "Hidden HTTP parameter discovered"),
+            _detect_rule("DISC-WAYBACK", "Historical URLs from Wayback Machine"),
+        ],
     }

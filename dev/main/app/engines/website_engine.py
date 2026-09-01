@@ -170,6 +170,22 @@ class WebsiteEngine:
         )
 
         # ------------------------------------------------------------------
+        # Stage 2d: Discovery (adaptation of HackerOne 104 tools)
+        #   * TruffleHog/Shhgit → secret scanning on crawled content
+        #   * Jsluice/js-link-finder → URL extraction from JS
+        #   * Nikto/Dirsearch → sensitive path checks
+        #   * Arjun → hidden parameter discovery (capped)
+        # ------------------------------------------------------------------
+        await self._notify("discovery")
+        discovery_findings = await self._discovery_stage(
+            pages, url, headers, cookies,
+        )
+        log.info(
+            "discovery stage: %d findings",
+            len(discovery_findings),
+        )
+
+        # ------------------------------------------------------------------
         # Stage 3: IDOR probing (active, gated on endpoints or IDOR signals)
         # ------------------------------------------------------------------
         await self._notify("probe")
@@ -270,7 +286,7 @@ class WebsiteEngine:
         await self._notify("report")
         all_findings = (
             idor_findings + tech_findings + port_findings
-            + cve_findings + xss_findings
+            + cve_findings + discovery_findings + xss_findings
         )
         all_findings.sort(
             key=lambda f: (
@@ -291,6 +307,12 @@ class WebsiteEngine:
             "id_endpoints_probed": len(probed),
             "open_ports": len(open_ports_data),
             "cves_matched": len(cve_findings),
+            "secrets_found": sum(
+                1 for f in discovery_findings if f.get("rule") == "SECRET-LEAK"
+            ),
+            "exposed_files": sum(
+                1 for f in discovery_findings if f.get("rule") == "EXPOSED-FILE"
+            ),
             "xss_scan_activated": has_html and (xss_relevant or _pages_have_query_params(pages)),
             "idor_scan_activated": bool(id_endpoints),
             "domain": domain,
@@ -304,7 +326,7 @@ class WebsiteEngine:
                 "engine": "website-crawler",
                 "pipeline": [
                     "crawl", "analyze", "framework", "port-scan",
-                    "cve", "probe", "sqli", "report",
+                    "cve", "discovery", "probe", "sqli", "report",
                 ],
                 "url": url,
             },
@@ -476,6 +498,197 @@ class WebsiteEngine:
                 "location": url,
             })
 
+        return findings
+
+    async def _discovery_stage(
+        self,
+        pages: list[dict[str, Any]],
+        url: str,
+        headers: dict[str, str],
+        cookies: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Discovery (HackerOne-tools adaptation): secrets, exposed files,
+        JS URLs, hidden params, wayback URLs.
+
+        Returns finding-shaped dicts with rules SECRET-LEAK, EXPOSED-FILE,
+        DISC-JS-URL, DISC-HIDDEN-PARAM, DISC-WAYBACK. Fully best-effort —
+        any failure yields fewer findings, never a failed scan.
+        """
+        from app.utils.discovery import (
+            SENSITIVE_PATHS,
+            check_sensitive_paths,
+            discover_hidden_params,
+            extract_js_urls,
+            fetch_wayback_urls,
+        )
+        from app.utils.secrets import scan_secrets
+
+        findings: list[dict[str, Any]] = []
+        rate = int(getattr(self.settings, "rate_limit", 10))
+
+        # 1. Secret scanning on all crawled content (TruffleHog-style).
+        for page in pages:
+            page_url = page.get("url", "") or ""
+            body = page.get("body") or ""
+            for secret in scan_secrets(body):
+                findings.append({
+                    "rule": "SECRET-LEAK",
+                    "severity": secret["severity"],
+                    "confidence": 0.7,
+                    "cwe": "CWE-200",
+                    "title": f"Secret ter-expose: {secret['secret_type']}",
+                    "description": (
+                        f"{secret['description']} ({secret['count']}x ditemukan; "
+                        f"nilai di-redaksi — samples: {', '.join(secret['samples'][:3])})"
+                    ),
+                    "evidence": {
+                        "secret_type": secret["secret_type"],
+                        "count": secret["count"],
+                        "url": page_url,
+                    },
+                    "remediation": (
+                        "Putar (rotate) kredensial yang bocor; jangan pernah "
+                        "menyematkan secret di respons HTTP/JS client-side; "
+                        "gunakan secret manager."
+                    ),
+                    "location": page_url,
+                })
+
+        # 2. JS URL extraction (Jsluice-style) — deduped summary finding.
+        js_urls: list[str] = []
+        for page in pages:
+            if "javascript" in (page.get("content_type") or "").lower():
+                js_urls.extend(extract_js_urls(page.get("body") or ""))
+        js_urls = list(dict.fromkeys(js_urls))[:200]
+        if js_urls:
+            findings.append({
+                "rule": "DISC-JS-URL",
+                "severity": "info",
+                "confidence": 0.6,
+                "cwe": "CWE-200",
+                "title": f"{len(js_urls)} endpoint/URL diekstrak dari JavaScript",
+                "description": (
+                    "URL dan path yang ditemukan di bundle JS (adaptasi "
+                    "Jsluice/js-link-finder). Contoh: "
+                    + ", ".join(js_urls[:8])
+                ),
+                "evidence": {"js_urls": js_urls[:50], "count": len(js_urls), "url": url},
+                "remediation": (
+                    "Tinjau endpoint yang ter-embed di JS client-side; sembunyikan "
+                    "jalur internal yang tidak perlu diekspos."
+                ),
+                "location": url,
+            })
+
+        # 3. Sensitive path checks (Nikto/Dirsearch-style) — capped requests.
+        if getattr(self.settings, "discovery_enabled", True):
+            async with HttpClient(
+                timeout=self.settings.request_timeout,
+                headers=headers,
+                cookies=cookies,
+                rate_limit=rate,
+                max_concurrency=int(getattr(self.settings, "max_concurrency", 10)),
+            ) as client:
+                async def _get(url: str, extra_headers=None):
+                    resp = await client.get(url)
+                    return resp.status, resp.body
+
+                try:
+                    exposed = await check_sensitive_paths(
+                        url, _get, paths=SENSITIVE_PATHS[:20],
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("sensitive path check failed: %s", exc)
+                    exposed = []
+                for exp in exposed:
+                    findings.append({
+                        "rule": "EXPOSED-FILE",
+                        "severity": exp["severity"],
+                        "confidence": 0.85,
+                        "cwe": "CWE-200",
+                        "title": f"File sensitif ter-expose: {exp['path']}",
+                        "description": (
+                            f"{exp['description']} HTTP {exp['status']}. "
+                            f"Body awal: {exp['snippet'][:100]}"
+                        ),
+                        "evidence": {
+                            "path": exp["path"],
+                            "status": exp["status"],
+                            "url": exp["url"],
+                        },
+                        "remediation": (
+                            "Blokir akses publik ke file konfigurasi/backup "
+                            "(web server deny rules); hapus file yang tidak perlu."
+                        ),
+                        "location": exp["url"],
+                    })
+
+                # 4. Hidden parameter discovery (Arjun-style) — capped.
+                param_candidates: list[str] = []
+                html_pages = [
+                    p for p in pages
+                    if "html" in (p.get("content_type") or "").lower()
+                ][:3]
+                for page in html_pages:
+                    try:
+                        found_params = await discover_hidden_params(
+                            page.get("url", ""), _get,
+                        )
+                    except Exception:  # noqa: BLE001
+                        continue
+                    param_candidates.extend(found_params)
+                    if len(param_candidates) >= 5:
+                        break
+                param_candidates = list(dict.fromkeys(param_candidates))
+                for param in param_candidates[:5]:
+                    findings.append({
+                        "rule": "DISC-HIDDEN-PARAM",
+                        "severity": "medium",
+                        "confidence": 0.5,
+                        "cwe": "CWE-200",
+                        "title": f"Parameter tersembunyi ditemukan: {param!r}",
+                        "description": (
+                            f"Menambahkan {param!r} mengubah respons (adaptasi "
+                            "Arjun) — parameter tak terdokumentasi dapat menjadi "
+                            "permukaan serangan (IDOR/filter bypass)."
+                        ),
+                        "evidence": {"param": param, "url": url},
+                        "remediation": (
+                            "Dokumentasikan atau hapus parameter tersembunyi; "
+                            "validasi input untuk parameter tak dikenal."
+                        ),
+                        "location": url,
+                    })
+
+        # 5. Wayback passive URL discovery (waybackurls-style).
+        try:
+            from urllib.parse import urlparse as _up
+            host = _up(url).hostname or ""
+            wb_urls = await fetch_wayback_urls(host)
+        except Exception:  # noqa: BLE001
+            wb_urls = []
+        if wb_urls:
+            findings.append({
+                "rule": "DISC-WAYBACK",
+                "severity": "info",
+                "confidence": 0.6,
+                "cwe": "CWE-200",
+                "title": f"{len(wb_urls)} URL historis dari Wayback Machine",
+                "description": (
+                    "URL lama yang diarsipkan (adaptasi waybackurls/gau) — "
+                    "sering memuat endpoint usang/rentan. Contoh: "
+                    + ", ".join(wb_urls[:8])
+                ),
+                "evidence": {"wayback_urls": wb_urls[:30], "count": len(wb_urls), "url": url},
+                "remediation": (
+                    "Audit URL historis untuk kode usang yang masih aktif."
+                ),
+                "location": url,
+            })
+
+        # Assign finding_ids
+        for k, f in enumerate(findings, start=1):
+            f["finding_id"] = f"{self.scan_id}-WDISC{k:03d}"
         return findings
 
     async def _probe_xss_payloads(

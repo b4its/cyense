@@ -51,5 +51,9 @@ class Settings(BaseSettings):
     cve_online_enabled: bool = True
     cve_search_timeout: float = 12.0
 
+    # Discovery stage (HackerOne-tools adaptation: secrets, exposed files,
+    # JS URLs, hidden params, wayback).
+    discovery_enabled: bool = True
+
 
 settings = Settings()
