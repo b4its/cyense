@@ -2,7 +2,7 @@
 # Install dependencies first: pip install -r requirements.txt pytest ruff
 # Usage: make up / make down / make logs / make test / make shell
 
-.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo
+.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run
 
 SHELL := /bin/bash
 APP_DIR := dev/main
@@ -140,3 +140,6 @@ demo: ## Demo end-to-end: scan a public repo (requires internet + service up)
 		--i-have-permission \
 		--lang auto \
 		--fail-on none
+
+run: ## Jalankan Cyense — pilih mode Website atau CLI (launcher)
+	cd $(APP_DIR) && $(PYTHON) -m app.cli.main launch

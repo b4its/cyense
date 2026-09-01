@@ -2118,6 +2118,60 @@ def config_reset_cmd(
 # ---------------------------------------------------------------------------
 # version
 
+@app.command("launch")
+def launch_cmd(
+    port: Annotated[int, typer.Option("--port", help="Port backend FastAPI.")] = 8000,
+    host: Annotated[str, typer.Option("--host", help="Host backend FastAPI.")] = "127.0.0.1",
+    mode: Annotated[
+        str | None,
+        typer.Option(
+            "--mode",
+            help="Pilih mode langsung tanpa menu: 'website' atau 'cli'.",
+        ),
+    ] = None,
+    open_browser: Annotated[
+        bool,
+        typer.Option(
+            "--open/--no-open",
+            help="Buka browser otomatis saat mode website (default: ya).",
+        ),
+    ] = True,
+) -> None:
+    """Jalankan Cyense — pilih mode Website atau CLI.
+
+    Website : menjalankan backend FastAPI + frontend Svelte, lalu menampilkan
+              lokasi website (http://host:port/ui).
+    CLI     : memastikan backend FastAPI berjalan (background bila belum),
+              lalu client-side memakai CLI berbasis command.
+    """
+    from app.cli.launch import run_cli_mode, run_website_mode
+
+    if mode is None:
+        _state.console.print()
+        _state.console.print("  [bold]Pilih cara menjalankan Cyense:[/]")
+        _state.console.print()
+        _state.console.print("    [bold cyan]1[/]  Website — backend FastAPI + frontend Svelte")
+        _state.console.print("    [bold cyan]2[/]  Command Line Interface — CLI (backend FastAPI)")
+        _state.console.print()
+        try:
+            choice = input("  Pilihan [1/2]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            _state.console.print("\n  Dibatalkan.")
+            raise typer.Exit(130) from None
+        if choice == "2":
+            mode = "cli"
+        else:
+            mode = "website"
+
+    if mode == "cli":
+        code = run_cli_mode(host, port)
+        raise typer.Exit(code)
+    else:
+        # Website mode blocks (foreground server).
+        code = run_website_mode(host, port, open_browser=open_browser)
+        raise typer.Exit(code)
+
+
 @app.command("version")
 def version_cmd() -> None:
     """Tampilkan versi CLI dan service."""
