@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.agents.brain import Brain
-from app.api import export, remediations, reports, scans, system, viewer
+from app.api import export, remediations, reports, scans, system, ui, viewer
 from app.core.config import settings
 from app.core.store import JobStore
 from app.remediation.store import FixStore
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(remediations.router, prefix="/api/v1")
     app.include_router(export.router, prefix="/api/v1")  # CSV/PDF exports
     app.include_router(viewer.router, prefix="/api/v1")  # web viewer dashboard
+    app.include_router(ui.router)                        # Svelte web UI (/ui)
     return app
 
 
