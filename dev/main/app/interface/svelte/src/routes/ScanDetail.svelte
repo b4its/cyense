@@ -118,6 +118,28 @@
     </div>
   </section>
 
+  <!-- Domain scan: per-host table -->
+  {#if report?.hosts?.length}
+    <section class="block">
+      <div class="wrap">
+        <h2>Host yang Di-scan ({report.hosts.length})</h2>
+        <p class="sub">Hasil per subdomain — temuan diagregasi lintas host.</p>
+        <table class="tbl">
+          <thead><tr><th>Host</th><th>Status</th><th>Temuan</th></tr></thead>
+          <tbody>
+          {#each report.hosts as h}
+            <tr>
+              <td class="mono">{h.host}</td>
+              <td><span class="badge {h.status === 'completed' ? 'info' : 'critical'}">{h.status}</span></td>
+              <td>{h.findings_count}</td>
+            </tr>
+          {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {/if}
+
   <!-- Progress checklist -->
   <section class="block">
     <div class="wrap">

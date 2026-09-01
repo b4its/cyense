@@ -476,6 +476,71 @@ def scan_link(
 
 
 # ---------------------------------------------------------------------------
+# scan domain — enumerate subdomains then scan every live host
+
+@scan_app.command("domain")
+def scan_domain(
+    domain: Annotated[
+        str,
+        typer.Argument(
+            help="Domain target (contoh: example.com) — seluruh subdomain "
+            "yang ditemukan akan di-scan dengan pipeline lengkap."
+        ),
+    ],
+    max_hosts: Annotated[
+        int,
+        typer.Option("--max-hosts", help="Batas host yang di-scan (1-100, default 20)."),
+    ] = 20,
+    max_pages: Annotated[
+        int,
+        typer.Option("--max-pages", help="Max halaman per host (default 20)."),
+    ] = 20,
+    rate_limit: Annotated[
+        int,
+        typer.Option("--rate-limit", help="Max request/s per host (default 10)."),
+    ] = 10,
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[mandatory] Konfirmasi izin eksplisit untuk memindai domain ini.",
+        ),
+    ] = False,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+    fail_on: Annotated[
+        str,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 bila ada temuan ≥ severity ini (none|info|low|medium|high|critical).",
+        ),
+    ] = "none",
+) -> None:
+    """Scan seluruh domain — enumerasi subdomain + pipeline scan per host.
+
+    Mode domain: subdomain ditemukan secara pasif (Wayback Machine) dan
+    aktif (DNS), lalu setiap host yang hidup di-scan dengan pipeline
+    website lengkap (crawl → teknologi → port → CVE → discovery → probe).
+    Hasil diagregasi dengan atribusi per-host.
+    """
+    payload: dict = {
+        "mode": "domain",
+        "domain": domain,
+        "max_hosts": max_hosts,
+        "max_pages": max_pages,
+        "rate_limit": rate_limit,
+        "i_have_permission": i_have_permission,
+    }
+    _run(_run_scan(
+        payload=payload,
+        mode="domain",
+        out_path=out,
+        no_md=no_md,
+        fail_on=fail_on,
+        min_severity="info",
+    ))
+
+
 # scan website — crawl a public site, discover IDOR + live XSS
 
 @scan_app.command("website")

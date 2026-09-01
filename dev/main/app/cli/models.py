@@ -121,6 +121,7 @@ MODE_STAGES: dict[str, list[str]] = {
     "program": ["recon", "probe", "report"],
     "link":    ["recon", "probe", "verify", "report"],
     "website": ["crawl", "probe", "analyze", "report"],
+    "domain":  ["enumerate", "hosts", "host", "report"],
 }
 
 

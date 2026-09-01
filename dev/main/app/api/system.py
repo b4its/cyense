@@ -216,4 +216,10 @@ async def rules() -> dict[str, object]:
             _detect_rule("SSRF-SINK", "SSRF-sink parameter detected (passive)"),
             _detect_rule("GRAPHQL-INTROSPECTION", "GraphQL introspection enabled"),
         ],
+        "domain": [
+            _detect_rule(
+                "DOMAIN-HOST",
+                "Finding diagregasi per-host (scan seluruh domain)",
+            ),
+        ],
     }

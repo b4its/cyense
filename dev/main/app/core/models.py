@@ -108,6 +108,47 @@ class ProgramScanRequest(BaseModel):
         return v
 
 
+class DomainScanRequest(BaseModel):
+    """Scan seluruh domain: enumerasi subdomain lalu jalankan pipeline
+    website scan (crawl, tech, port, CVE, discovery, probe, SQLi) ke
+    setiap host yang hidup, dengan agregasi lintas subdomain.
+    """
+
+    mode: Literal["domain"]
+    # Domain target (contoh: example.com). Hostname diambil darinya.
+    domain: str = ""
+    # Batas jumlah host yang di-scan (safety cap).
+    max_hosts: int = Field(default=20, ge=1, le=100)
+    max_depth: int = Field(default=1, ge=0, le=5)
+    max_pages: int = Field(default=20, ge=1, le=500)
+    rate_limit: int = Field(default=10, ge=1, le=100)
+    headers: dict[str, str] = {}
+    cookies: dict[str, str] = {}
+    i_have_permission: bool = False
+    instruction: str | None = None
+    scan_mode: str = "standard"
+    resume_from: str | None = None
+
+    @field_validator("domain")
+    @classmethod
+    def _validate_domain(cls, value: str) -> str:
+        if not value:
+            return value  # resume may omit domain (restored from checkpoint)
+        # Reject anything that isn't a plain hostname (no scheme/path/port).
+        if any(ch in value for ch in ("/", ":", "@", " ", "\n", "\r")):
+            raise ValueError("domain must be a bare hostname (e.g. example.com)")
+        return value.strip().lower()
+
+    @model_validator(mode="after")
+    def _permission_gate(self) -> DomainScanRequest:
+        if not self.i_have_permission:
+            raise ValueError(
+                "i_have_permission must be true: only scan domains "
+                "you are authorized to test (read-only)"
+            )
+        return self
+
+
 class WebsiteScanRequest(BaseModel):
     """Scan a public website for IDOR & XSS via crawler + live analysis.
 
@@ -150,7 +191,13 @@ class WebsiteScanRequest(BaseModel):
         return self
 
 
-ScanRequest = LinkScanRequest | ProgramScanRequest | GithubScanRequest | WebsiteScanRequest
+ScanRequest = (
+    LinkScanRequest
+    | ProgramScanRequest
+    | GithubScanRequest
+    | WebsiteScanRequest
+    | DomainScanRequest
+)
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +236,13 @@ class Finding(BaseModel):
 
 class ScanJob(BaseModel):
     scan_id: str
-    request: LinkScanRequest | ProgramScanRequest | GithubScanRequest | WebsiteScanRequest
+    request: (
+        LinkScanRequest
+        | ProgramScanRequest
+        | GithubScanRequest
+        | WebsiteScanRequest
+        | DomainScanRequest
+    )
     status: ScanStatus = ScanStatus.QUEUED
     stage: str | None = None  # recon | probe | verify | report | crawl
     progress: int = 0  # 0..100

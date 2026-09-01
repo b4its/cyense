@@ -185,6 +185,26 @@ class ScanWorker:
                     settings=self.settings,
                     on_stage=on_stage,
                 )
+            elif request_dict["mode"] == "domain":
+                # Domain scan: enumerate subdomains + full pipeline per host.
+                from app.engines.domain_engine import DomainEngine
+
+                domain_engine = DomainEngine(
+                    scan_id=scan_id,
+                    brain=self.brain,
+                    reports_dir=str(self.settings.reports_dir),
+                    settings=self.settings,
+                    on_stage=on_stage,
+                )
+                report = await domain_engine.run(
+                    domain=request_dict.get("domain", ""),
+                    max_hosts=int(request_dict.get("max_hosts", 20)),
+                    max_depth=int(request_dict.get("max_depth", 1)),
+                    max_pages=int(request_dict.get("max_pages", 20)),
+                    rate_limit=int(request_dict.get("rate_limit", 10)),
+                    headers=request_dict.get("headers") or {},
+                    cookies=request_dict.get("cookies") or {},
+                )
             else:
                 await self.store.mark_stage(scan_id, "recon", 25)
                 await on_stage("recon")
