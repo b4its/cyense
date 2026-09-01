@@ -110,15 +110,23 @@ def test_idor_trigger_from_technology() -> None:
 # WebsiteEngine._cve_lookup_stage
 # ---------------------------------------------------------------------------
 
+class _Settings:
+    cve_online_enabled = False  # offline tests (deterministic)
+    cve_search_timeout = 3.0
+
+
 def test_cve_lookup_stage_builds_findings_and_flags() -> None:
+    import asyncio
+
     from app.engines.website_engine import WebsiteEngine
 
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
     tech_findings = [
         _tech("cms:wordpress"),   # → SQLi + XSS + IDOR CVEs
         _tech("lib:jquery"),      # → XSS CVE
     ]
-    findings, xss_rel, idor_rel = WebsiteEngine._cve_lookup_stage(
-        "scan-abc", tech_findings, [], "http://x.test/"
+    findings, xss_rel, idor_rel = asyncio.run(
+        engine._cve_lookup_stage("scan-abc", tech_findings, [], "http://x.test/")
     )
 
     cve_findings = [f for f in findings if f["rule"] == "CVE-MATCH"]
@@ -132,6 +140,8 @@ def test_cve_lookup_stage_builds_findings_and_flags() -> None:
     # version-blind matches are potential (medium severity, verified False)
     assert all(f["evidence"]["verified"] is False for f in cve_findings)
     assert all(f["severity"] == "medium" for f in cve_findings)
+    # local database source recorded
+    assert all(f["evidence"]["source"] == "local" for f in cve_findings)
 
     # evidence carries the CVE id
     cve_ids = {f["evidence"]["cve"] for f in cve_findings}
@@ -139,10 +149,13 @@ def test_cve_lookup_stage_builds_findings_and_flags() -> None:
 
 
 def test_cve_lookup_stage_no_triggers_for_plain_server() -> None:
+    import asyncio
+
     from app.engines.website_engine import WebsiteEngine
 
-    findings, xss_rel, idor_rel = WebsiteEngine._cve_lookup_stage(
-        "scan-abc", [_tech("server:nginx")], [], "http://x.test/"
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    findings, xss_rel, idor_rel = asyncio.run(
+        engine._cve_lookup_stage("scan-abc", [_tech("server:nginx")], [], "http://x.test/")
     )
     cve_findings = [f for f in findings if f["rule"] == "CVE-MATCH"]
     assert len(cve_findings) >= 1  # nginx CVEs (potential)

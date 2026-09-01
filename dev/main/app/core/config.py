@@ -47,5 +47,9 @@ class Settings(BaseSettings):
     sarif_enabled: bool = True
     coverage_enabled: bool = True
 
+    # Live CVE search (augments the local CVE database via NVD/MITRE APIs).
+    cve_online_enabled: bool = True
+    cve_search_timeout: float = 12.0
+
 
 settings = Settings()

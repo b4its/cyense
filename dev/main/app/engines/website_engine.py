@@ -29,6 +29,7 @@ from app.utils.cve_lookup import (
     techs_trigger_idor,
     techs_trigger_xss,
 )
+from app.utils.cve_search import merge_cves, search_cves_online
 from app.utils.framework_detection import detect_technologies
 from app.utils.http_client import HttpClient
 from app.utils.logger import get_logger
@@ -159,7 +160,7 @@ class WebsiteEngine:
         # and decide whether to activate the XSS / IDOR scanners.
         # ------------------------------------------------------------------
         await self._notify("cve")
-        cve_findings, xss_relevant, idor_relevant = self._cve_lookup_stage(
+        cve_findings, xss_relevant, idor_relevant = await self._cve_lookup_stage(
             self.scan_id, tech_findings, open_ports_data, url,
         )
         log.info(
@@ -315,8 +316,8 @@ class WebsiteEngine:
     # Helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _cve_lookup_stage(
+    async def _cve_lookup_stage(
+        self,
         scan_id: str,
         tech_findings: list[dict[str, Any]],
         open_ports: list[dict[str, Any]],
@@ -324,23 +325,48 @@ class WebsiteEngine:
     ) -> tuple[list[dict[str, Any]], bool, bool]:
         """Match detected technologies + open ports against known CVEs.
 
-        Returns (cve_findings, xss_relevant, idor_relevant).
-        ``xss_relevant`` / ``idor_relevant`` gate the active XSS / IDOR
-        scanners (the CVE-driven activation step of the workflow).
+        Combines the deterministic local database with a live lookup against
+        public CVE-reporting sources (NVD / MITRE) when enabled — each
+        finding records its ``source``. Returns (cve_findings,
+        xss_relevant, idor_relevant); the relevance flags gate the active
+        XSS / IDOR scanners.
         """
-        cves = lookup_cves(tech_findings, open_ports)
+        local_cves = lookup_cves(tech_findings, open_ports)
+
+        # Live CVE search (optional, fail-safe offline).
+        online_cves: list[dict[str, Any]] = []
+        if getattr(self.settings, "cve_online_enabled", True):
+            try:
+                online_cves = await search_cves_online(
+                    tech_findings,
+                    open_ports,
+                    timeout=float(
+                        getattr(self.settings, "cve_search_timeout", 12.0)
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 — never fail scan on CVE search
+                log.warning("online CVE search failed: %s", exc)
+
+        cves = merge_cves(local_cves, online_cves)
         cve_findings: list[dict[str, Any]] = []
         for i, cve in enumerate(cves, start=1):
-            # Version-aware: a match whose detected version falls in the
-            # affected range is CONFIRMED (full severity + confidence);
-            # otherwise it stays potential (medium, reduced confidence).
+            # Version-aware: local matches whose detected version falls in the
+            # affected range are CONFIRMED (full severity + confidence);
+            # version-blind local matches are conservative (medium). Online
+            # (NVD/MITRE) results keep their authoritative severity but with
+            # reduced confidence since version applicability is unverified.
             verified = cve.get("verified", False)
+            source = cve.get("source", "local")
             confidence = cve.get("confidence", 0.9 if verified else 0.5)
-            severity = cve.get("severity", "medium") if verified else "medium"
+            if source == "local" and not verified:
+                severity = "medium"  # conservative for version-blind local
+            else:
+                severity = cve.get("severity", "medium")
             detected_version = cve.get("detected_version")
+            source = cve.get("source", "local")
             description = (
                 f"{cve['cve']}: {cve['description']} "
-                f"(affects {cve['component']} {cve['affected']})."
+                f"(source: {source})."
             )
             if detected_version:
                 description += (
@@ -360,17 +386,19 @@ class WebsiteEngine:
                 "description": description,
                 "evidence": {
                     "cve": cve["cve"],
-                    "component": cve["component"],
-                    "affected": cve["affected"],
+                    "component": cve.get("component", cve["cve"]),
+                    "affected": cve.get("affected", "unknown"),
                     "verified": verified,
                     "detected_version": detected_version,
+                    "cvss_score": cve.get("cvss_score"),
                     "type": cve.get("type", "other"),
-                    "ref": cve["ref"],
+                    "source": source,
+                    "ref": cve.get("ref", ""),
                     "url": url,
                 },
                 "remediation": (
-                    f"Upgrade {cve['component']} to a patched version and "
-                    f"review the advisory: {cve['ref']}"
+                    f"Review advisory {cve.get('ref', '')} and upgrade the "
+                    "affected component to a patched version."
                 ),
                 "location": url,
             })

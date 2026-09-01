@@ -180,7 +180,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-187 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli
+192 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli
 ruff check: All checks passed (0 errors)
 ```
 
@@ -259,7 +259,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 187 tests via pytest
+make test       # 192 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -356,7 +356,7 @@ cyense/
 │   │   │   ├── services/              ← multi_scan, scan_resume
 │   │   │   └── utils/                 ← http_client, sandbox, github_client, pii, etc.
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 187 tests + lab app fixture
+│   │   ├── tests/                     ← 192 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml
 │   │   └── README.md                  ← service-level README
@@ -408,7 +408,7 @@ cyense/
 
 ## 12. Status
 
-- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 187/187 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 187/187 tests
+- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 192/192 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 192/192 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
