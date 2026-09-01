@@ -203,9 +203,14 @@ class VerifierAgent(BaseAgent):
 
     @staticmethod
     def _render(profile: TargetProfile, value: str) -> str:
+        # Lambda replacement keeps `value` literal: a value containing
+        # backslashes would otherwise be parsed as regex group references
+        # and crash re.sub.
         import re
 
-        return re.sub(r"\{[A-Za-z_][A-Za-z0-9_]*\}", value, profile.url_template)
+        return re.sub(
+            r"\{[A-Za-z_][A-Za-z0-9_]*\}", lambda _m: value, profile.url_template
+        )
 
 
 __all__ = ["VerifierAgent", "redact_headers"]

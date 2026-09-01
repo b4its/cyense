@@ -68,6 +68,10 @@ class ProberAgent(BaseAgent):
         probe_max: int = int(ctx.get("probe_max", 50))
         requested_ids: list[str] | None = ctx.get("probe_ids")
         baseline_body: str = ctx.get("baseline_body", "")
+        # The caller's own object id (LinkScanRequest.baseline_id). Numeric
+        # candidates are generated AROUND this id — previously it was ignored
+        # and probing always centred on "1".
+        baseline_id: str | None = ctx.get("baseline_id")
 
         # recall previous knowledge about this host (Brain memory capability)
         known_valid: list[str] = []
@@ -79,7 +83,7 @@ class ProberAgent(BaseAgent):
 
         # build candidate list
         candidates = self._candidates(
-            requested_ids, known_valid, profile, probe_max
+            requested_ids, known_valid, profile, probe_max, baseline_id
         )
         self.trajectory.step("candidates_built", {"count": len(candidates)})
 
@@ -191,16 +195,19 @@ class ProberAgent(BaseAgent):
         known_valid: list[str],
         profile: TargetProfile,
         probe_max: int,
+        baseline_id: str | None = None,
     ) -> list[str]:
         candidates: list[str] = []
         if requested:  # explicit list wins
             candidates = list(requested)
         else:
-            baseline_id = self._baseline_id_hint(profile)
+            # Prefer the caller-supplied own-id; fall back to the numeric
+            # default when absent (keeps auto mode deterministic).
+            baseline = baseline_id if baseline_id else self._baseline_id_hint(profile)
             if profile.placeholders and profile.placeholders[0] == "email":
-                candidates = (requested or []) + self._load_wordlist()
-            elif baseline_id.isdigit():
-                candidates = self._numeric_neighbours(baseline_id, probe_max)
+                candidates = self._load_wordlist()
+            elif baseline.isdigit():
+                candidates = self._numeric_neighbours(baseline, probe_max)
             else:
                 candidates = self._load_wordlist()
         # merge known valid ids from brain (memory), keep order, dedupe
@@ -238,9 +245,18 @@ class ProberAgent(BaseAgent):
 
     @staticmethod
     def _render(profile: TargetProfile, probe_id: str) -> str:
+        """Substitute probe_id into the {PLACEHOLDER} template.
+
+        The replacement goes through a lambda so the id is treated as a
+        literal: a user-supplied probe id containing backslashes (e.g.
+        ``\\1``) would otherwise be interpreted as a regex group reference
+        and crash re.sub with ``re.error: invalid group reference``.
+        """
         import re
 
-        return re.sub(r"\{[A-Za-z_][A-Za-z0-9_]*\}", probe_id, profile.url_template)
+        return re.sub(
+            r"\{[A-Za-z_][A-Za-z0-9_]*\}", lambda _m: probe_id, profile.url_template
+        )
 
 
 __all__ = ["ProberAgent", "ProbeHit", "redact_headers"]
