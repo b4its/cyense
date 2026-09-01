@@ -361,9 +361,16 @@ class WebsiteEngine:
                                 ),
                                 "location": probe_url,
                             })
-                            # One finding per parameter (not per payload).
+                            # Finding found — stop checking payloads for this param.
                             break
+                        else:
+                            # `for orig` exhausted without finding → try next payload
+                            continue
+                        # `for orig` break fires here → finding found, stop payloads
                         break
+                    else:
+                        continue  # no payload matched → next payload
+                    break  # payload matched → stop for this param
         return findings
 
     async def _probe_id_endpoints(
