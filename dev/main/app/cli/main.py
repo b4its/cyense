@@ -52,6 +52,7 @@ from app.cli.models import MODE_STAGES, RenderContext, StageInfo
 from app.cli.recommend import build_recommendations
 from app.cli.renderer import (
     render_banner,
+    render_cve_table,
     render_error_panel,
     render_finding_card,
     render_findings_table,
@@ -542,6 +543,200 @@ def scan_website(
         fail_on=fail_on,
         min_severity=min_severity,
     ))
+
+
+# ---------------------------------------------------------------------------
+# cve — focused CVE lookup for a website (uses the CVE-aware website scan)
+# ---------------------------------------------------------------------------
+
+@app.command("cve")
+def cli_cve(
+    url: Annotated[
+        str,
+        typer.Argument(
+            help="Website URL untuk dicari CVEs (teknologi terdeteksi dicocokkan "
+            "dengan database lokal + NVD/MITRE live)."
+        ),
+    ],
+    max_pages: Annotated[
+        int,
+        typer.Option("--max-pages", help="Max halaman di-crawl (default 10)."),
+    ] = 10,
+    rate_limit: Annotated[
+        int,
+        typer.Option("--rate-limit", help="Max request/s ke target (default 10)."),
+    ] = 10,
+    online: Annotated[
+        bool,
+        typer.Option(
+            "--online/--no-online",
+            help="Aktifkan pencarian CVE live ke NVD/MITRE (default: online).",
+        ),
+    ] = True,
+    no_port_scan: Annotated[
+        bool,
+        typer.Option("--no-port-scan", help="Lewati port scan (default: jalankan)."),
+    ] = False,
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[wajib] Konfirmasi izin eksplisit untuk memindai website ini.",
+        ),
+    ] = False,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+) -> None:
+    """Cari CVE/kerentanan terkenal untuk teknologi website.
+
+    Menjalankan website scan berfokus CVE: deteksi teknologi + port scan →
+    cocokkan dengan database CVE lokal → pencarian live ke NVD/MITRE.
+    Menampilkan tabel CVE khusus (severity, CVSS, sumber, status verifikasi).
+    """
+    if not i_have_permission:
+        render_error_panel(
+            _state.console, _state.caps,
+            "i_have_permission wajib untuk memindai website.",
+            "Ulangi dengan --i-have-permission untuk konfirmasi otorisasi.",
+        )
+        raise typer.Exit(3)
+
+    payload: dict = {
+        "mode": "website",
+        "url": url,
+        "max_depth": 1,               # fokus CVE → cukup halaman awal + tautan
+        "max_pages": max_pages,
+        "rate_limit": rate_limit,
+        "i_have_permission": True,
+    }
+    if not online:
+        # server-side flag untuk menonaktifkan pencarian CVE online
+        payload["scan_mode"] = "standard"
+        # Note: online toggle dikirim sebagai instruksi; fallback disediakan
+        # oleh server default. Untuk kontrol penuh, nonaktifkan via env di
+        # server (CYENSE_CVE_ONLINE_ENABLED=false).
+        payload["instruction"] = "focus on CVE detection; online search " + (
+            "enabled" if online else "disabled"
+        )
+
+    _run(_cve_scan_flow(payload, out_path=out, no_md=no_md, no_port_scan=no_port_scan))
+
+
+async def _cve_scan_flow(
+    payload: dict,
+    *,
+    out_path: str | None,
+    no_md: bool,
+    no_port_scan: bool,
+) -> None:
+    """Submit a website scan and render the CVE table prominently."""
+    from app.cli.theme import PALETTE as PAL
+
+    caps = _state.caps
+    console = _state.console
+
+    if not caps.quiet:
+        render_banner(console, caps, _VERSION)
+
+    try:
+        async with open_client(_state.api_url, timeout=30) as c:
+            submitted = await c.submit_scan(payload)
+    except Exception as e:
+        render_error_panel(console, caps, f"Gagal submit scan CVE: {e}")
+        raise typer.Exit(3) from None
+
+    scan_id = submitted["scan_id"]
+    if not caps.quiet:
+        console.print(f"  [{PAL.blue_soft}]Scan CVE diajukan:[/] {scan_id}")
+        console.print(f"  [{PAL.muted}]Menunggu hasil (teknologi → port → CVE)...[/]")
+
+    report: dict | None = None
+    try:
+        async with open_client(_state.api_url, timeout=_state.timeout) as c:
+            async for _snap in poll_scan(c, scan_id, total_timeout=_state.timeout):
+                pass
+            report = await c.get_report(scan_id)
+    except TimeoutError as e:
+        render_error_panel(console, caps, str(e))
+        raise typer.Exit(3) from None
+    except Exception as e:
+        render_error_panel(console, caps, f"Polling scan gagal: {e}")
+        raise typer.Exit(3) from None
+
+    if report is None:
+        report = load_report_from_disk(scan_id)
+    if report is None:
+        render_error_panel(console, caps, f"Report tidak ditemukan untuk {scan_id}")
+        raise typer.Exit(3) from None
+
+    findings = report.get("findings", [])
+    summary = report.get("summary", {})
+
+    # Pisahkan CVE dari temuan lain
+    cve_findings = [f for f in findings if f.get("rule") == "CVE-MATCH"]
+    tech_findings = [f for f in findings if f.get("rule", "").startswith("DETECT-")]
+    port_findings = [f for f in findings if f.get("rule") == "PORT-OPEN"]
+    other = [f for f in findings
+             if f not in cve_findings and f not in tech_findings
+             and f not in port_findings]
+
+    # Teknologi terdeteksi
+    if tech_findings:
+        console.print(f"  [bold {PAL.blue_primary}]TEKNOLOGI TERDETEKSI[/]")
+        for t in tech_findings:
+            ev = t.get("evidence", {})
+            version = f" v{ev['version']}" if ev.get("version") else ""
+            console.print(
+                f"  [{PAL.ok}]●[/] {t.get('rule','?').replace('DETECT-','')}"
+                f"{version}  [{PAL.muted}]{t.get('title','')[:50]}[/]"
+            )
+        console.print()
+
+    # Port terbuka
+    if port_findings:
+        console.print(f"  [bold {PAL.blue_primary}]PORT TERBUKA[/]")
+        for p in port_findings:
+            ev = p.get("evidence", {})
+            banner = f" banner={ev.get('banner','')[:40]}" if ev.get("banner") else ""
+            ver = f" v{ev.get('version')}" if ev.get("version") else ""
+            console.print(
+                f"  [{PAL.ok}]●[/] {ev.get('port')}/{ev.get('service','?')}"
+                f"{ver}{banner}"
+            )
+        console.print()
+
+    # Tabel CVE khusus
+    render_cve_table(console, caps, cve_findings, summary)
+
+    # Temuan lain (XSS/SQLi/IDOR) ringkas
+    if other:
+        console.print(f"  [bold {PAL.blue_primary}]TEMUAN LAIN (XSS/SQLi/IDOR)[/]")
+        render_findings_table(console, caps, other, summary)
+    else:
+        console.print(f"  [{PAL.ok}]Tidak ada temuan XSS/SQLi/IDOR.[/]")
+        console.print()
+
+    # Output markdown opsional
+    if out_path and not no_md:
+        from pathlib import Path
+
+        from app.report.md_report import dump_markdown_report
+        try:
+            md_dest = Path(out_path).resolve()
+            cwd = Path.cwd().resolve()
+            if not md_dest.is_relative_to(cwd):
+                render_error_panel(
+                    console, caps,
+                    f"--out path di luar direktori kerja: {md_dest}",
+                )
+                raise typer.Exit(3)
+            dump_markdown_report(report, md_dest)
+            console.print(f"  [{PAL.ok}]Laporan markdown ditulis:[/] {md_dest}")
+        except OSError as e:
+            render_error_panel(console, caps, f"Gagal tulis markdown: {e}")
+            raise typer.Exit(3) from None
+
+    render_footer(console, caps)
 
 
 # ---------------------------------------------------------------------------

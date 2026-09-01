@@ -350,6 +350,87 @@ def render_findings_table(
 # ---------------------------------------------------------------------------
 # Blok 4 — Panel saran perbaikan
 
+def render_cve_table(
+    console: Console,
+    caps: TermCaps,
+    cve_findings: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> None:
+    """Render CVE findings (CVE-MATCH) in a dedicated table.
+
+    Shows CVE id, severity, CVSS score, source (local/NVD), verified status,
+    affected component, and a short description + reference.
+    """
+    p = PALETTE
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    if not cve_findings:
+        console.print(f"  [{p.ok}]Tidak ada CVE yang cocok untuk teknologi terdeteksi.[/]")
+        console.print()
+        return
+
+    console.print(f"  [bold {p.blue_primary}]CVE / KERENTANAN TERKENAL[/]")
+    console.print(f"  [{p.muted}]Sumber: database lokal + pencarian live (NVD/MITRE)[/]")
+    console.print(sep)
+
+    table = Table(
+        show_header=True,
+        header_style=f"bold {p.blue_primary}",
+        border_style=p.rule_line,
+        show_lines=False,
+        padding=(0, 1),
+        expand=False,
+    )
+    table.add_column("CVE",       style=f"bold {p.blue_soft}", width=18)
+    table.add_column("SEVERITY",  width=10)
+    table.add_column("CVSS",      justify="right", width=6, style=p.muted)
+    table.add_column("SRC",       width=6)
+    table.add_column("VERIFIED",  width=9)
+    table.add_column("KOMPONEN",  style=p.blue_mist, max_width=16)
+    table.add_column("DESKRIPSI", style=p.ink, max_width=48)
+
+    from app.cli.theme import SEVERITY_BADGE_COLOR
+    for f in cve_findings:
+        sev = _esc(f.get("severity", "info")).lower()
+        bc = SEVERITY_BADGE_COLOR.get(sev, p.muted)
+        ev = f.get("evidence", {})
+        cvss = ev.get("cvss_score")
+        cvss_str = f"{cvss:.1f}" if cvss is not None else "—"
+        verified = "ya" if ev.get("verified") else "potensial"
+        component = _esc(ev.get("component") or "?")
+        desc = _esc(f.get("description", ""))[:48]
+        table.add_row(
+            _esc(ev.get("cve") or f.get("title", "—"))[:18],
+            f"[{bc}]{sev.upper()}[/]",
+            cvss_str,
+            _esc(ev.get("source", "?")),
+            f"[{p.ok if ev.get('verified') else p.sev_medium}]{verified}[/]",
+            component,
+            desc,
+        )
+
+    console.print(table)
+    console.print()
+
+    # Reference lines
+    for f in cve_findings:
+        ev = f.get("evidence", {})
+        ref = ev.get("ref")
+        cve_id = ev.get("cve")
+        if ref:
+            console.print(f"  [{p.blue_soft}]→[/] [{p.ink}]{cve_id}[/]  {ref}")
+    console.print()
+
+    total_cves = len(cve_findings)
+    verified_cnt = sum(1 for f in cve_findings if f.get("evidence", {}).get("verified"))
+    console.print(
+        f"  [{p.muted}]Total {total_cves} CVE "
+        f"({verified_cnt} terverifikasi versi, {total_cves - verified_cnt} potensial)[/]"
+    )
+    console.print()
+
+
 def render_recommendations(
     console: Console,
     caps: TermCaps,
