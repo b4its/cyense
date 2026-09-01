@@ -90,7 +90,7 @@ class GithubEngine:
         # Resolve diff-scope (Strix --diff-base pattern). Explicit diff_base
         # forces diff scope; otherwise follow scope_mode semantics.
         include_paths: set[str] | None = None
-        if diff_base or scope_mode in ("diff", "auto"):
+        if sha and (diff_base or scope_mode in ("diff", "auto")):
             scope_calc = DiffScope(
                 base_dir=tree_root,
                 repo_url=repo_url,

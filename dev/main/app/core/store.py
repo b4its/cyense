@@ -6,7 +6,6 @@ so a service restart can still list previous jobs (dump is best-effort).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import threading
 import time
@@ -14,8 +13,6 @@ import uuid
 from pathlib import Path
 
 from app.core.models import ScanJob, ScanRequest, ScanStatus
-
-_LOCK = threading.Lock()
 
 
 def _now() -> str:
@@ -28,14 +25,14 @@ class JobStore:
         self._reports_dir = Path(reports_dir)
         self._reports_dir.mkdir(parents=True, exist_ok=True)
         self._events: dict[str, list[str]] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()  # single lock for all access
 
     # -- lifecycle ----------------------------------------------------------
 
     def create(self, request: ScanRequest) -> ScanJob:
         scan_id = uuid.uuid4().hex[:12]
         job = ScanJob(scan_id=scan_id, request=request, created_at=_now())
-        with _LOCK:
+        with self._lock:
             self._jobs[scan_id] = job
             self._events[scan_id] = []
         self._dump()
@@ -48,7 +45,7 @@ class JobStore:
         return sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)
 
     def delete(self, scan_id: str) -> bool:
-        with _LOCK:
+        with self._lock:
             existed = self._jobs.pop(scan_id, None) is not None
             self._events.pop(scan_id, None)
         self._dump()
@@ -64,7 +61,7 @@ class JobStore:
     # every future scan stays queued forever).
 
     async def mark_running(self, scan_id: str, stage: str) -> None:
-        async with self._lock:
+        with self._lock:
             job = self._jobs.get(scan_id)
             if job is None:
                 return
@@ -73,7 +70,7 @@ class JobStore:
         self._dump()
 
     async def mark_stage(self, scan_id: str, stage: str, progress: int) -> None:
-        async with self._lock:
+        with self._lock:
             job = self._jobs.get(scan_id)
             if job is None:
                 return
@@ -82,7 +79,7 @@ class JobStore:
         self._dump()
 
     async def mark_completed(self, scan_id: str) -> None:
-        async with self._lock:
+        with self._lock:
             job = self._jobs.get(scan_id)
             if job is None:
                 return
@@ -93,7 +90,7 @@ class JobStore:
         self._dump()
 
     async def mark_failed(self, scan_id: str, error: str) -> None:
-        async with self._lock:
+        with self._lock:
             job = self._jobs.get(scan_id)
             if job is None:
                 return
@@ -106,7 +103,7 @@ class JobStore:
     # -- log events (shown via GET /scans/{id}) -----------------------------
 
     async def log(self, scan_id: str, message: str) -> None:
-        async with self._lock:
+        with self._lock:
             self._events.setdefault(scan_id, []).append(f"{_now()} {message}")
 
     def events(self, scan_id: str) -> list[str]:

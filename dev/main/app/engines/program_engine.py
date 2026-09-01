@@ -214,7 +214,10 @@ def _run_deep_idor_rules(
 ) -> list[dict[str, Any]]:
     """Dispatch high/max-only IDOR rules (CY011, CY012, CY013)."""
     findings: list[dict[str, Any]] = []
-    if not level_profile.should_run_rule("CY011") and not level_profile.should_run_rule("CY012"):
+    if not any(
+        level_profile.should_run_rule(r)
+        for r in ("CY011", "CY012", "CY013")
+    ):
         return findings
     try:
         from app.program.deep_rules import analyze_deep_idor

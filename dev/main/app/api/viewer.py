@@ -7,6 +7,7 @@ the on-disk ``reports/<scan_id>/report.json`` after a service restart.
 
 from __future__ import annotations
 
+import html as _html
 import json
 from pathlib import Path
 from typing import Any
@@ -88,6 +89,9 @@ async def serve_viewer(scan_id: str, request: Request) -> HTMLResponse:
     """
     store = request.app.state.store
     in_memory = store.get(scan_id) is not None
+    # Path traversal guard for disk fallback (matching reports.py pattern).
+    if ".." in scan_id or "/" in scan_id:
+        raise HTTPException(status_code=403, detail="invalid scan_id")
     on_disk = (request.app.state.settings.reports_dir / scan_id / "report.json").is_file()
     if not in_memory and not on_disk:
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
@@ -99,9 +103,11 @@ async def serve_viewer(scan_id: str, request: Request) -> HTMLResponse:
     html = index_path.read_text(encoding="utf-8")
     html = html.replace(
         "<title>Cyense Scan Results</title>",
-        f"<title>Cyense Scan: {scan_id}</title>",
+        f"<title>Cyense Scan: {_html.escape(scan_id)}</title>",
     )
-    html = html.replace("</head>", f'<meta name="scan-id" content="{scan_id}"></head>')
+    html = html.replace("</head>",
+        f'<meta name="scan-id" '
+        f'content="{_html.escape(scan_id)}"></head>')
     # Rewrite relative static asset paths (href="static/..." / src="static/...")
     # to absolute /api/v1/viewer/static/... so the browser resolves them
     # correctly regardless of the current URL depth. Without this rewrite,

@@ -61,8 +61,8 @@ def export_csv(findings: list[dict[str, Any]], include_remediation: bool = True)
             'description': finding.get('description', ''),
             'location': finding.get('location', ''),
             'snippet': (
-                finding.get('evidence', {}).get('snippet')
-                or finding.get('evidence', {}).get('code')
+                (finding.get('evidence') or {}).get('snippet')
+                or (finding.get('evidence') or {}).get('code')
                 or finding.get('body_snippet')
                 or ''
             ),

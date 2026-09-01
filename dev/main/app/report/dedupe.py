@@ -19,7 +19,7 @@ def deduplicate_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]
     for f in findings:
         # Skip malformed
         rule = f.get("rule")
-        loc = f.get("location", "")
+        loc = f.get("location") or ""
 
         if not rule or not loc:
             unique.append(f)

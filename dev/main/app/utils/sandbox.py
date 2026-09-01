@@ -61,7 +61,12 @@ def is_safe_tarball(tar_obj: tarfile.TarFile) -> bool:
             return False  # Reject device files absolutely
 
         if member.islnk():
-            continue  # Hardlinks are generally safe
+            # Hardlinks must be validated too: an absolute linkname could
+            # link to /etc/passwd on the host (sandbox escape). Python < 3.12
+            # does not filter hardlinks during extract.
+            if member.linkname.startswith('/') or '..' in Path(member.linkname).parts:
+                return False
+            continue  # Relative in-bounds hardlinks are safe
 
         if member.issym():
             link_target = member.linkname

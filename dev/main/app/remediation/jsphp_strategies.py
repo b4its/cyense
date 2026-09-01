@@ -132,7 +132,7 @@ def cy008_strategy(finding, source, tree=None):
         diff_lines = [
             f"- const doc = Model.findById({match.group(1)});",
             f"+ const doc = await Model.findById({match.group(1)});",
-            f"+ if (!doc || !doc.owner.toString() === {auth_ctx}.toString())",
+            f"+ if (!doc || doc.owner.toString() !== {auth_ctx}.toString())",
             "+   return res.sendStatus(403);",
         ]
 

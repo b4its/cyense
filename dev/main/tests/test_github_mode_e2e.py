@@ -176,7 +176,9 @@ async def test_github_mode_rejects_non_github_host(github_client_patch):
     result = await engine.run(repo_url="https://evil.com/owner/repo")
     # Fetcher rejects non-github host → empty report
     assert result["findings"] == []
-    assert "non-github" in result["meta"].get("error", "") or result["findings"] == []
+    assert "non-github" in result["meta"].get("error", ""), (
+        f"Expected 'non-github' in error, got: {result['meta'].get('error')!r}"
+    )
 
 
 @pytest.mark.asyncio

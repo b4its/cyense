@@ -691,8 +691,11 @@ class WebsiteEngine:
                     for orig in values:
                         if requests_made >= _MAX_XSS_PROBE_REQUESTS:
                             return findings
-                        # --- error-based probes ----------------------------
+                        # --- error-based probes (only once per param) ---
+                        _sqli_error_probed = False
                         for payload, payload_name in SQLI_PAYLOADS:
+                            if _sqli_error_probed:
+                                break
                             if requests_made >= _MAX_XSS_PROBE_REQUESTS:
                                 return findings
                             probe_qs = dict(qs)
@@ -750,7 +753,10 @@ class WebsiteEngine:
                                 ),
                                 "location": probe_url,
                             })
+                            _sqli_error_probed = True
                             break  # one finding per param is enough
+
+                        _sqli_error_probed = True
 
                         # --- boolean-differential probes --------------------
                         # Send ' AND 1=1 and ' AND 1=2, compare responses.
