@@ -234,9 +234,14 @@ class WebsiteEngine:
                 continue
 
             try:
-                url = template.replace("{ID}", baseline)
+                # Keep the {ID} placeholder in the URL: ReconAgent requires
+                # it to build a TargetProfile, and the Prober substitutes
+                # candidates into it. (The old code replaced {ID} with the
+                # baseline value, so recon always failed with "no
+                # placeholder found" and active probing never ran.)
                 base_ctx = {
-                    "url": url,
+                    "url": template,
+                    "baseline_id": baseline,
                     "headers": headers,
                     "cookies": cookies,
                     "timeout": self.settings.request_timeout,
