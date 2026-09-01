@@ -109,21 +109,31 @@ class ScanWorker:
 
         # Helper callback for all modes: update stage, progress, and checkpoint.
         async def on_stage(stage: str) -> None:
-            progress = {"resolve": 25, "fetch": 50, "analyze": 75, "report": 90}.get(
+            progress = {
+                "resolve": 25,
+                "fetch": 50,
+                "analyze": 75,
+                "report": 90,
+                "crawl": 30,
+            }.get(
                 stage if isinstance(stage, str) else str(stage),
                 {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0),
             )
             await self.store.mark_stage(scan_id, stage, progress)
-            # Strix-style checkpoint at each stage transition
+            # Strix-style checkpoint at each stage transition. Carry over any
+            # findings recovered from the checkpoint being resumed from so a
+            # re-failure preserves them (resume merge depends on this).
             save_checkpoint(
                 reports_dir=self.settings.reports_dir,
                 scan_id=scan_id,
                 request_dict=request_dict,
                 stage=stage,
                 progress=progress,
+                findings_so_far=checkpoint.get("findings", []) if checkpoint else [],
                 extra={"resume_from": resume_from, "checkpoint_of": resume_from},
             )
 
+        report: dict[str, Any] | None = None
         try:
             if request_dict["mode"] == "link":
                 report = await run_link_scan(
@@ -208,6 +218,13 @@ class ScanWorker:
             if instruction:
                 report.setdefault("meta", {})["instruction"] = instruction
 
+            # If the scan was deleted (DELETE /scans/{id}) while RUNNING,
+            # do not resurrect its report/artifacts — discard() already
+            # removed them and the user asked for deletion (PRD §4.3).
+            if self.store.get(scan_id) is None:
+                self._log_event(scan_id, "scan deleted while running; skipping artifact writes")
+                return
+
             self._results[scan_id] = report
             self._dump_report(scan_id, report)
 
@@ -229,6 +246,9 @@ class ScanWorker:
         except Exception as exc:
             await self.store.mark_failed(scan_id, str(exc))
             # Save failed checkpoint so user can resume after fixing cause.
+            # Persist any findings the engine produced before crashing so a
+            # resume can merge them (the resume-merge path below depends on
+            # checkpoint["findings"] actually being populated).
             # Do NOT re-raise: _loop() already logs and marks failed; re-raising
             # would cause duplicate error state and duplicate logs.
             save_checkpoint(
@@ -237,6 +257,7 @@ class ScanWorker:
                 request_dict=request_dict,
                 stage=job.stage,
                 progress=job.progress,
+                findings_so_far=report.get("findings", []) if report else [],
                 error=str(exc),
             )
 
