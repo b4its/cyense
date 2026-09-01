@@ -203,14 +203,15 @@ class WebsiteEngine:
                 "location": ep["url"],
             })
 
-        # Active probing via Prober + Verifier — only when there are ID-bearing
-        # endpoints to probe, or a detected technology / CVE points to an IDOR
-        # surface (e.g. WordPress, Drupal, Django with an IDOR CVE).
+        # Active probing via Prober + Verifier — only when the crawler found
+        # ID-bearing endpoints to probe. (idor_relevant still reflects the
+        # tech/CVE IDOR signal, but probing needs concrete endpoints; the old
+        # fallback re-derived id_endpoints from the same pages and always
+        # returned [] — dead code.)
         probed: list[dict[str, Any]] = []
-        if id_endpoints or idor_relevant:
+        if id_endpoints:
             probed = await self._probe_id_endpoints(
-                id_endpoints[:_MAX_PROBED_ENDPOINTS] if id_endpoints else
-                await self._discover_id_endpoints(pages, url),
+                id_endpoints[:_MAX_PROBED_ENDPOINTS],
                 headers=headers,
                 cookies=cookies,
             )
@@ -290,7 +291,7 @@ class WebsiteEngine:
             "open_ports": len(open_ports_data),
             "cves_matched": len(cve_findings),
             "xss_scan_activated": has_html and (xss_relevant or _pages_have_query_params(pages)),
-            "idor_scan_activated": bool(id_endpoints or idor_relevant),
+            "idor_scan_activated": bool(id_endpoints),
             "domain": domain,
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
@@ -340,6 +341,7 @@ class WebsiteEngine:
                 "rule": "CVE-MATCH",
                 "severity": severity,
                 "confidence": confidence,
+                "cwe": "CWE-1035",  # "using components with known vulnerabilities"
                 "title": f"{cve['cve']} — {cve['title']}",
                 "description": (
                     f"{cve['cve']}: {cve['description']} "
@@ -366,21 +368,6 @@ class WebsiteEngine:
         xss_relevant = cves_trigger_xss(cves) or techs_trigger_xss(tech_findings)
         idor_relevant = cves_trigger_idor(cves) or techs_trigger_idor(tech_findings)
         return cve_findings, xss_relevant, idor_relevant
-
-    async def _discover_id_endpoints(
-        self,
-        pages: list[dict[str, Any]],
-        url: str,
-    ) -> list[dict[str, Any]]:
-        """Re-derive ID-bearing endpoint templates from crawled page URLs.
-
-        Used when the crawler found no explicit id_endpoints but an IDOR-prone
-        technology/CVE is present — we still want to probe any ID-like URL.
-        """
-        from app.agents.crawler import _find_id_endpoints
-
-        page_urls = [p.get("url", "") for p in pages]
-        return _find_id_endpoints(page_urls)
 
     @staticmethod
     def _port_scan_findings(
@@ -429,6 +416,7 @@ class WebsiteEngine:
                 "rule": "PORT-OPEN",
                 "severity": "low" if service in ("http", "https", "domain") else "medium",
                 "confidence": 0.9,
+                "cwe": "CWE-200",
                 "title": f"Open TCP port {port} ({service}) on {host}",
                 "description": (
                     f"Port {port}/{service} on {host} accepts TCP connections "
