@@ -529,6 +529,8 @@ class WebsiteEngine:
 
         findings: list[dict[str, Any]] = []
         rate = int(getattr(self.settings, "rate_limit", 10))
+        from urllib.parse import urlparse as _up
+        host = _up(url).hostname or ""
 
         # The whole stage honours the discovery switch (no partial gating).
         if not getattr(self.settings, "discovery_enabled", True):
@@ -1807,8 +1809,10 @@ class WebsiteEngine:
             return findings
 
         # Map payload name → actual payload string for boolean comparison.
-        bool_true = next(p for p, n in SQLI_PAYLOADS if n == "and-true")
-        bool_false = next(p for p, n in SQLI_PAYLOADS if n == "and-false")
+        bool_true = next((p for p, n in SQLI_PAYLOADS if n == "and-true"), None)
+        bool_false = next((p for p, n in SQLI_PAYLOADS if n == "and-false"), None)
+        if not bool_true or not bool_false:
+            return findings
 
         async with HttpClient(
             timeout=self.settings.request_timeout,

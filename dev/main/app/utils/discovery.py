@@ -407,6 +407,8 @@ async def harvest_subdomains_crtsh(
     Returns unique subdomain list. Best-effort — any failure yields fewer
     results, never raises.
     """
+    import httpx
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as c:
             resp = await c.get(
@@ -431,6 +433,8 @@ async def harvest_subdomains_wayback(
     domain: str, timeout: float = 15.0,
 ) -> list[str]:
     """Parse Wayback Machine CDX for subdomains (Harvester-style)."""
+    import httpx
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as c:
             resp = await c.get(
@@ -703,6 +707,19 @@ def nikto_check_server_headers(
     return findings
 
 
+def _version_in_range(version: str, low: str, high: str) -> bool:
+    """Check if *version* falls within [low, high] using tuple comparison."""
+    def _parse(v: str) -> tuple:
+        return tuple(int(p) for p in v.split(".")[:4])
+    try:
+        v = _parse(version)
+        l = _parse(low)
+        h = _parse(high)
+        return l <= v <= h
+    except (ValueError, IndexError):
+        return True
+
+
 def nikto_check_outdated_software(
     tech_findings: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -738,10 +755,11 @@ def nikto_check_outdated_software(
         version = tech.get("version")
         if not version and not value:
             continue
-        # Simple check: if tech category matches a known vulnerable stack.
         for product, ranges in _VULNERABLE_VERSIONS.items():
             if product.lower() in value.lower():
                 for low, high in ranges:
+                    if version and not _version_in_range(version, low, high):
+                        continue
                     findings.append({
                         "rule": "NIKTO-OUTDATED-SOFTWARE",
                         "severity": "high",
