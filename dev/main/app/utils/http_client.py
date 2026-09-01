@@ -44,6 +44,11 @@ class HttpClient:
         self._sem = asyncio.Semaphore(self.max_concurrency)
         self._min_interval = 1.0 / max(self.rate_limit, 1)
         self._last_request = 0.0
+        # Serialize pacing so concurrent requests don't all fire at once:
+        # without this, N concurrent _pace() calls computed the same wait and
+        # stamped the same _last_request, delivering a burst instead of a
+        # steady rate limit.
+        self._pace_lock = asyncio.Lock()
 
     async def __aenter__(self) -> HttpClient:
         self._client = httpx.AsyncClient(
@@ -60,11 +65,12 @@ class HttpClient:
             self._client = None
 
     async def _pace(self) -> None:
-        now = time.monotonic()
-        wait = self._last_request + self._min_interval - now
-        if wait > 0:
-            await asyncio.sleep(wait)
-        self._last_request = time.monotonic()
+        async with self._pace_lock:
+            now = time.monotonic()
+            wait = self._last_request + self._min_interval - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last_request = time.monotonic()
 
     async def request(self, method: str, url: str) -> Response:
         """Issue a read-only request. Non GET/HEAD methods are rejected."""

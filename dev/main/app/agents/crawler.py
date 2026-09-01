@@ -235,15 +235,20 @@ def _find_id_endpoints(urls: list[str]) -> list[dict[str, Any]]:
             template_parts.append(part)
 
         # Query-based IDs — keep the ID params in the template with an {ID}
-        # placeholder so active probing can target them too. Previously the
-        # query was dropped (query="") and the "{ID}" not in template guard
-        # silently skipped every query-string ID endpoint.
+        # placeholder so active probing can target them too. ONLY the FIRST
+        # ID-like param becomes {ID}; subsequent ones stay literal (the
+        # prober substitutes the SAME id into every placeholder, so multiple
+        # {ID}s would produce semantically wrong probe URLs — mirroring the
+        # path-segment fix above).
         query_ids: dict[str, str] = {}
         query_parts: list[str] = []
+        id_placed_q = False
         for k, v in parse_qs(parsed.query).items():
-            if _ID_QUERY_RE.match(k) and v and _ID_SEGMENT_RE.match(v[0]):
+            if (not id_placed_q and _ID_QUERY_RE.match(k)
+                    and v and _ID_SEGMENT_RE.match(v[0])):
                 query_ids[k] = v[0]
                 query_parts.append(f"{k}={{ID}}")
+                id_placed_q = True
             elif v:
                 query_parts.append(f"{k}={v[0]}")
             else:

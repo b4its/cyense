@@ -97,23 +97,31 @@ class GithubClient:
         """
         url = f"https://codeload.github.com/{owner}/{repo}/tar.gz/{ref}"
 
+        # SSRF guard: the ORIGINAL request URL must be an allowlisted host
+        # (codeload.github.com). We follow codeload's redirect to GitHub's
+        # object-storage CDN below — the token is NOT forwarded cross-host
+        # (httpx strips Authorization on cross-origin redirects) and the
+        # redirect target is decided by GitHub's server, not by attacker input.
+        if not is_allowed_host(url):
+            raise RuntimeError(f"disallowed host: {url}")
+
         async with httpx.AsyncClient(
             timeout=self._timeout, follow_redirects=True,
         ) as client:
-            # Token only ever goes to allowlisted github hosts, verbatim
             headers = {"User-Agent": "cyense"}
             if self._token:
                 headers["Authorization"] = f"Bearer {self._token}"
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
 
-            # Check redirect stays within allowed hosts (the final URL after
-            # codeload redirect to CDN — but we validate the origin below).
+            # The final URL after codeload's redirect goes to a GitHub CDN
+            # (objects.githubusercontent.com / S3). Require HTTPS to avoid a
+            # downgrade; we do NOT re-apply the strict host allowlist here
+            # because the redirect is GitHub-controlled and the auth header
+            # was already stripped for cross-host redirects.
             final_url = str(resp.url)
-            from urllib.parse import urlparse
-            final_host = urlparse(final_url).hostname
-            if final_host not in ALLOWED_HOSTS:
-                raise RuntimeError(f"redirect to disallowed host: {final_host}")
+            if not final_url.lower().startswith("https://"):
+                raise RuntimeError(f"redirect to non-HTTPS host: {final_url}")
 
             return resp.content, dict(resp.headers)
 

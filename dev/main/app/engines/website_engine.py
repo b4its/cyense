@@ -585,7 +585,9 @@ class WebsiteEngine:
                         break
                     else:
                         continue  # no payload matched → next payload
-                    break  # payload matched → stop for this param
+                    # Payload matched for this param — continue to the next
+                    # param (the earlier `break`s already stopped payload/orig
+                    # loops; do NOT break the outer param loop).
         return findings
 
     async def _probe_id_endpoints(
