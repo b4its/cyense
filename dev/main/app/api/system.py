@@ -43,6 +43,22 @@ def _xss_rule(
     }
 
 
+# SQLi CVSS vectors (error-based SQLi is typically high severity)
+_SQLI_VECTOR = "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+
+
+def _sqli_rule(rule: str, lang: str, title: str) -> dict[str, object]:
+    return {
+        "rule": rule,
+        "severity": "high",
+        "lang": lang,
+        "cwe": "CWE-89",
+        "cvss_score": 8.6,
+        "cvss_vector": _SQLI_VECTOR,
+        "title": title,
+    }
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -98,5 +114,13 @@ async def rules() -> dict[str, object]:
                       "Jinja2 |safe filter disables auto-escaping", 6.1, _XSS_VECTOR),
             _xss_rule("XS008", "medium", "python",
                       "HTML string composed via f-string/format", 4.7, _XSS_LOW_VECTOR),
+        ],
+        "sqli": [
+            _sqli_rule("SQLI001", "python", "cursor.execute() with dynamic SQL"),
+            _sqli_rule("SQLI002", "python", "Django raw()/extra() with user input"),
+            _sqli_rule("SQLI003", "python", "SQLAlchemy text() with interpolation"),
+            _sqli_rule("SQLI004", "js", "query()/execute() with concatenated SQL"),
+            _sqli_rule("SQLI005", "php", "query built with superglobal/concatenation"),
+            _sqli_rule("SQLI006", "all", "raw SQL string interpolating a variable"),
         ],
     }

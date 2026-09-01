@@ -195,6 +195,20 @@ class WebsiteEngine:
             xss_findings.append(f)
 
         # ------------------------------------------------------------------
+        # Stage 3b: SQL injection probing on pages with query parameters
+        # (error-based detection + boolean-differential check).
+        # ------------------------------------------------------------------
+        await self._notify("sqli")
+        sqli_findings = await self._probe_sqli(
+            pages,
+            headers=headers,
+            cookies=cookies,
+        )
+        for k, f in enumerate(sqli_findings, start=len(xss_findings) + 1):
+            f["finding_id"] = f"{self.scan_id}-WSQLI{k:03d}"
+            xss_findings.append(f)
+
+        # ------------------------------------------------------------------
         # Stage 4: Report
         # ------------------------------------------------------------------
         await self._notify("report")
@@ -225,7 +239,7 @@ class WebsiteEngine:
                 "scan_id": self.scan_id,
                 "mode": "website",
                 "engine": "website-crawler",
-                "pipeline": ["crawl", "probe", "analyze", "report"],
+                "pipeline": ["crawl", "probe", "analyze", "sqli", "report"],
                 "url": url,
             },
             "summary": summary,
@@ -613,6 +627,189 @@ class WebsiteEngine:
             },
             "findings": [],
         }
+
+    async def _probe_sqli(
+        self,
+        pages: list[dict[str, Any]],
+        *,
+        headers: dict[str, str],
+        cookies: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Active SQL injection probing (error-based + boolean-differential).
+
+        For each 2xx HTML page with query parameters, sends SQLi probe
+        payloads via GET (read-only, non-destructive) and checks:
+
+          1. **Error-based**: the response body contains a database error
+             signature (MySQL / PostgreSQL / Oracle / SQLite / MSSQL / DB2).
+          2. **Boolean-differential**: ``' AND 1=1`` vs ``' AND 1=2``
+             produce materially different 200 responses — a blind SQLi
+             signal.
+
+        Returns findings with rule ``SQLI-LIVE``.
+        """
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        from app.engines.live_sqli import (
+            SQLI_PAYLOADS,
+            detect_sql_errors,
+            is_boolean_differential,
+        )
+        from app.utils.http_client import HttpClient
+
+        findings: list[dict[str, Any]] = []
+
+        html_pages = [
+            p for p in pages
+            if "html" in (p.get("content_type") or "").lower()
+            and 200 <= int(p.get("status") or 0) < 300
+        ]
+        if not html_pages:
+            return findings
+
+        # Map payload name → actual payload string for boolean comparison.
+        bool_true = next(p for p, n in SQLI_PAYLOADS if n == "and-true")
+        bool_false = next(p for p, n in SQLI_PAYLOADS if n == "and-false")
+
+        async with HttpClient(
+            timeout=self.settings.request_timeout,
+            headers=headers,
+            cookies=cookies,
+            rate_limit=int(getattr(self.settings, "rate_limit", 10)),
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 5)),
+        ) as client:
+            requests_made = 0
+            for page in html_pages:
+                url = page.get("url", "") or ""
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query, keep_blank_values=True)
+                if not qs:
+                    continue
+                for name, values in qs.items():
+                    if requests_made >= _MAX_XSS_PROBE_REQUESTS:
+                        return findings
+                    for orig in values:
+                        if requests_made >= _MAX_XSS_PROBE_REQUESTS:
+                            return findings
+                        # --- error-based probes ----------------------------
+                        for payload, payload_name in SQLI_PAYLOADS:
+                            if requests_made >= _MAX_XSS_PROBE_REQUESTS:
+                                return findings
+                            probe_qs = dict(qs)
+                            probe_val = payload if not orig else f"{orig}{payload}"
+                            probe_qs[name] = [probe_val]
+                            probe_url = urlunparse(
+                                parsed._replace(
+                                    query=urlencode(probe_qs, doseq=True)
+                                )
+                            )
+                            try:
+                                resp = await client.get(probe_url)
+                            except Exception as exc:  # noqa: BLE001
+                                log.warning("sqli probe failed %s: %s", probe_url, exc)
+                                continue
+                            requests_made += 1
+                            # Error-based SQLi often returns a 500 (server
+                            # error with the DB error dumped) — do NOT skip
+                            # non-200 responses here; check the body for a
+                            # database error signature regardless of status.
+                            body = resp.body or ""
+                            engines = detect_sql_errors(body)
+                            if not engines:
+                                continue
+                            findings.append({
+                                "rule": "SQLI-LIVE",
+                                "severity": "critical",
+                                "confidence": 0.85,
+                                "title": (
+                                    f"SQL injection error-based detected on "
+                                    f"param {name!r}"
+                                ),
+                                "description": (
+                                    f"Sending {payload_name!r} payload to "
+                                    f"{name!r} triggered a database error "
+                                    f"signature ({', '.join(engines)}) in the "
+                                    "response — error-based SQL injection."
+                                ),
+                                "evidence": {
+                                    "payload": payload,
+                                    "payload_name": payload_name,
+                                    "param": name,
+                                    "engine": engines,
+                                    "probe_url": probe_url,
+                                    "sample": body[
+                                        max(body.find(payload) - 40, 0):
+                                        body.find(payload) + 160
+                                    ][:200],
+                                },
+                                "remediation": (
+                                    "Use parameterized queries / prepared "
+                                    "statements; never concatenate user input "
+                                    "into SQL text; suppress database error "
+                                    "output in production."
+                                ),
+                                "location": probe_url,
+                            })
+                            break  # one finding per param is enough
+
+                        # --- boolean-differential probes --------------------
+                        # Send ' AND 1=1 and ' AND 1=2, compare responses.
+                        if requests_made >= _MAX_XSS_PROBE_REQUESTS:
+                            return findings
+                        true_qs = dict(qs)
+                        true_val = bool_true if not orig else f"{orig} {bool_true}"
+                        true_qs[name] = [true_val]
+                        false_qs = dict(qs)
+                        false_val = bool_false if not orig else f"{orig} {bool_false}"
+                        false_qs[name] = [false_val]
+                        true_url = urlunparse(
+                            parsed._replace(query=urlencode(true_qs, doseq=True))
+                        )
+                        false_url = urlunparse(
+                            parsed._replace(query=urlencode(false_qs, doseq=True))
+                        )
+                        try:
+                            resp_true = await client.get(true_url)
+                            resp_false = await client.get(false_url)
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning("sqli bool probe failed: %s", exc)
+                            continue
+                        requests_made += 2
+                        if resp_true.status != 200 or resp_false.status != 200:
+                            continue
+                        if is_boolean_differential(
+                            resp_true.body or "", resp_false.body or ""
+                        ):
+                            findings.append({
+                                "rule": "SQLI-LIVE",
+                                "severity": "high",
+                                "confidence": 0.6,
+                                "title": (
+                                    f"Blind SQL injection (boolean) suspected "
+                                    f"on param {name!r}"
+                                ),
+                                "description": (
+                                    f"Probing {name!r} with ' AND 1=1 vs "
+                                    "' AND 1=2 produces materially different "
+                                    "responses — classic boolean-based blind "
+                                    "SQLi signal."
+                                ),
+                                "evidence": {
+                                    "param": name,
+                                    "and_true_url": true_url,
+                                    "and_false_url": false_url,
+                                    "true_size": len(resp_true.body or ""),
+                                    "false_size": len(resp_false.body or ""),
+                                },
+                                "remediation": (
+                                    "Use parameterized queries; treat all "
+                                    "boolean behaviour as user-controllable "
+                                    "and validate input types strictly."
+                                ),
+                                "location": true_url,
+                            })
+                        break  # one value per param is enough
+        return findings
 
 
 _SEV_RANK = {

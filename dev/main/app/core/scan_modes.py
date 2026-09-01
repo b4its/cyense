@@ -21,15 +21,15 @@ class ScanModeProfile:
 SCAN_MODES: dict[str, ScanModeProfile] = {
     "quick": ScanModeProfile(
         name="quick",
-        scan_types=("idor",),  # IDOR only
+        scan_types=("idor", "sqli"),  # IDOR + SQLi only
         default_scope_mode="auto",  # enable diff-scope by default
         max_files=500,  # cap file count
-        description="Quick check for CI/pre-commit; IDOR rules only",
+        description="Quick check for CI/pre-commit; IDOR + SQLi rules only",
         target_time_seconds=5,
     ),
     "standard": ScanModeProfile(
         name="standard",
-        scan_types=("idor", "xss"),  # default: both
+        scan_types=("idor", "xss", "sqli"),  # default: all three
         default_scope_mode="auto",
         max_files=3000,
         description="Routine testing; balanced speed vs coverage",
@@ -37,7 +37,7 @@ SCAN_MODES: dict[str, ScanModeProfile] = {
     ),
     "deep": ScanModeProfile(
         name="deep",
-        scan_types=("idor", "xss"),
+        scan_types=("idor", "xss", "sqli"),
         default_scope_mode="full",  # disable diff-scope (slower)
         max_files=-1,  # use global cap
         description="Thorough review for release audits",

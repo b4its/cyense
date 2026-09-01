@@ -74,7 +74,7 @@ LEVELS: dict[str, ScanLevelProfile] = {
     "low": ScanLevelProfile(
         name="low",
         description=(
-            "Quick scan — critical rules only (CY001, CY006, XS004), "
+            "Quick scan — critical rules only (CY001, CY006, XS004, SQLI001–SQLI005), "
             "fast patterns, limited to 100 files"
         ),
         max_files=100,
@@ -84,8 +84,8 @@ LEVELS: dict[str, ScanLevelProfile] = {
     "medium": ScanLevelProfile(
         name="medium",
         description=(
-            "Standard scan — all IDOR + XSS rules (CY001–CY010, XS001–XS008), "
-            "balanced coverage, up to 1000 files"
+            "Standard scan — all IDOR + XSS + SQLi rules (CY001–CY010, "
+            "XS001–XS008, SQLI001–SQLI006), balanced coverage, up to 1000 files"
         ),
         max_files=1000,
         ast_max_depth=10,

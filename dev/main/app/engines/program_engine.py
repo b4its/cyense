@@ -3,6 +3,7 @@
 Runs one or more analysis passes over the source tree:
 * idor — python AST rules CY001–CY006 + js/php regex CY007–CY010
 * xss  — regex rules XS001–XS008 (instruction/feature/xss-detection.md)
+* sqli — static SQL-injection rules SQLI001–SQLI006 (python AST, js/php regex)
 """
 
 from __future__ import annotations
@@ -13,8 +14,9 @@ from typing import Any
 from app.program import xss_rules
 from app.program.python_rules import analyze_python_file
 from app.program.regex_rules import analyze_js_file, analyze_php_file
+from app.program.sqli_rules import analyze_js_sqli, analyze_php_sqli, analyze_python_sqli
 
-DEFAULT_SCAN_TYPES = ("idor", "xss")
+DEFAULT_SCAN_TYPES = ("idor", "xss", "sqli")
 
 # File suffixes supported per language (and for the "auto" aggregator)
 SUFFIX_MAP = {"python": {".py"}, "js": {".js", ".ts"}, "php": {".php"}}
@@ -78,6 +80,7 @@ def run_program_scan(
     scan_types = tuple(scan_types)
     run_idor = "idor" in scan_types
     run_xss = "xss" in scan_types
+    run_sqli = "sqli" in scan_types
 
     # Level-aware file cap: explicit max_files wins, otherwise use profile.
     if max_files is None:
@@ -139,6 +142,8 @@ def run_program_scan(
                 findings.extend(
                     _run_deep_xss_rules(path, source, scan_id, level_profile, resolved_lang)
                 )
+            if run_sqli:
+                findings.extend(analyze_python_sqli(path, source, scan_id))
         elif resolved_lang == "js":
             if run_idor:
                 findings.extend(analyze_js_file(path, source, scan_id))
@@ -147,6 +152,8 @@ def run_program_scan(
                 findings.extend(
                     _run_deep_xss_rules(path, source, scan_id, level_profile, resolved_lang)
                 )
+            if run_sqli:
+                findings.extend(analyze_js_sqli(path, source, scan_id))
         elif resolved_lang == "php":
             if run_idor:
                 findings.extend(analyze_php_file(path, source, scan_id))
@@ -155,13 +162,15 @@ def run_program_scan(
                 findings.extend(
                     _run_deep_xss_rules(path, source, scan_id, level_profile, resolved_lang)
                 )
+            if run_sqli:
+                findings.extend(analyze_php_sqli(path, source, scan_id))
 
     return {
         "files_scanned": files_scanned,
         "findings": findings,
         "files_read_errors": files_read_errors,  # for coverage.complete flag
         "level": level_profile.name,
-        "level_rules_active": _active_rule_ids(level_profile, run_idor, run_xss),
+        "level_rules_active": _active_rule_ids(level_profile, run_idor, run_xss, run_sqli),
     }
 
 
@@ -169,12 +178,16 @@ def run_program_scan(
 # Level-aware deep rule dispatchers
 # ---------------------------------------------------------------------------
 
-def _active_rule_ids(level_profile, run_idor: bool, run_xss: bool) -> list[str]:
+def _active_rule_ids(
+    level_profile, run_idor: bool, run_xss: bool, run_sqli: bool = True,
+) -> list[str]:
     """Return the rule IDs that will run at this level (for report metadata)."""
     base_idor = ["CY001", "CY002", "CY003", "CY004", "CY005", "CY006",
                  "CY007", "CY008", "CY009", "CY010"]
     base_xss = ["XS001", "XS002", "XS003", "XS004", "XS005", "XS006",
                 "XS007", "XS008"]
+    base_sqli = ["SQLI001", "SQLI002", "SQLI003", "SQLI004", "SQLI005",
+                 "SQLI006"]
     deep_idor = ["CY011", "CY012", "CY013"]
     deep_xss = ["XS009", "XS010", "XS011"]
 
@@ -185,6 +198,9 @@ def _active_rule_ids(level_profile, run_idor: bool, run_xss: bool) -> list[str]:
     if run_xss:
         all_rules.extend(base_xss)
         all_rules.extend(deep_xss)
+    if run_sqli:
+        # SQLi rules run at every level (cheap, deterministic patterns).
+        all_rules.extend(base_sqli)
 
     from app.engines.scan_levels import rules_for_level
     return rules_for_level(all_rules, level_profile.name)

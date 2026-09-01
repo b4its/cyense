@@ -144,6 +144,21 @@ def _analyze_gaps(
             "detail": "Rule aktif tetapi tidak ada file .php dalam scope.",
         })
 
+    # SQLi rules SQLI004 (JS) and SQLI005 (PHP) need their language files.
+    if not has_js_files:
+        gaps.append({
+            "rule": "SQLI004",
+            "reason": "no_js_files_in_scope",
+            "detail": "Rule aktif tetapi tidak ada file .js/.ts dalam scope.",
+        })
+
+    if not has_php_files:
+        gaps.append({
+            "rule": "SQLI005",
+            "reason": "no_php_files_in_scope",
+            "detail": "Rule aktif tetapi tidak ada file .php dalam scope.",
+        })
+
     return gaps
 
 

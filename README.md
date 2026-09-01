@@ -78,9 +78,9 @@ POST /scans ──► asyncio queue ──► Orchestrator
 | Mode | Input | Pipeline | Output |
 |------|-------|----------|--------|
 | **`link`** | URL with placeholder `http://app/invoice/{ID}` + credentials / URL ber-placeholder + kredensial | Recon → Prober → Verifier → Report (dynamic) | Verified findings + PII evidence + reproducible curl / Temuan terverifikasi + bukti PII + curl reprodusibel |
-| **`program`** | Source code (mounted `/workspace` or built-in sample) / Source code (mounted `/workspace` atau sample bawaan | Static analysis / Analisis statis | `file:line` + rule CY001–CY010 + remediation |
+| **`program`** | Source code (mounted `/workspace` or built-in sample) / Source code (mounted `/workspace` atau sample bawaan | Static analysis / Analisis statis | `file:line` + rule CY001–CY010 + XS001–XS008 + SQLI001–SQLI006 + remediation |
 | **`github`** | Repo link `https://github.com/owner/repo` / Link repo | Fetcher (tarball + sandbox) → Analyze → Report | Static findings + reproducible `commit_sha` + brain cache / Temuan statis + `commit_sha` reprodusibel + brain cache |
-| **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report | ID-bearing endpoints + live XSS surface (CSP, HSTS, eval/innerHTML in HTML *and external JS*, confirmed reflected params via benign probe, srcdoc, cookie exfiltration, missing headers) |
+| **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report | ID-bearing endpoints + live XSS surface (CSP, HSTS, eval/innerHTML in HTML *and external JS*, confirmed reflected params via benign probe, srcdoc, cookie exfiltration, missing headers) + live SQLi (error-based + blind boolean) |
 | **`fixes`** | Findings from any scan / Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + proof finding disappeared + backup/revert / Diff patch + bukti temuan hilang + backup/revert |
 
 ### Analysis Levels / Level Analisis
@@ -91,8 +91,8 @@ POST /scans ──► asyncio queue ──► Orchestrator
 
 | Level | Files | Active Rules | Extra Analysis |
 |-------|-------|--------------|----------------|
-| **low** | ≤100 | CY001–CY010, XS001–XS008 | Quick CI/pre-commit check / cek CI cepat |
-| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008 | Balanced coverage / cakupan seimbang |
+| **low** | ≤100 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Quick CI/pre-commit check / cek CI cepat |
+| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Balanced coverage / cakupan seimbang |
 | **high** | ≤5000 | + **CY011, CY012, XS009, XS010** | Data flow tracking |
 | **max** | unlimited | + **CY013, XS011** | Cross-file analysis + call graph |
 
@@ -141,6 +141,10 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 
 **ID:** Kelas aturan kedua — XSS (`XS001`–`XS008`) — berjalan sebagai pass kedua pada mesin statis (program & github): `innerHTML`/`document.write`/`dangerouslySetInnerHTML` (JS), `eval` (critical), `v-html` (Vue), `echo $_GET` tanpa escape (PHP), `|safe` Jinja2, dan komposisi HTML via f-string (Python) — masing-masing dengan guard anti false-positive (string statis, output ter-sanitasi, dan komentar tidak dilaporkan). Lihat `instruction/feature/xss-detection.md`.
 
+**EN — A third rule class — SQL Injection (`SQLI001`–`SQLI006`)** — runs in the same static engine (program & github): `cursor.execute()`/`executemany()` with f-string/`%`/`format()` (Python), Django `raw()`/`extra()` and SQLAlchemy `text()` with interpolation, JS `query()`/`execute()` with template-literal/concatenation, PHP `mysqli_query`/`pg_query`/`PDO::query` with superglobals or concatenation, and raw f-string SQL (SQLI006). Parameterized queries (`?`/`%s` with separate values) are **not** flagged. In website mode, live SQLi probing sends payloads and detects **error-based** (DB error signatures: MySQL/PostgreSQL/Oracle/SQLite/MSSQL/DB2) and **blind boolean-differential** (`' AND 1=1` vs `' AND 1=2`) — rule `SQLI-LIVE`.
+
+**ID — Kelas aturan ketiga — SQL Injection (`SQLI001`–`SQLI006`)** — berjalan di mesin statis yang sama (program & github): `cursor.execute()`/`executemany()` dengan f-string/`%`/`format()` (Python), Django `raw()`/`extra()` dan SQLAlchemy `text()` dengan interpolasi, JS `query()`/`execute()` dengan template-literal/concatenation, PHP `mysqli_query`/`pg_query`/`PDO::query` dengan superglobal atau concatenation, dan f-string SQL mentah (SQLI006). Query terparameterisasi (`?`/`%s` dengan nilai terpisah) **tidak** dilaporkan. Pada mode website, probing SQLi live mengirim payload dan mendeteksi **error-based** (signature error DB: MySQL/PostgreSQL/Oracle/SQLite/MSSQL/DB2) serta **blind boolean-differential** (`' AND 1=1` vs `' AND 1=2`) — rule `SQLI-LIVE`.
+
 ---
 
 ## 4. Measured Improvement / Peningkatan Terukur
@@ -176,7 +180,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-126 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss
+143 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli
 ruff check: All checks passed (0 errors)
 ```
 
@@ -255,7 +259,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 126 tests via pytest
+make test       # 143 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -352,7 +356,7 @@ cyense/
 │   │   │   ├── services/              ← multi_scan, scan_resume
 │   │   │   └── utils/                 ← http_client, sandbox, github_client, pii, etc.
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 126 tests + lab app fixture
+│   │   ├── tests/                     ← 143 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml
 │   │   └── README.md                  ← service-level README
@@ -404,7 +408,7 @@ cyense/
 
 ## 12. Status
 
-- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 126/126 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 126/126 tests
+- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 143/143 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 143/143 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
