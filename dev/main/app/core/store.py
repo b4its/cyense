@@ -55,24 +55,37 @@ class JobStore:
         return existed
 
     # -- state machine (PRD §4.3: QUEUED -> RUNNING -> COMPLETED|FAILED) ----
+    #
+    # All state transitions are defensive: if the job was deleted mid-scan
+    # (DELETE /scans/{id} while RUNNING), the transition is a no-op instead
+    # of raising KeyError. Without this, a failing scan whose job vanished
+    # would crash the worker loop (`_loop`'s except handler calls
+    # mark_failed again → second KeyError kills the task permanently and
+    # every future scan stays queued forever).
 
     async def mark_running(self, scan_id: str, stage: str) -> None:
         async with self._lock:
-            job = self._jobs[scan_id]
+            job = self._jobs.get(scan_id)
+            if job is None:
+                return
             job.status = ScanStatus.RUNNING
             job.stage = stage
         self._dump()
 
     async def mark_stage(self, scan_id: str, stage: str, progress: int) -> None:
         async with self._lock:
-            job = self._jobs[scan_id]
+            job = self._jobs.get(scan_id)
+            if job is None:
+                return
             job.stage = stage
             job.progress = max(job.progress, progress)
         self._dump()
 
     async def mark_completed(self, scan_id: str) -> None:
         async with self._lock:
-            job = self._jobs[scan_id]
+            job = self._jobs.get(scan_id)
+            if job is None:
+                return
             job.status = ScanStatus.COMPLETED
             job.stage = None
             job.progress = 100
@@ -81,7 +94,9 @@ class JobStore:
 
     async def mark_failed(self, scan_id: str, error: str) -> None:
         async with self._lock:
-            job = self._jobs[scan_id]
+            job = self._jobs.get(scan_id)
+            if job is None:
+                return
             job.status = ScanStatus.FAILED
             job.stage = None
             job.error = error

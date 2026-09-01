@@ -66,7 +66,12 @@ class ScanWorker:
                 await self._process(scan_id)
             except Exception as exc:  # robustness: never crash the worker
                 log.exception("scan %s crashed", scan_id)
-                await self.store.mark_failed(scan_id, str(exc))
+                try:
+                    await self.store.mark_failed(scan_id, str(exc))
+                except Exception:  # noqa: BLE001 — belt & braces: a second
+                    # failure here (e.g. job deleted mid-scan) must never
+                    # kill the loop and starve every later scan.
+                    log.exception("mark_failed(%s) raised; scan was deleted?", scan_id)
             finally:
                 self.queue.task_done()
 
