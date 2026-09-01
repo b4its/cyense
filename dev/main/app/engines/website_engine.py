@@ -20,7 +20,10 @@ import time
 from typing import Any
 
 from app.agents.crawler import CrawlerAgent
+from app.engines.live_sqli import SQLI_PAYLOADS, detect_sql_errors, is_boolean_differential
 from app.engines.live_xss import analyze_page_xss
+from app.utils.framework_detection import detect_technologies
+from app.utils.http_client import HttpClient
 from app.utils.logger import get_logger
 
 log = get_logger("engine.website")
@@ -159,10 +162,23 @@ class WebsiteEngine:
                 idor_findings.append(f)
 
         # ------------------------------------------------------------------
-        # Stage 3: XSS analysis on every fetched HTML page + benign reflection
-        # probe on pages with query parameters.
+        # Stage 3: Technology/Framework Detection + XSS analysis
         # ------------------------------------------------------------------
         await self._notify("analyze")
+
+        # --- 3a: Framework/Technology Detection (read-only fingerprinting) ---
+        tech_findings = []
+        for page in pages:
+            header_dict = dict(page.get("headers", {}))
+            page_technologies = detect_technologies(
+                url=page.get("url", ""),
+                headers=header_dict,
+                body=page.get("body"),
+            )
+            for k, f in enumerate(page_technologies, start=len(tech_findings) + 1):
+                f["finding_id"] = f"{self.scan_id}-WTECH{k:03d}"
+                tech_findings.append(f)
+
         xss_findings: list[dict[str, Any]] = []
         for page in pages:
             page_findings = analyze_page_xss(page)
@@ -212,7 +228,7 @@ class WebsiteEngine:
         # Stage 4: Report
         # ------------------------------------------------------------------
         await self._notify("report")
-        all_findings = idor_findings + xss_findings
+        all_findings = idor_findings + tech_findings + xss_findings
         all_findings.sort(
             key=lambda f: (
                 _severity_rank(f.get("severity", "info")),
@@ -239,7 +255,7 @@ class WebsiteEngine:
                 "scan_id": self.scan_id,
                 "mode": "website",
                 "engine": "website-crawler",
-                "pipeline": ["crawl", "probe", "analyze", "sqli", "report"],
+                "pipeline": ["crawl", "probe", "analyze", "framework", "sqli", "report"],
                 "url": url,
             },
             "summary": summary,
@@ -276,7 +292,6 @@ class WebsiteEngine:
         import html as _html
         from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-        from app.utils.http_client import HttpClient
 
         findings: list[dict[str, Any]] = []
 
@@ -529,7 +544,6 @@ class WebsiteEngine:
         import html as _html
         from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-        from app.utils.http_client import HttpClient
 
         marker = f"Cyense{self.scan_id[:6].upper()}7>"
         encoded_marker = _html.escape(marker)
@@ -650,11 +664,6 @@ class WebsiteEngine:
         """
         from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-        from app.engines.live_sqli import (
-            SQLI_PAYLOADS,
-            detect_sql_errors,
-            is_boolean_differential,
-        )
         from app.utils.http_client import HttpClient
 
         findings: list[dict[str, Any]] = []

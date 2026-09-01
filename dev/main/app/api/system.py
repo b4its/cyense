@@ -59,6 +59,18 @@ def _sqli_rule(rule: str, lang: str, title: str) -> dict[str, object]:
     }
 
 
+def _detect_rule(rule: str, title: str) -> dict[str, object]:
+    return {
+        "rule": rule,
+        "severity": "info",
+        "lang": "all",
+        "cwe": "CWE-200",
+        "cvss_score": 0.0,
+        "cvss_vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+        "title": title,
+    }
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -122,5 +134,26 @@ async def rules() -> dict[str, object]:
             _sqli_rule("SQLI004", "js", "query()/execute() with concatenated SQL"),
             _sqli_rule("SQLI005", "php", "query built with superglobal/concatenation"),
             _sqli_rule("SQLI006", "all", "raw SQL string interpolating a variable"),
+        ],
+        "framework_detection": [
+            _detect_rule("DETECT-SERVER-NGINX", "HTTP header: nginx"),
+            _detect_rule("DETECT-SERVER-APACHE", "HTTP header: Apache"),
+            _detect_rule("DETECT-STACK-EXPRESS", "HTTP header: Express"),
+            _detect_rule("DETECT-STACK-DJANGO", "HTTP header: Django"),
+            _detect_rule("DETECT-STACK-FASTAPI", "HTTP header: FastAPI"),
+            _detect_rule("DETECT-STACK-FLASK", "HTTP header: Flask"),
+            _detect_rule("DETECT-CMS-WORDPRESS", "CMS: WordPress"),
+            _detect_rule("DETECT-CMS-JOOMLA", "CMS: Joomla"),
+            _detect_rule("DETECT-CMS-DRUPAL", "CMS: Drupal"),
+            _detect_rule("DETECT-FRAMEWORK-REACT", "JavaScript: React"),
+            _detect_rule("DETECT-FRAMEWORK-VUE", "JavaScript: Vue.js"),
+            _detect_rule("DETECT-FRAMEWORK-ANGULAR", "JavaScript: Angular"),
+            _detect_rule("DETECT-LIB-JQUERY", "JavaScript: jQuery"),
+            _detect_rule("DETECT-FRAMEWORK-NEXTJS", "JavaScript: Next.js"),
+            _detect_rule("DETECT-FRAMEWORK-BOOTSTRAP", "CSS: Bootstrap"),
+            _detect_rule("DETECT-FRAMEWORK-TAILWIND", "CSS: Tailwind"),
+            _detect_rule("DETECT-META-GENERATOR", "Meta: generator tag analysis"),
+            _detect_rule("DETECT-ECOMMERCE-SHOPIFY", "E-commerce: Shopify"),
+            _detect_rule("DETECT-ECOMMERCE-WOOCOMMERCE", "E-commerce: WooCommerce"),
         ],
     }
