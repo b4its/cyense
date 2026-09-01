@@ -214,16 +214,21 @@ def _find_id_endpoints(urls: list[str]) -> list[dict[str, Any]]:
         parsed = urlparse(url)
         path_parts = [p for p in parsed.path.strip("/").split("/") if p]
 
-        # Path-based IDs
+        # Path-based IDs — only the FIRST numeric segment becomes the {ID}
+        # placeholder. Previously every numeric segment was replaced (e.g.
+        # "/invoice/5/items/10" → "/invoice/{ID}/items/{ID}") and the prober
+        # substituted the SAME id into both, probing a semantically wrong URL.
         id_segments: list[str] = []
         template_parts: list[str] = []
+        id_placed = False
         for part in path_parts:
-            if _ID_SEGMENT_RE.match(part):
+            if not id_placed and _ID_SEGMENT_RE.match(part):
                 try:
                     n = int(part)
                     if 1 <= n <= 9_999_999:
                         id_segments.append(part)
                         template_parts.append("{ID}")
+                        id_placed = True
                         continue
                 except ValueError:
                     pass
