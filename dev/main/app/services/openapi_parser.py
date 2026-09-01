@@ -51,9 +51,15 @@ def _load_spec(spec_source: str) -> dict[str, Any]:
 
     # Try as URL
     if spec_source.startswith(("http://", "https://")):
+        import urllib.error
         import urllib.request
-        with urllib.request.urlopen(spec_source, timeout=30) as resp:
-            text = resp.read().decode("utf-8")
+        try:
+            with urllib.request.urlopen(spec_source, timeout=30) as resp:
+                text = resp.read().decode("utf-8")
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid OpenAPI spec URL: {spec_source!r} ({exc})"
+            ) from exc
         suffix = ".yaml" if ".yaml" in spec_source or ".yml" in spec_source else ".json"
         return _parse_text(text, suffix)
 
