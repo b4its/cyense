@@ -41,7 +41,7 @@
             {#each list || [] as r}
               <tr>
                 <td class="mono">{r.rule}</td>
-                <td><span class="badge {(r.severity||'info').toLowerCase()}">{(r.severity||'info').toUpperCase()}</span></td>
+                <td><span class="badge {((Array.isArray(r.severity) ? r.severity.join('-') : (r.severity||'info')).toLowerCase())}">{(Array.isArray(r.severity) ? r.severity.join(',') : (r.severity||'info')).toUpperCase()}</span></td>
                 <td>{r.lang || '—'}</td>
                 <td class="mono">{r.cwe || '—'}</td>
                 <td>{r.cvss_score ?? '—'}</td>

@@ -36,8 +36,19 @@ def deduplicate_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]
             parts = loc.rsplit(":", 1)
             line = int(parts[-1]) if len(parts) == 2 and parts[-1].isdigit() else 0
 
-        # Deterministic key
-        key = (rule.lower(), loc.lower().strip("/"), line)
+        # Deterministic key. For URL locations, include a discriminator from
+        # the evidence (e.g. secret_type / port / cve) so distinct findings on
+        # the same URL (two different secrets, two different ports) are not
+        # collapsed into one.
+        discriminator = ""
+        if "://" in loc:
+            evidence = f.get("evidence") or {}
+            for k in ("secret_type", "port", "cve", "param", "path"):
+                val = evidence.get(k)
+                if val is not None:
+                    discriminator = f"|{k}:{val}"
+                    break
+        key = (rule.lower(), loc.lower().strip("/"), line, discriminator)
 
         if key not in seen:
             seen.add(key)

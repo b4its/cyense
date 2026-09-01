@@ -10,7 +10,8 @@ from pydantic import BaseModel, field_validator, model_validator
 
 class GithubScanRequest(BaseModel):
     mode: Literal["github"] = "github"
-    repo_url: str
+    # Optional when resuming (restored from checkpoint by the worker).
+    repo_url: str = ""
     ref: str | None = None
     subdir: str | None = None
     lang: Literal["python", "js", "php", "auto"] = "auto"
@@ -30,6 +31,8 @@ class GithubScanRequest(BaseModel):
     @field_validator("repo_url")
     def _github_host_only(cls, v: str) -> str:
         """Validasi: hanya https://github.com/* yang diterima."""
+        if not v:
+            return v  # resume may omit repo_url (restored from checkpoint)
         parsed = urlparse(v)
         if parsed.scheme != "https" or parsed.hostname != "github.com":
             raise ValueError(

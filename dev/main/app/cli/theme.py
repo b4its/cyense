@@ -123,6 +123,17 @@ class Glyphs:
 
 GLYPHS = Glyphs()
 
+# ASCII-only variant of the main glyph set (spinner_ascii is shared).
+GLYPHS_ASCII = Glyphs(
+    ok=GLYPHS.ok_ascii, fail=GLYPHS.fail_ascii, active=GLYPHS.active_ascii,
+    warn=GLYPHS.warn_ascii, bullet=GLYPHS.bullet_ascii,
+    priority=GLYPHS.priority_ascii, minor=GLYPHS.minor_ascii,
+    arrow=GLYPHS.arrow_ascii, tl=GLYPHS.tl_ascii, tr=GLYPHS.tr_ascii,
+    bl=GLYPHS.bl_ascii, br=GLYPHS.br_ascii, h=GLYPHS.h_ascii, v=GLYPHS.v_ascii,
+    lt=GLYPHS.lt_ascii, rt=GLYPHS.rt_ascii,
+    spinner=GLYPHS.spinner_ascii,
+)
+
 
 # ---------------------------------------------------------------------------
 # §3.1.4  Deteksi kapabilitas terminal
@@ -160,6 +171,10 @@ class TermCaps:
         return SEVERITY_GLYPH_ASCII.get(severity, "..")
 
     def g(self) -> Glyphs:
+        # ASCII terminals get ASCII glyph variants (the previous version
+        # always returned the unicode set, breaking the --ascii contract).
+        if not self.unicode:
+            return GLYPHS_ASCII
         return GLYPHS
 
 

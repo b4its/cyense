@@ -147,7 +147,7 @@ def _stage_line(
     if info.status == "done":
         t.append(f"  {g.ok} ", style=f"bold {p.ok}")
     elif info.status == "failed":
-        t.append(f"  {g.fail} ", style=f"bold {p.erroror}")
+        t.append(f"  {g.fail} ", style=f"bold {p.error}")
     elif is_current:
         t.append(f"  {g.active} ", style=f"bold {p.blue_accent}")
     else:
@@ -560,7 +560,7 @@ def render_footer(
     )
     console.print()
 
-    code_style = p.ok if exit_code == 0 else (p.erroror if exit_code == 2 else p.sev_medium)
+    code_style = p.ok if exit_code == 0 else (p.error if exit_code == 2 else p.sev_medium)
     code_label = {0: "bersih", 1: "--fail-on terpenuhi", 2: "scan gagal", 3: "error koneksi"}.get(
         exit_code, f"exit {exit_code}"
     )

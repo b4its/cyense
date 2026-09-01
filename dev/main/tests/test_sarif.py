@@ -42,7 +42,9 @@ def test_normalize_path_url_location_survives_port() -> None:
 
 def test_normalize_path_traversal_and_garbage() -> None:
     assert _normalize_path("../../../etc/passwd") == "SECURITY.md"
-    assert _normalize_path("/absolute/unrelated/path.py") == "SECURITY.md"
+    # Absolute non-sandbox paths now fall back to the basename (a synthetic
+    # SECURITY.md artifact made every program-mode SARIF result unmappable).
+    assert _normalize_path("/absolute/unrelated/path.py") == "path.py"
     assert _normalize_path(None) is None
 
 

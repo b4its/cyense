@@ -276,9 +276,8 @@ class WebsiteEngine:
         sqli_findings = await self._probe_sqli(
             pages, headers=headers, cookies=cookies,
         )
-        for k, f in enumerate(sqli_findings, start=len(xss_findings) + 1):
+        for k, f in enumerate(sqli_findings, start=1):
             f["finding_id"] = f"{self.scan_id}-WSQLI{k:03d}"
-            xss_findings.append(f)
 
         # ------------------------------------------------------------------
         # Stage 6: Report
@@ -287,6 +286,7 @@ class WebsiteEngine:
         all_findings = (
             idor_findings + tech_findings + port_findings
             + cve_findings + discovery_findings + xss_findings
+            + sqli_findings
         )
         all_findings.sort(
             key=lambda f: (
@@ -526,6 +526,10 @@ class WebsiteEngine:
         findings: list[dict[str, Any]] = []
         rate = int(getattr(self.settings, "rate_limit", 10))
 
+        # The whole stage honours the discovery switch (no partial gating).
+        if not getattr(self.settings, "discovery_enabled", True):
+            return findings
+
         # 1. Secret scanning on all crawled content (TruffleHog-style).
         for page in pages:
             page_url = page.get("url", "") or ""
@@ -608,8 +612,8 @@ class WebsiteEngine:
                         "cwe": "CWE-200",
                         "title": f"File sensitif ter-expose: {exp['path']}",
                         "description": (
-                            f"{exp['description']} HTTP {exp['status']}. "
-                            f"Body awal: {exp['snippet'][:100]}"
+                            f"{exp['description']} HTTP {exp['status']} "
+                            "(isi file di-redaksi — tidak pernah ditampilkan)."
                         ),
                         "evidence": {
                             "path": exp["path"],
@@ -737,10 +741,23 @@ class WebsiteEngine:
                 })
 
         # 7. API endpoint discovery (Kiterunner-style).
-        if getattr(self.settings, "discovery_enabled", True):
-            from app.utils.discovery import check_api_endpoints
+        # Fresh HttpClient: the first block (sections 3-4) has exited, so its
+        # _get closure would hit a closed client (RuntimeError) — sections
+        # 7-10 were silently no-ops before this fix.
+        from app.utils.discovery import check_api_endpoints
+        async with HttpClient(
+            timeout=self.settings.request_timeout,
+            headers=headers,
+            cookies=cookies,
+            rate_limit=rate,
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 10)),
+        ) as client2:
+            async def _get2(url: str, extra_headers=None):
+                resp = await client2.get(url)
+                return resp.status, resp.body
+
             try:
-                api_hits = await check_api_endpoints(url, _get)
+                api_hits = await check_api_endpoints(url, _get2)
             except Exception:  # noqa: BLE001
                 api_hits = []
             if api_hits:
@@ -766,7 +783,7 @@ class WebsiteEngine:
             from app.utils.discovery import ADMIN_PATHS
             try:
                 admin_hits = await check_sensitive_paths(
-                    url, _get, paths=ADMIN_PATHS,
+                    url, _get2, paths=ADMIN_PATHS,
                 )
             except Exception:  # noqa: BLE001
                 admin_hits = []
@@ -792,7 +809,7 @@ class WebsiteEngine:
             # 9. WordPress-specific checks (Wpscan-style).
             from app.utils.discovery import WP_PATHS
             try:
-                wp_hits = await check_sensitive_paths(url, _get, paths=WP_PATHS)
+                wp_hits = await check_sensitive_paths(url, _get2, paths=WP_PATHS)
             except Exception:  # noqa: BLE001
                 wp_hits = []
             for hit in wp_hits:
@@ -821,7 +838,7 @@ class WebsiteEngine:
                 for p in COMMON_DIR_PATHS[:25]
             ]
             try:
-                dir_hits = await check_sensitive_paths(url, _get, paths=dir_targets)
+                dir_hits = await check_sensitive_paths(url, _get2, paths=dir_targets)
             except Exception:  # noqa: BLE001
                 dir_hits = []
             for hit in dir_hits:
@@ -1455,12 +1472,14 @@ class WebsiteEngine:
                             _sqli_error_probed = True
                             break  # one finding per param is enough
 
-                        _sqli_error_probed = True
-
                         # --- boolean-differential probes --------------------
                         # Send ' AND 1=1 and ' AND 1=2, compare responses.
                         # Skip when error-based SQLi was already confirmed for
                         # this param (one finding per vulnerability is enough).
+                        # NOTE: _sqli_error_probed is only set when a finding
+                        # was actually appended above — the previous
+                        # unconditional assignment made this guard always-true
+                        # and the boolean probe dead code.
                         if _sqli_error_probed:
                             continue
                         if requests_made >= _MAX_XSS_PROBE_REQUESTS:

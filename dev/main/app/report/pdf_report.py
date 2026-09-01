@@ -6,13 +6,30 @@ from __future__ import annotations
 
 import io
 from typing import Any
+from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+
+
+def _esc(text: str) -> str:
+    """XML-escape text for reportlab Paragraph (which parses mini-HTML).
+
+    Without this, a finding description containing a payload like
+    '<img onerror=...>' raises ValueError and breaks the whole PDF export.
+    """
+    return _xml_escape(text or "")
 
 
 def generate_pdf_report(
@@ -124,8 +141,11 @@ def generate_pdf_report(
     elements.append(Spacer(1, 0.1 * inch))
 
     for idx, finding in enumerate(findings, 1):
-        # Finding header
-        finding_title = f"{idx}. {finding.get('rule', '')}: {finding.get('title', '')}"
+        # Finding header — XML-escape text: reportlab Paragraph parses mini
+        # HTML, so a finding embedding a payload (e.g. XS-LIVE-032 with
+        # '<img onerror=...>') would otherwise raise ValueError and break the
+        # whole PDF export with a 500.
+        finding_title = _esc(f"{idx}. {finding.get('rule', '')}: {finding.get('title', '')}")
         title_style = ParagraphStyle(
             'FindingTitle', parent=styles['Heading3'],
             fontSize=11, textColor=colors.HexColor('#1a2332'),
@@ -160,7 +180,7 @@ def generate_pdf_report(
                 'Description', parent=styles['Normal'], fontSize=9, leading=10
             )
             elements.append(Paragraph('Description:', desc_style))
-            elements.append(Paragraph(str(finding.get('description', '')), desc_style))
+            elements.append(Paragraph(_esc(str(finding.get('description', ''))), desc_style))
             elements.append(Spacer(1, 0.2 * inch))
 
         # Remediation if available
@@ -170,7 +190,7 @@ def generate_pdf_report(
                 textColor=colors.HexColor('#0066cc'),
             )
             elements.append(Paragraph('Remediation:', rem_style))
-            elements.append(Paragraph(str(finding.get('remediation', '')), rem_style))
+            elements.append(Paragraph(_esc(str(finding.get('remediation', ''))), rem_style))
             elements.append(Spacer(1, 0.3 * inch))
 
         elements.append(PageBreak())

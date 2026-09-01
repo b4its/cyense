@@ -35,7 +35,9 @@ class LinkScanRequest(BaseModel):
     mode: Literal["link"]
     # str instead of HttpUrl: pydantic's HttpUrl percent-encodes `{ID}`
     # placeholders (%7BID%7D) which would break placeholder detection.
-    url: str
+    # Optional when resuming: the worker restores the original request from
+    # the checkpoint (cyense scan resume 422 fix).
+    url: str = ""
     headers: dict[str, str] = {}
     cookies: dict[str, str] = {}
     baseline_id: str | None = None
@@ -51,6 +53,8 @@ class LinkScanRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
+        if not value:
+            return value  # resume may omit url (restored from checkpoint)
         if not re.match(r"^https?://\S+$", value):
             raise ValueError("url must be a valid http(s) URL")
         # reject control characters (CRLF/header injection attempts)
@@ -113,7 +117,8 @@ class WebsiteScanRequest(BaseModel):
     """
 
     mode: Literal["website"]
-    url: str
+    # Optional when resuming (restored from checkpoint by the worker).
+    url: str = ""
     max_depth: int = Field(default=2, ge=0, le=5)
     max_pages: int = Field(default=50, ge=1, le=500)
     rate_limit: int = Field(default=10, ge=1, le=100)
@@ -127,6 +132,8 @@ class WebsiteScanRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
+        if not value:
+            return value  # resume may omit url (restored from checkpoint)
         if not re.match(r"^https?://\S+$", value):
             raise ValueError("url must be a valid http(s) URL")
         if any(ord(ch) < 0x20 or ch == "\x7f" for ch in value):

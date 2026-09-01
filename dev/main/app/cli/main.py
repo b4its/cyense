@@ -2667,6 +2667,17 @@ def ci_check(
         findings = report.get("findings", [])
         summary = report.get("summary", {})
 
+        # --fail-on none means "never fail the gate" — skip the threshold
+        # comparison entirely (fail_sev_val == 0 would otherwise match every
+        # finding including info).
+        if fail_sev_val == 0:
+            _state.console.print(f"\n  [{PAL.blue_primary}]CI Quality Gate[/]")
+            _state.console.print(
+                f"  [{PAL.ok}]✓ PASS[/] — --fail-on none: gate dilewati "
+                f"({len(findings)} temuan tidak memengaruhi exit code)."
+            )
+            raise typer.Exit(0)
+
         # Count findings above threshold
         above = [
             f for f in findings

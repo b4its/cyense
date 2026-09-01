@@ -40,9 +40,16 @@
   onMount(load)
 
   // Stage graph status derived from pipeline + summary progress.
-  $: stages = (report?.meta?.pipeline || PIPELINE).map((name, i, arr) => {
-    const done = report && job && (job.status === 'completed' || job.status === 'failed')
-    return { name, status: done ? 'done' : i === 0 ? 'active' : 'pending' }
+  $: stages = (report?.meta?.pipeline || PIPELINE).map((name, i) => {
+    const isCompleted = job?.status === 'completed'
+    const isFailed = job?.status === 'failed'
+    // Failed scans: mark stages before the failure as done, the rest failed.
+    return {
+      name,
+      status: isCompleted ? 'done'
+        : isFailed ? (i === 0 ? 'done' : 'failed')
+        : i === 0 ? 'active' : 'pending',
+    }
   })
 
   $: findings = (report?.findings || []).slice().sort((a, b) => sevRank(a.severity) - sevRank(b.severity))
@@ -86,18 +93,18 @@
 {:else}
   <section class="hero" style="padding-bottom:20px">
     <div class="wrap">
-      <div class="kicker">Scan · {report.meta?.mode || job.mode}</div>
+      <div class="kicker">Scan · {(report?.meta?.mode) || job.mode}</div>
       <h1 style="font-size:30px;font-family:var(--mono)">{scanId}</h1>
       <p class="lead">
-        {job.status} · durasi {fmtDuration(report.summary?.duration_ms)}
-        {#if report.summary?.cves_matched} · <b>{report.summary.cves_matched}</b> CVE{/if}
-        {#if report.summary?.open_ports} · <b>{report.summary.open_ports}</b> port{/if}
+        {job.status} · durasi {fmtDuration(report?.summary?.duration_ms)}
+        {#if report?.summary?.cves_matched} · <b>{report.summary.cves_matched}</b> CVE{/if}
+        {#if report?.summary?.open_ports} · <b>{report.summary.open_ports}</b> port{/if}
       </p>
       <div class="meta">
         {#each ['critical','high','medium','low','info'] as sev}
-          {#if report.summary?.[sev] > 0}<span class="badge {sev}">{sev} {report.summary[sev]}</span>{/if}
+          {#if report?.summary?.[sev] > 0}<span class="badge {sev}">{sev} {report.summary[sev]}</span>{/if}
         {/each}
-        <span class="badge">total {report.summary?.total ?? 0}</span>
+        <span class="badge">total {report?.summary?.total ?? 0}</span>
       </div>
     </div>
   </section>

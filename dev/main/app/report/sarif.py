@@ -90,7 +90,12 @@ def _normalize_path(path: str | None, tree_root: str | None = None) -> str | Non
         if idx != -1:
             norm = norm[idx + 1:]
         else:
-            return "SECURITY.md"  # cannot map to anything repo-relative
+            # Program-mode absolute source path (e.g. /workspace/src/app.py).
+            # GitHub code scanning cannot map a synthetic SECURITY.md to the
+            # real file — fall back to the basename so the result at least
+            # points at a meaningful artifact name.
+            basename = Path(norm).name
+            return basename if basename else "SECURITY.md"
 
     # 4. Relative "reports/<scan_id>/src/..." or "reports/<scan_id>/..." —
     # strip the most specific sandbox prefix first.

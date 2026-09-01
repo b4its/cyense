@@ -35,6 +35,10 @@ def build_coverage_document(
     complete = (
         status == "completed"
         and not (meta.get("cap_reached") or meta.get("budget_exceeded"))
+        # A report carrying meta.error is a FAILED scan — the coverage doc
+        # must never claim a failed scan is complete ("a partial scan must
+        # never look complete").
+        and not meta.get("error")
     )
 
     # Machine-observed facts only (no LLM claims)
