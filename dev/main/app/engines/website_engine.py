@@ -1063,6 +1063,332 @@ class WebsiteEngine:
                     "location": url,
                 })
 
+        # 15. Harvester-style passive OSINT gathering (subdomains,
+        # emails, IPs, technology fingerprints from headers/body).
+        await self._notify("harvest")
+        harvest_findings: list[dict[str, Any]] = []
+        host = _urlparse(url).hostname or ""
+        try:
+            from app.utils.discovery import (
+                harvest_subdomains_crtsh,
+                harvest_subdomains_wayback,
+                harvest_emails,
+                harvest_ips,
+                harvest_tech_from_headers,
+                harvest_tech_fingerprints,
+            )
+
+            # 15a. Subdomain enumeration via crt.sh.
+            async def _fetch_crtsh():
+                try:
+                    subs = await harvest_subdomains_crtsh(host)
+                    return subs
+                except Exception:  # noqa: BLE001
+                    return []
+
+            subs_crtsh = await _fetch_crtsh()
+            if subs_crtsh:
+                harvest_findings.append({
+                    "rule": "HARVEST-SUBDOMAIN-CRTSH",
+                    "severity": "info",
+                    "confidence": 0.7,
+                    "cwe": "CWE-200",
+                    "title": f"{len(subs_crtsh)} subdomain ditemukan (crt.sh)",
+                    "description": (
+                        "Subdomain ditemukan via crt.sh (Harvester-style): "
+                        + ", ".join(subs_crtsh[:10])
+                    ),
+                    "evidence": {
+                        "subdomains": subs_crtsh[:20],
+                        "count": len(subs_crtsh),
+                        "url": url,
+                    },
+                    "remediation": (
+                        "Audit semua subdomain; pastikan tidak ada "
+                        "aset lama/terlupakan."
+                    ),
+                    "location": url,
+                })
+
+            # 15b. Subdomain enumeration via Wayback Machine.
+            try:
+                from app.utils.discovery import fetch_wayback_urls
+                wb_urls = await fetch_wayback_urls(host)
+            except Exception:  # noqa: BLE001
+                wb_urls = []
+            subs_wayback = set()
+            for u in wb_urls:
+                try:
+                    h = _urlparse(u).hostname or ""
+                    if h.endswith("." + host) and h != host:
+                        subs_wayback.add(h)
+                except ValueError:
+                    continue
+            subs_wayback = sorted(subs_wayback)
+            if subs_wayback:
+                harvest_findings.append({
+                    "rule": "HARVEST-SUBDOMAIN-WAYBACK",
+                    "severity": "info",
+                    "confidence": 0.65,
+                    "cwe": "CWE-200",
+                    "title": (
+                        f"{len(subs_wayback)} subdomain dari Wayback Machine"
+                    ),
+                    "description": (
+                        "Subdomain ditemukan dari arsip URL "
+                        "(Harvester-style): "
+                        + ", ".join(subs_wayback[:10])
+                    ),
+                    "evidence": {
+                        "subdomains": subs_wayback[:20],
+                        "count": len(subs_wayback),
+                        "url": url,
+                    },
+                    "remediation": (
+                        "Audit subdomain Wayback untuk aset lama."
+                    ),
+                    "location": url,
+                })
+
+            # 15c. Technology fingerprint from headers (all crawled pages).
+            tech_header_findings: list[dict[str, Any]] = []
+            tech_header_names: list[str] = []
+            for page in pages:
+                header_dict = dict(page.get("headers", {}))
+                techs = harvest_tech_from_headers(header_dict)
+                for t in techs:
+                    tech_header_names.append(t.get("category", t.get("rule", "")))
+                    tech_header_findings.append(t)
+            tech_header_names = list(dict.fromkeys(tech_header_names))
+            if tech_header_findings:
+                harvest_findings.append({
+                    "rule": "HARVEST-TECH-HEADER",
+                    "severity": "info",
+                    "confidence": 0.8,
+                    "cwe": "CWE-200",
+                    "title": (
+                        f"{len(tech_header_findings)} fingerprint teknologi "
+                        "dari header HTTP"
+                    ),
+                    "description": (
+                        "Teknologi terdeteksi dari header response: "
+                        + ", ".join(tech_header_names[:15])
+                    ),
+                    "evidence": {
+                        "technologies": tech_header_names[:20],
+                        "count": len(tech_header_findings),
+                        "url": url,
+                    },
+                    "remediation": (
+                        "Sembunyikan atau ubah header server "
+                        "untuk mengurangi informasi yang bocor."
+                    ),
+                    "location": url,
+                })
+
+            # 15d. Technology fingerprint from HTML body.
+            tech_body_findings: list[dict[str, Any]] = []
+            tech_body_names: list[str] = []
+            for page in pages:
+                body = page.get("body") or ""
+                if not body:
+                    continue
+                techs = harvest_tech_fingerprints(body)
+                for t in techs:
+                    tech_body_names.append(t.get("value", ""))
+                    tech_body_findings.append(t)
+            tech_body_names = list(dict.fromkeys(tech_body_names))
+            if tech_body_findings:
+                harvest_findings.append({
+                    "rule": "HARVEST-TECH-BODY",
+                    "severity": "info",
+                    "confidence": 0.75,
+                    "cwe": "CWE-200",
+                    "title": (
+                        f"{len(tech_body_findings)} fingerprint teknologi "
+                        "dari body HTML"
+                    ),
+                    "description": (
+                        "Teknologi terdeteksi dari isi HTML: "
+                        + ", ".join(tech_body_names[:15])
+                    ),
+                    "evidence": {
+                        "technologies": tech_body_names[:20],
+                        "count": len(tech_body_findings),
+                        "url": url,
+                    },
+                    "remediation": (
+                        "Pastikan library/framework di-update ke "
+                        "versi terbaru."
+                    ),
+                    "location": url,
+                })
+
+            # 15e. Harvest emails and IPs from crawled content.
+            all_emails: list[str] = []
+            all_ips: list[str] = []
+            for page in pages:
+                all_emails.extend(harvest_emails(page.get("body") or ""))
+                all_ips.extend(harvest_ips(page.get("body") or ""))
+            all_emails = list(dict.fromkeys(all_emails))[:50]
+            all_ips = list(dict.fromkeys(all_ips))[:50]
+            if all_emails:
+                harvest_findings.append({
+                    "rule": "HARVEST-EMAIL",
+                    "severity": "low",
+                    "confidence": 0.7,
+                    "cwe": "CWE-200",
+                    "title": f"{len(all_emails)} email ditemukan di content",
+                    "description": (
+                        "Email address ditemukan di response "
+                        "(Harvester-style): "
+                        + ", ".join(all_emails[:10])
+                    ),
+                    "evidence": {
+                        "emails": all_emails[:20],
+                        "count": len(all_emails),
+                        "url": url,
+                    },
+                    "remediation": (
+                        "Hapus email dari response publik; "
+                        "gunakan form kontak."
+                    ),
+                    "location": url,
+                })
+            if all_ips:
+                harvest_findings.append({
+                    "rule": "HARVEST-IP",
+                    "severity": "info",
+                    "confidence": 0.7,
+                    "cwe": "CWE-200",
+                    "title": f"{len(all_ips)} IP address ditemukan di content",
+                    "description": (
+                        "IP address ditemukan di response body: "
+                        + ", ".join(all_ips[:10])
+                    ),
+                    "evidence": {"ips": all_ips[:20], "count": len(all_ips)},
+                    "remediation": (
+                        "Pastikan IP internal tidak ter-expose "
+                        "di response client-side."
+                    ),
+                    "location": url,
+                })
+
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Harvester stage failed: %s", exc)
+        findings.extend(harvest_findings)
+
+        # 16. Nikto-style web server security checks.
+        await self._notify("nikto")
+        nikto_findings: list[dict[str, Any]] = []
+        try:
+            from app.utils.discovery import (
+                nikto_check_server_headers,
+                nikto_check_outdated_software,
+                nikto_check_sql_errors,
+                nikto_check_directory_listing,
+                nikto_check_info_disclosure,
+            )
+
+            # 16a. Header checks on all crawled pages.
+            for page in pages:
+                header_dict = dict(page.get("headers", {}))
+                body = page.get("body") or ""
+
+                # Nikto header analysis.
+                header_results = nikto_check_server_headers(header_dict)
+                for r in header_results:
+                    r["location"] = page.get("url", url)
+                    nikto_findings.append(r)
+
+                # Nikto SQL error detection.
+                sql_results = nikto_check_sql_errors(body)
+                for r in sql_results:
+                    r["location"] = page.get("url", url)
+                    nikto_findings.append(r)
+
+                # Nikto directory listing detection.
+                dir_results = nikto_check_directory_listing(
+                    body, page.get("url", url),
+                )
+                for r in dir_results:
+                    nikto_findings.append(r)
+
+                # Nikto info disclosure detection.
+                disc_results = nikto_check_info_disclosure(body)
+                for r in disc_results:
+                    r["location"] = page.get("url", url)
+                    nikto_findings.append(r)
+
+            # 16b. Outdated software detection from technology findings.
+            tech_evidence: list[dict[str, Any]] = []
+            for page in pages:
+                header_dict = dict(page.get("headers", {}))
+                from app.utils.discovery import harvest_tech_from_headers
+                tech_evidence.extend(harvest_tech_from_headers(header_dict))
+            outdated = nikto_check_outdated_software(tech_evidence)
+            for r in outdated:
+                nikto_findings.append(r)
+
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Nikto stage failed: %s", exc)
+        findings.extend(nikto_findings)
+
+        # 17. Nuclei-style template-based vulnerability checks.
+        await self._notify("nuclei")
+        nuclei_findings: list[dict[str, Any]] = []
+        try:
+            from app.utils.discovery import (
+                nuclei_check_cors_misconfig,
+                nuclei_check_xss_protection,
+                nuclei_check_security_headers,
+                nuclei_check_sensitive_files,
+                nuclei_check_template_matches,
+                nuclei_check_crlf_injection,
+            )
+
+            for page in pages:
+                header_dict = dict(page.get("headers", {}))
+                body = page.get("body") or ""
+                page_url = page.get("url", url)
+
+                # Nuclei CORS misconfig.
+                cors_results = nuclei_check_cors_misconfig(header_dict)
+                for r in cors_results:
+                    r["location"] = page_url
+                    nuclei_findings.append(r)
+
+                # Nuclei XSS protection check.
+                xss_results = nuclei_check_xss_protection(header_dict)
+                for r in xss_results:
+                    r["location"] = page_url
+                    nuclei_findings.append(r)
+
+                # Nuclei sensitive files/data.
+                sensitive_results = nuclei_check_sensitive_files(
+                    body, page_url,
+                )
+                for r in sensitive_results:
+                    nuclei_findings.append(r)
+
+                # Nuclei template pattern matches.
+                template_results = nuclei_check_template_matches(
+                    body, page_url,
+                )
+                for r in template_results:
+                    r["location"] = page_url
+                    nuclei_findings.append(r)
+
+                # Nuclei CRLF injection in headers.
+                crlf_results = nuclei_check_crlf_injection(header_dict)
+                for r in crlf_results:
+                    r["location"] = page_url
+                    nuclei_findings.append(r)
+
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Nuclei stage failed: %s", exc)
+        findings.extend(nuclei_findings)
+
         # Assign finding_ids
         for k, f in enumerate(findings, start=1):
             f["finding_id"] = f"{self.scan_id}-WDISC{k:03d}"
