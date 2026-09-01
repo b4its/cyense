@@ -25,13 +25,16 @@ def _load_report_from_disk(scan_id: str, request: Request) -> dict[str, Any] | N
     reports_dir: Path = request.app.state.settings.reports_dir
     path = (reports_dir / scan_id / "report.json").resolve()
     # Path traversal guard even though get_scan_data validates store membership.
+    if ".." in scan_id or "/" in scan_id:
+        return None
     try:
         path.relative_to(reports_dir.resolve())
     except ValueError:
         return None
     try:
         if path.exists():
-            return json.loads(path.read_text())
+            data = json.loads(path.read_text())
+            return data if isinstance(data, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
     return None
@@ -50,6 +53,8 @@ def _report_meta_error(disk_report_path: Path) -> str | None:
     try:
         data = json.loads(disk_report_path.read_text())
     except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
         return None
     return data.get("meta", {}).get("error")
 
@@ -139,6 +144,9 @@ async def get_scan_data(scan_id: str, request: Request) -> dict[str, Any]:
     store = request.app.state.store
     job = store.get(scan_id)
     reports_dir: Path = request.app.state.settings.reports_dir
+    # Path-traversal guard for the disk fallback (consistent with serve_viewer).
+    if ".." in scan_id or "/" in scan_id:
+        raise HTTPException(status_code=403, detail="invalid scan_id")
     disk_report_path = reports_dir / scan_id / "report.json"
 
     if job is None and not disk_report_path.is_file():

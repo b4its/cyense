@@ -44,22 +44,13 @@ async def propose_fixes(
     # (consistent with export/viewer/report endpoints).
     report = request.app.state.worker.result(scan_id)
     if report is None:
-        import json
         from pathlib import Path
 
+        from app.api._disk_utils import load_disk_report
+
         reports_dir: Path = request.app.state.settings.reports_dir
-        path = (reports_dir / scan_id / "report.json").resolve()
-        try:
-            path.relative_to(reports_dir.resolve())
-        except ValueError:
-            raise HTTPException(status_code=403, detail="invalid scan_id") from None
-        if path.exists():
-            try:
-                report = json.loads(path.read_text())
-            except (OSError, json.JSONDecodeError) as exc:
-                raise HTTPException(
-                    status_code=500, detail=f"corrupt report on disk: {exc}"
-                ) from exc
+        if (reports_dir / scan_id / "report.json").is_file():
+            report = load_disk_report(reports_dir, scan_id)
 
     if not report or "findings" not in report:
         raise HTTPException(status_code=404, detail="Scan not found or no findings")

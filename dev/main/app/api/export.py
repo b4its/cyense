@@ -7,13 +7,13 @@ startup.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
+from app.api._disk_utils import load_disk_report
 from app.report.csv_export import export_csv
 from app.report.cvss import enrich_finding
 
@@ -27,23 +27,7 @@ def _load_report(request: Request, scan_id: str) -> dict[str, Any]:
         return report
 
     reports_dir: Path = request.app.state.settings.reports_dir
-    path = (reports_dir / scan_id / "report.json").resolve()
-    # Path traversal guard: resolved report must live inside reports_dir.
-    try:
-        path.relative_to(reports_dir.resolve())
-    except ValueError:
-        raise HTTPException(status_code=403, detail="invalid scan_id") from None
-
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=500, detail=f"corrupt report on disk: {exc}") from exc
-
-    raise HTTPException(
-        status_code=404,
-        detail="report not available (scan pending, failed, or unknown id)",
-    )
+    return load_disk_report(reports_dir, scan_id)
 
 
 @router.get("/scans/{scan_id}/export/csv")

@@ -63,16 +63,17 @@ def _normalize_path(path: str | None, tree_root: str | None = None) -> str | Non
     if not path:
         return None
 
-    # 1. Strip trailing ":<line>" (integer-only, keeps host:port intact).
+    # 1. DAST-style URLs (scheme://...) are already valid artifact URIs —
+    #    the split/rejoin below would collapse "http://" into "http:/".
+    #    Return them untouched BEFORE any ":<line>"/":<port>" stripping, so a
+    #    URL that ENDS in a port (http://host:8080) keeps it.
+    if "://" in path:
+        return path.replace("\\", "/")
+
+    # 2. Strip trailing ":<line>" (integer-only, keeps host:port intact).
     head, sep, tail = path.rpartition(":")
     if sep and tail.isdigit():
         path = head
-
-    # 1b. DAST-style URLs (scheme://...) are already valid artifact URIs —
-    # the split/rejoin below would collapse "http://" into "http:/". Return
-    # them untouched so host:port survives (test_sarif regression).
-    if "://" in path:
-        return path.replace("\\", "/")
 
     norm = path.replace("\\", "/")
 
@@ -202,10 +203,10 @@ def build_sarif_report(
         locations = []
         if repo_rel_loc:
             # Parse line number from "path:line" format — but only when the
-            # last colon-separated segment is a plain integer. URLs like
-            # "http://host:8080/path" would otherwise crash int().
+            # location is NOT a URL (a URL like "http://host:8080" would
+            # otherwise misread the port as a line number).
             line_no = 1
-            if ":" in loc:
+            if ":" in loc and "://" not in loc:
                 tail = loc.split(":")[-1]
                 if tail.isdigit():
                     line_no = int(tail)

@@ -5,12 +5,12 @@ Also serves SARIF and coverage artifacts (ci-compliance-reporting.md §3.7).
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.api._disk_utils import load_disk_report
 from app.report.coverage import build_coverage_document, scope_info_from_report
 from app.report.html_report import render_html_report
 from app.report.sarif import build_sarif_report
@@ -25,26 +25,8 @@ def _get_report(request: Request, scan_id: str) -> dict[str, object]:
 
     # Disk fallback after service restart — consistent with export/viewer.
     reports_dir: Path = request.app.state.settings.reports_dir
-
-    # Defense-in-depth: reject scan_ids with path traversal components even
-    # though they are server-generated UUID-like strings.
-    if ".." in scan_id or "/" in scan_id:
-        raise HTTPException(status_code=403, detail="invalid scan_id")
-
-    path = (reports_dir / scan_id / "report.json").resolve()
-    # Path traversal guard: resolved report must live inside reports_dir.
-    try:
-        path.relative_to(reports_dir.resolve())
-    except ValueError:
-        raise HTTPException(status_code=403, detail="invalid scan_id") from None
-
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            raise HTTPException(
-                status_code=500, detail=f"corrupt report on disk: {exc}"
-            ) from exc
+    if (reports_dir / scan_id / "report.json").is_file():
+        return load_disk_report(reports_dir, scan_id)
 
     raise HTTPException(
         status_code=404,
