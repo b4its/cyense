@@ -105,6 +105,16 @@ class GithubEngine:
             )
             if scope_doc.get("resolved"):
                 include_paths = set(scope_doc.get("include_paths", []))
+            elif calc_mode == "diff":
+                # Explicit diff mode that cannot be resolved must fail loudly —
+                # never silently degrade to a full scan (a partial scan must
+                # never look complete; diff_scope.py §6.4 contract).
+                return self._empty_report(
+                    "diff-scope could not be resolved: "
+                    f"{scope_doc.get('reason', 'unknown')}",
+                    started,
+                )
+            # auto mode that degraded to full (no CI context) is fine — proceed.
 
         # Stage 2: ANALYZE (reuse program engine)
         await self._notify("analyze")

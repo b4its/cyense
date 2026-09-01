@@ -28,7 +28,13 @@ GITHUB_URL_RE = re.compile(
     r"(?:/(?P<path>[^#\?]*))?)?"  # optional path segment
     r"[?\#]?.*"  # optional query/hash tail
 )
-TREE_RE = re.compile(r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^]+)/tree/(?P<ref>[^/]+)")
+# Fallback tree-URL parser (kept as a safety net if GITHUB_URL_RE ever
+# changes). NOTE: `[^]+` was a malformed character class (empty negated set)
+# that silently swallowed the ref/path groups — `[^/]+` is the intent.
+TREE_RE = re.compile(
+    r"https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/\?#]+)/tree/"
+    r"(?P<ref>[^/\?#]+)(?:/(?P<path>[^#\?]*))?"
+)
 
 
 def parse_github_url(url: str) -> dict[str, str | None]:
@@ -164,8 +170,22 @@ class FetcherAgent(BaseAgent):
 
             self.trajectory.step("extracted_ok", {"sandbox": str(sandbox_path)})
 
-            # Collect file stats
-            files_kept = list(sandbox_path.rglob("*"))
+            # Optional subdir filter ("--subdir src/") — restrict the tree
+            # root that the analyzer will walk. Validate containment so a
+            # subdir can never escape the sandbox.
+            subdir = ctx.get("subdir")
+            tree_root = sandbox_path
+            if subdir:
+                candidate = (sandbox_path / subdir).resolve()
+                sandbox_resolved = sandbox_path.resolve()
+                if not candidate.is_relative_to(sandbox_resolved):
+                    raise ValueError(f"subdir escapes sandbox: {subdir}")
+                if not candidate.exists() or not candidate.is_dir():
+                    raise ValueError(f"subdir not found in repo: {subdir}")
+                tree_root = candidate
+
+            # Collect file stats for the effective tree root
+            files_kept = list(tree_root.rglob("*"))
             files_kept = [f for f in files_kept if f.is_file()]
             bytes_total = sum(f.stat().st_size for f in files_kept)
 
@@ -177,7 +197,7 @@ class FetcherAgent(BaseAgent):
                 "sha": commit_sha or meta_data.get("sha", ""),
                 "size_bytes": bytes_total,
                 "files_count": len(files_kept),
-                "tree_root": str(sandbox_path),
+                "tree_root": str(tree_root),
                 "cached": False,
             }
 
