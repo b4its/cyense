@@ -81,15 +81,79 @@ _JS_PATTERN_CHECKS: list[tuple[str, str, str, str, str]] = [
 
 # Inline event handlers (on<event>=) — a classic XSS surface.
 _INLINE_HANDLER_RE = re.compile(
-    r"\s(on(?:click|load|error|mouseover|mouseout|focus|blur|change|submit"
-    r"|keyup|keydown|keypress|input|dblclick|mouseenter|mouseleave|scroll"
-    r"|resize|abort|beforeunload|unload|drag|drop|touchstart|touchend"
-    r"|touchmove|pointerdown|pointerup|pointermove))\s*=\s*['\"][^'\"]+['\"]",
+    r"\s(on(?:click|dblclick|auxclick|contextmenu|load|error|unload|abort"
+    r"|mouseover|mouseout|mousedown|mouseup|mousemove|mouseenter|mouseleave"
+    r"|mousewheel|wheel|focus|focusin|focusout|blur|change|submit|reset"
+    r"|keyup|keydown|keypress|input|select|copy|cut|paste"
+    r"|scroll|resize|drag|dragstart|dragend|dragover|dragenter|dragleave|drop"
+    r"|touchstart|touchend|touchmove|touchcancel"
+    r"|pointerdown|pointerup|pointermove|pointerenter|pointerleave|pointercancel"
+    r"|animationstart|animationend|transitionend|visibilitychange"
+    r"|beforeunload|pageshow|pagehide))\s*=\s*['\"][^'\"]+['\"]",
     re.I,
 )
 
 # iframe srcdoc — inline HTML injected into a frame (XSS sink).
 _SRCDOC_RE = re.compile(r"<iframe[^>]*\bsrcdoc\s*=", re.I)
+
+# ---------------------------------------------------------------------------
+# DOM-XSS data-flow heuristics (sources → sinks)
+# ---------------------------------------------------------------------------
+
+# DOM sources: values an attacker can influence client-side.
+_DOM_SOURCES: list[str] = [
+    r"location\.hash",
+    r"location\.search",
+    r"location\.href",
+    r"location\.pathname",
+    r"document\.URL",
+    r"document\.documentURI",
+    r"document\.referrer",
+    r"window\.name",
+    r"document\.cookie",
+    r"localStorage",
+    r"sessionStorage",
+    r"postMessage\s*\(",
+    r"event\.data",
+]
+
+# DOM sinks: operations that turn a string into HTML/JS/navigation.
+_DOM_SINKS: list[str] = [
+    r"\.innerHTML\s*=",
+    r"\.outerHTML\s*=",
+    r"document\.write\s*\(",
+    r"document\.writeln\s*\(",
+    r"\.insertAdjacentHTML\s*\(",
+    r"eval\s*\(",
+    r"new\s+Function\s*\(",
+    r"setTimeout\s*\(\s*['\"`]",
+    r"setInterval\s*\(\s*['\"`]",
+    r"\.src\s*=",
+    r"\.href\s*=",
+    r"\.srcdoc\s*=",
+    r"document\.location\s*=",
+    r"window\.location\s*=",
+    r"document\.open\s*\(",
+]
+
+# postMessage broadcast to a wildcard target origin.
+_POSTMESSAGE_WILDCARD_RE = re.compile(
+    r"\.postMessage\s*\([^)]*?,\s*['\"]\*['\"]", re.I
+)
+
+# window.open / location navigation with a dynamic (source-derived) URL.
+_WINDOW_OPEN_DYNAMIC_RE = re.compile(
+    r"window\.open\s*\([^)]*?(?:location|document\.URL|document\.referrer|"
+    r"window\.name|localStorage|sessionStorage|document\.cookie)",
+    re.I | re.S,
+)
+
+# data: URI inside iframe/object/embed — an HTML/script injection vector.
+# iframe/embed use `src`; object uses `data`.
+_DATA_URI_TAG_RE = re.compile(
+    r"<(?:iframe|object|embed)[^>]*\b(?:src|data)\s*=\s*['\"]\s*data:",
+    re.I,
+)
 
 # document.cookie used near a network API (fetch / XHR / beacon).
 _COOKIE_EXFIL_CTX_RE = re.compile(
@@ -126,11 +190,11 @@ def analyze_page_xss(page: dict[str, Any]) -> list[dict[str, Any]]:
 
     # Normalize header lookup (headers may be stored in mixed case)
     headers_lc = {k.lower(): v for k, v in headers.items()}
+    csp = headers_lc.get("content-security-policy", "")
 
     # ---- Document-level checks (HTML only) --------------------------------
     if is_html:
         # 1. Content-Security-Policy
-        csp = headers_lc.get("content-security-policy", "")
         if not csp:
             findings.append(_finding(
                 rule="XS-LIVE-001", severity="medium", confidence=0.75,
@@ -273,6 +337,125 @@ def analyze_page_xss(page: dict[str, Any]) -> list[dict[str, Any]]:
             ),
             url=url,
         ))
+
+    # ---- DOM-based XSS (data-flow: DOM source → HTML/JS sink) -------------
+    dom_xss = _find_dom_xss(body)
+    if dom_xss:
+        findings.append(_finding(
+            rule="XS-LIVE-025", severity="high", confidence=0.7,
+            title="Potential DOM-based XSS data-flow detected",
+            description=(
+                f"Detected {len(dom_xss)} sink(s) reached from a DOM source "
+                "(location/document.URL/referrer/storage/postMessage...). "
+                "Attacker-controlled input can reach an HTML/JS sink without "
+                "a server round-trip."
+            ),
+            evidence={
+                "occurrences": len(dom_xss),
+                "samples": dom_xss[:3],
+            },
+            remediation=(
+                "Treat every DOM source as untrusted: validate/encode before "
+                "passing into sinks; use textContent instead of innerHTML and "
+                "never eval dynamic strings."
+            ),
+            url=url,
+        ))
+
+    # ---- DOM storage (localStorage/sessionStorage) → sink -----------------
+    storage_sinks = _find_storage_sinks(body)
+    if storage_sinks:
+        findings.append(_finding(
+            rule="XS-LIVE-026", severity="high", confidence=0.65,
+            title="DOM storage value written into HTML/JS sink",
+            description=(
+                f"localStorage/sessionStorage data flows into {len(storage_sinks)} "
+                "rendering sink(s). Stored attacker-controlled values can "
+                "execute when the page renders them."
+            ),
+            evidence={"occurrences": len(storage_sinks), "samples": storage_sinks[:3]},
+            remediation=(
+                "Never render storage values via innerHTML/eval; validate on "
+                "write and escape on read."
+            ),
+            url=url,
+        ))
+
+    # ---- postMessage wildcard target origin --------------------------------
+    wildcard = _POSTMESSAGE_WILDCARD_RE.findall(body)
+    if wildcard:
+        findings.append(_finding(
+            rule="XS-LIVE-027", severity="medium", confidence=0.6,
+            title="postMessage broadcast to wildcard target origin (*)",
+            description=(
+                "postMessage is called with '*' as the target origin, letting "
+                "any window receive the message — an XSS / data-leak vector "
+                "when the payload is trusted and used in a sink."
+            ),
+            evidence={"count": len(wildcard), "pattern": "postMessage(..., '*')"},
+            remediation=(
+                "Specify the exact target origin in postMessage and validate "
+                "event.origin on the receiving side before trusting event.data."
+            ),
+            url=url,
+        ))
+
+    # ---- window.open with a dynamic URL -------------------------------------
+    dyn_open = _WINDOW_OPEN_DYNAMIC_RE.findall(body)
+    if dyn_open:
+        findings.append(_finding(
+            rule="XS-LIVE-028", severity="medium", confidence=0.55,
+            title="window.open with user-influenced URL",
+            description=(
+                "window.open is called with a URL derived from a DOM source. "
+                "An attacker-controlled value can open arbitrary pages "
+                "(phishing / javascript: execution)."
+            ),
+            evidence={"count": len(dyn_open), "samples": dyn_open[:3]},
+            remediation=(
+                "Validate/normalize the URL scheme and host before opening; "
+                "avoid javascript: URLs entirely."
+            ),
+            url=url,
+        ))
+
+    # ---- data: URI inside iframe/object/embed ------------------------------
+    data_uri = _DATA_URI_TAG_RE.findall(body)
+    if data_uri:
+        findings.append(_finding(
+            rule="XS-LIVE-029", severity="medium", confidence=0.6,
+            title="data: URI in iframe/object/embed src",
+            description=(
+                "A data: URI is used as the src of a frame/object/embed. If the "
+                "payload is user-controlled it can carry HTML/script into the "
+                "page context."
+            ),
+            evidence={"count": len(data_uri), "pattern": "src=\"data:...\""},
+            remediation=(
+                "Serve embedded content from a same-origin URL; never accept "
+                "user-supplied data: URIs for scriptable elements."
+            ),
+            url=url,
+        ))
+
+    # ---- CSP hardening gaps (missing object-src / base-uri) ----------------
+    if is_html and csp:
+        csp_gaps = _csp_hardening_gaps(csp)
+        if csp_gaps:
+            findings.append(_finding(
+                rule="XS-LIVE-030", severity="low", confidence=0.85,
+                title="CSP hardening gaps: " + ", ".join(csp_gaps),
+                description=(
+                    "CSP is present but missing directives that harden against "
+                    "common XSS bypasses: " + ", ".join(csp_gaps) + "."
+                ),
+                evidence={"csp": csp[:500], "gaps": csp_gaps},
+                remediation=(
+                    "Add 'object-src none' and 'base-uri self' (and avoid "
+                    "wildcard script-src sources) to the CSP."
+                ),
+                url=url,
+            ))
 
     return findings
 
@@ -439,3 +622,57 @@ def _find_cookie_exfil(body: str) -> list[str]:
         if _EXTERNAL_ORIGIN_RE.search(snippet):
             results.append(snippet[:120])
     return results
+
+
+def _find_dom_xss(body: str) -> list[str]:
+    """Return snippets where a DOM source is used near an HTML/JS sink.
+
+    Heuristic (DOM-based XSS): for each sink occurrence, inspect a window
+    around it; if any DOM source appears within that window, the input can
+    flow client-side into the sink without a server round-trip.
+    """
+    results: list[str] = []
+    if not body:
+        return results
+    for sink_re in _DOM_SINKS:
+        sink_regex = re.compile(sink_re, re.I)
+        for m in sink_regex.finditer(body):
+            start = max(0, m.start() - 200)
+            end = min(len(body), m.end() + 120)
+            window = body[start:end]
+            for src_re in _DOM_SOURCES:
+                if re.search(src_re, window, re.I):
+                    results.append(f"{src_re} → {sink_re}")
+                    break
+    # De-duplicate identical (source → sink) pairs.
+    return list(dict.fromkeys(results))
+
+
+def _find_storage_sinks(body: str) -> list[str]:
+    """Return snippets where localStorage/sessionStorage flows into a sink."""
+    results: list[str] = []
+    if not body:
+        return results
+    for m in re.finditer(r"(?:localStorage|sessionStorage)", body, re.I):
+        start = max(0, m.start() - 60)
+        end = min(len(body), m.end() + 200)
+        window = body[start:end]
+        for sink_re in _DOM_SINKS:
+            if re.search(sink_re, window, re.I):
+                results.append(window[:120])
+                break
+    return list(dict.fromkeys(results))
+
+
+def _csp_hardening_gaps(csp: str) -> list[str]:
+    """Return CSP hardening gaps: missing object-src, missing base-uri,
+    and wildcard script-src hosts (common XSS-bypass enablers)."""
+    gaps: list[str] = []
+    if "object-src" not in csp:
+        gaps.append("missing object-src")
+    if "base-uri" not in csp:
+        gaps.append("missing base-uri")
+    # script-src with a wildcard host (https://*.cdn or http: broad sources)
+    if re.search(r"script-src[^;]*\*", csp):
+        gaps.append("wildcard script-src")
+    return gaps

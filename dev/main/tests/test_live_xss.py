@@ -233,3 +233,121 @@ def test_non_html_non_js_skipped() -> None:
         content_type="application/json",
     )
     assert analyze_page_xss(page) == []
+
+
+# ---------------------------------------------------------------------------
+# DOM-based XSS (data-flow source → sink)
+# ---------------------------------------------------------------------------
+
+def test_dom_xss_hash_to_innerhtml() -> None:
+    body = (
+        "var x = location.hash;\n"
+        "document.getElementById('a').innerHTML = x;\n"
+    )
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-025" in _rules(findings)
+
+
+def test_dom_xss_referrer_to_eval() -> None:
+    body = "eval(document.referrer);"
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-025" in _rules(findings)
+
+
+def test_dom_xss_no_false_positive_static() -> None:
+    body = "var msg = 'hello'; document.write(msg);"
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-025" not in _rules(findings)
+
+
+def test_dom_storage_into_sink() -> None:
+    body = "el.innerHTML = localStorage.getItem('theme');"
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-026" in _rules(findings)
+
+
+# ---------------------------------------------------------------------------
+# postMessage / window.open / data: URI
+# ---------------------------------------------------------------------------
+
+def test_postmessage_wildcard_origin() -> None:
+    body = "window.parent.postMessage(payload, '*');"
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-027" in _rules(findings)
+
+
+def test_postmessage_with_specific_origin_not_flagged() -> None:
+    body = "window.parent.postMessage(payload, 'https://app');"
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-027" not in _rules(findings)
+
+
+def test_window_open_dynamic_url() -> None:
+    body = "window.open(location.search.slice(1), '_blank');"
+    findings = analyze_page_xss(_page(
+        url="https://app/", body=body, content_type="application/javascript",
+    ))
+    assert "XS-LIVE-028" in _rules(findings)
+
+
+def test_data_uri_in_iframe() -> None:
+    body = '<iframe src="data:text/html,<script>alert(1)</script>"></iframe>'
+    findings = analyze_page_xss(_page(url="https://app/", body=body))
+    assert "XS-LIVE-029" in _rules(findings)
+
+
+def test_data_uri_in_object() -> None:
+    body = '<object data="data:text/html,<script>alert(1)</script>"></object>'
+    findings = analyze_page_xss(_page(url="https://app/", body=body))
+    assert "XS-LIVE-029" in _rules(findings)
+
+
+# ---------------------------------------------------------------------------
+# CSP hardening gaps
+# ---------------------------------------------------------------------------
+
+def test_csp_hardening_gaps_reported() -> None:
+    # CSP present but missing object-src / base-uri and has wildcard script-src.
+    page = _page(headers={
+        "content-security-policy": "default-src 'self'; script-src https://*.cdn.com",
+    })
+    rules = _rules(analyze_page_xss(page))
+    assert "XS-LIVE-030" in rules
+
+
+def test_strict_csp_no_hardening_gap() -> None:
+    strict = (
+        "default-src 'self'; script-src 'self'; object-src 'none'; "
+        "base-uri 'self'; frame-ancestors 'self'"
+    )
+    page = _page(headers={"content-security-policy": strict})
+    rules = _rules(analyze_page_xss(page))
+    assert "XS-LIVE-030" not in rules
+
+
+# ---------------------------------------------------------------------------
+# Expanded inline handler coverage
+# ---------------------------------------------------------------------------
+
+def test_additional_inline_handlers_detected() -> None:
+    body = (
+        '<html><body>'
+        '<div onauxclick="evil()">x</div>'
+        '<input onpaste="evil()">'
+        '<div onmousewheel="evil()">y</div>'
+        "</body></html>"
+    )
+    findings = analyze_page_xss(_page(body=body))
+    assert "XS-LIVE-013" in _rules(findings)
