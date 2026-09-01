@@ -99,13 +99,14 @@ class ProberAgent(BaseAgent):
             max_concurrency=int(ctx.get("max_concurrency", 10)),
         ) as client:
             # baseline reference for shape comparison (if not fetched in recon)
-            if not baseline_body and profile.baseline_status == 0:
+            if not baseline_body and profile.baseline_status == 0 and candidates:
                 resp0 = await client.get(self._render(profile, candidates[0]))
                 baseline_body = resp0.body if resp0.status else ""
 
             probe_ids = list(candidates)
             fired: set[str] = set()
             for _round in range(2):  # round 2 = adaptive expansion
+                fired_before = set(fired)
                 tasks = [self._probe_one(client, method, profile, pid, baseline_body)
                          for pid in probe_ids if pid not in fired]
                 results = await asyncio.gather(*tasks)
@@ -118,8 +119,11 @@ class ProberAgent(BaseAgent):
                     if hit.status == 200:
                         hits.append(hit)
 
-                # adaptive step: expand around first new valid id (PRD stage 2)
-                new_valid = [v for v in valid_ids if v not in set(candidates)]
+                # adaptive step: expand around valid ids discovered THIS round
+                # (comparing against the whole candidate list was always empty
+                # — round 0 fires exactly the candidates — so the adaptive
+                # expansion never ran and was dead code)
+                new_valid = [v for v in valid_ids if v not in fired_before]
                 if not new_valid:
                     break
                 seed = new_valid[0]

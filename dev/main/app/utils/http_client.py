@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from app.utils.logger import get_logger
-from app.utils.redact import redact_headers
+from app.utils.redact import redact_url_credentials
 
 log = get_logger("http")
 
@@ -79,7 +79,10 @@ class HttpClient:
             try:
                 resp = await self._client.request(method, url)
             except httpx.HTTPError as exc:
-                log.warning("request failed %s: %s", redact_headers({"u": url})["u"], exc)
+                # redact_url_credentials — wrapping the URL under a non-
+                # sensitive key ("u") let embedded user:pass@ credentials
+                # through verbatim (ground rule #8).
+                log.warning("request failed %s: %s", redact_url_credentials(url), exc)
                 return Response(
                     status=0,
                     headers={},
