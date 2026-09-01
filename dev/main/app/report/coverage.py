@@ -167,3 +167,24 @@ def _iso_timestamp() -> str:
     """ISO timestamp helper."""
     import time
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def scope_info_from_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Derive scope_info for a completed report.
+
+    Returns ``{"mode": "full"}`` for regular scans, or a diff-scope dict when
+    the report carries ``meta.diff_scope`` (github mode). Without this, callers
+    that invoke ``build_coverage_document(report)`` (worker artifact writer and
+    the /coverage endpoint) produced a coverage doc with an empty ``scope``
+    section — the ``complete`` flag never surfaced.
+    """
+    meta = report.get("meta", {})
+    ds = meta.get("diff_scope")
+    if ds and ds.get("active"):
+        return {
+            "mode": "diff",
+            "base": meta.get("diff_base"),
+            "included_files_count": ds.get("included_files", 0),
+            "excluded_files_count": ds.get("excluded_files", 0),
+        }
+    return {"mode": "full"}

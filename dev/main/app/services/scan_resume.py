@@ -147,9 +147,11 @@ def is_resumable(reports_dir: Path, scan_id: str) -> bool:
     cp = load_checkpoint(reports_dir, scan_id)
     if cp is None:
         return False
-    # A completed scan's checkpoint should have been removed; if it exists
-    # with a terminal stage, it's not resumable
+    # A completed/failed scan's checkpoint should have been removed; if it
+    # exists with a terminal stage, it's not resumable.
     stage = cp.get("stage")
     if stage is None:
+        return False
+    if str(stage).lower() in ("completed", "failed"):
         return False
     return True

@@ -16,7 +16,7 @@ from app.core.store import JobStore
 from app.engines.github_engine import GithubEngine
 from app.engines.link_engine import run_link_scan
 from app.engines.program_engine import resolve_source_dir, run_program_scan
-from app.report.coverage import build_coverage_document, write_coverage
+from app.report.coverage import build_coverage_document, scope_info_from_report, write_coverage
 
 # CI/Compliance Reporting modules (ci-compliance-reporting.md)
 from app.report.cvss import enrich_finding
@@ -385,8 +385,9 @@ class ScanWorker:
             sarif_path = out_dir / "findings.sarif"
             dump_sarif_report(report, sarif_path)
 
-            # Write coverage report
-            coverage_doc = build_coverage_document(report)
+            # Write coverage report (scope derived from report meta so the
+            # coverage document carries the `complete` flag).
+            coverage_doc = build_coverage_document(report, scope_info_from_report(report))
             write_coverage(out_dir, coverage_doc)
 
         except Exception as exc:

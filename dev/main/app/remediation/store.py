@@ -97,7 +97,12 @@ class FixStore:
     def update_proposal(
         self, session_id: str, fix_id: str, updates: dict[str, Any]
     ) -> bool:
-        """Merge updates into a stored proposal (e.g. backup path, hashes)."""
+        """Merge updates into a stored proposal (e.g. backup path, hashes).
+
+        Also mirrors the change into the flat ``self._proposals`` list so the
+        ``fix_sessions.json`` dump stays consistent (otherwise backup_path /
+        hashes / status written at apply time never persisted).
+        """
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
@@ -105,6 +110,14 @@ class FixStore:
             for prop in session["fixes"]:
                 if prop.get("fix_id") == fix_id:
                     prop.update(updates)
+                    # Mirror into the flat list (identity by session+fix_id).
+                    for flat in self._proposals:
+                        if (
+                            flat.get("fix_id") == fix_id
+                            and flat.get("session_id") == session_id
+                        ):
+                            flat.update(updates)
+                            break
                     self._dump()
                     return True
         return False

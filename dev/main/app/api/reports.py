@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.report.coverage import build_coverage_document
+from app.report.coverage import build_coverage_document, scope_info_from_report
 from app.report.html_report import render_html_report
 from app.report.sarif import build_sarif_report
 
@@ -73,5 +73,5 @@ async def report_sarif(request: Request, scan_id: str) -> JSONResponse:
 async def coverage_json(request: Request, scan_id: str) -> JSONResponse:
     """Get coverage document showing what was checked (ci-compliance-reporting.md §3.5)."""
     report = _get_report(request, scan_id)
-    coverage_doc = build_coverage_document(report)
+    coverage_doc = build_coverage_document(report, scope_info_from_report(report))
     return JSONResponse(content=coverage_doc)
