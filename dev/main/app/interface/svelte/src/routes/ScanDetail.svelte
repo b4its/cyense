@@ -52,6 +52,14 @@
   $: xss = findings.filter((f) => f.rule?.startsWith('XS'))
   $: sqli = findings.filter((f) => f.rule?.includes('SQLI'))
   $: idor = findings.filter((f) => f.rule?.startsWith('IDOR'))
+  $: discovery = findings.filter((f) =>
+    f.rule === 'SECRET-LEAK' || f.rule === 'EXPOSED-FILE' ||
+    f.rule === 'WP-EXPOSED' || f.rule === 'SSRF-SINK' ||
+    f.rule === 'GRAPHQL-INTROSPECTION' ||
+    f.rule?.startsWith('DISC-')
+  )
+  $: secrets = discovery.filter((f) => f.rule === 'SECRET-LEAK')
+  $: exposedFiles = discovery.filter((f) => f.rule === 'EXPOSED-FILE' || f.rule === 'WP-EXPOSED')
 
   // Sticky TOC + scroll-spy for finding sections.
   let ids = []
@@ -160,6 +168,38 @@
               {/each}
               </tbody>
             </table>
+          </section>
+        {/if}
+
+        {#if secrets.length}
+          <section class="block" id="secrets">
+            <h2>Secret Ter-expose</h2>
+            <p class="sub">Deteksi TruffleHog-style — nilai selalu di-redaksi.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each secrets as f, i}<div id="f-secret-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if exposedFiles.length}
+          <section class="block" id="exposed">
+            <h2>File / Panel Ter-expose</h2>
+            <p class="sub">Adaptasi Nikto/Dirsearch/Nuclei/Wpscan.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each exposedFiles as f, i}<div id="f-exposed-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if discovery.filter((f) => !secrets.includes(f) && !exposedFiles.includes(f)).length}
+          <section class="block" id="recon">
+            <h2>Recon &amp; Discovery</h2>
+            <p class="sub">Subdomain, API endpoints, SSRF sinks, GraphQL, vhost, hidden params, wayback.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each discovery.filter((f) => !secrets.includes(f) && !exposedFiles.includes(f)) as f, i}
+                <div id="f-recon-{i}"><FindingCard f={f} /></div>
+              {/each}
+            </div>
           </section>
         {/if}
 

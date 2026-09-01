@@ -622,6 +622,165 @@ def cli_cve(
     _run(_cve_scan_flow(payload, out_path=out, no_md=no_md, no_port_scan=no_port_scan))
 
 
+# ---------------------------------------------------------------------------
+# recon — reconnaissance menyeluruh (adaptasi HackerOne 104 tools)
+# ---------------------------------------------------------------------------
+
+@app.command("recon")
+def cli_recon(
+    url: Annotated[
+        str,
+        typer.Argument(
+            help="Website URL untuk reconnaissance menyeluruh (subdomain, "
+            "secret, exposed files, API endpoints, WP, SSRF, GraphQL, vhost)."
+        ),
+    ],
+    max_pages: Annotated[
+        int,
+        typer.Option("--max-pages", help="Max halaman di-crawl (default 10)."),
+    ] = 10,
+    rate_limit: Annotated[
+        int,
+        typer.Option("--rate-limit", help="Max request/s ke target (default 10)."),
+    ] = 10,
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[wajib] Konfirmasi izin eksplisit untuk memindai website ini.",
+        ),
+    ] = False,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+) -> None:
+    """Recon menyeluruh ke website (adaptasi HackerOne 104 tools).
+
+    Menjalankan website scan dan menampilkan hasil discovery terkelompok:
+    secret ter-expose, file/panel sensitif, subdomain, API endpoints,
+    WordPress, SSRF sinks, GraphQL, vhost, hidden params, wayback.
+    """
+    if not i_have_permission:
+        render_error_panel(
+            _state.console, _state.caps,
+            "i_have_permission wajib untuk memindai website.",
+            "Ulangi dengan --i-have-permission untuk konfirmasi otorisasi.",
+        )
+        raise typer.Exit(3)
+
+    payload: dict = {
+        "mode": "website",
+        "url": url,
+        "max_depth": 1,
+        "max_pages": max_pages,
+        "rate_limit": rate_limit,
+        "i_have_permission": True,
+    }
+    _run(_recon_flow(payload, out_path=out, no_md=no_md))
+
+
+async def _recon_flow(
+    payload: dict,
+    *,
+    out_path: str | None,
+    no_md: bool,
+) -> None:
+    """Submit a website scan and render the discovery table prominently."""
+    from app.cli.theme import PALETTE as PAL
+
+    caps = _state.caps
+    console = _state.console
+
+    if not caps.quiet:
+        render_banner(console, caps, _VERSION)
+
+    try:
+        async with open_client(_state.api_url, timeout=30) as c:
+            submitted = await c.submit_scan(payload)
+    except Exception as e:
+        render_error_panel(console, caps, f"Gagal submit scan recon: {e}")
+        raise typer.Exit(3) from None
+
+    scan_id = submitted["scan_id"]
+    if not caps.quiet:
+        console.print(f"  [{PAL.blue_soft}]Scan recon diajukan:[/] {scan_id}")
+        console.print(
+            f"  [{PAL.muted}]Menunggu hasil (crawl → framework → port → "
+            "CVE → discovery → probe)...[/]"
+        )
+
+    report: dict | None = None
+    try:
+        async with open_client(_state.api_url, timeout=_state.timeout) as c:
+            async for _snap in poll_scan(c, scan_id, total_timeout=_state.timeout):
+                pass
+            report = await c.get_report(scan_id)
+    except TimeoutError as e:
+        render_error_panel(console, caps, str(e))
+        raise typer.Exit(3) from None
+    except Exception as e:
+        render_error_panel(console, caps, f"Polling scan gagal: {e}")
+        raise typer.Exit(3) from None
+
+    if report is None:
+        report = load_report_from_disk(scan_id)
+    if report is None:
+        render_error_panel(console, caps, f"Report tidak ditemukan untuk {scan_id}")
+        raise typer.Exit(3) from None
+
+    findings = report.get("findings", [])
+    summary = report.get("summary", {})
+
+    # 1. Discovery table (secret, exposed, subdomain, API, WP, SSRF, ...)
+    from app.cli.renderer import render_discovery_table
+
+    render_discovery_table(console, caps, findings)
+
+    # 2. CVE table
+    cve_findings = [f for f in findings if f.get("rule") == "CVE-MATCH"]
+    from app.cli.renderer import render_cve_table
+
+    render_cve_table(console, caps, cve_findings, summary)
+
+    # 3. Temuan lain (XSS/SQLi/IDOR) ringkas
+    other = [f for f in findings
+             if f.get("rule") not in ("CVE-MATCH",) and not (
+                 f.get("rule", "").startswith(("SECRET", "EXPOSED", "DISC",
+                                               "WP-", "SSRF", "GRAPHQL",
+                                               "DETECT", "PORT"))
+             )]
+    if other:
+        console.print(f"  [bold {PAL.blue_primary}]TEMUAN LAIN (XSS/SQLi/IDOR)[/]")
+        from app.cli.renderer import render_findings_table
+        render_findings_table(console, caps, other, summary)
+
+    # 4. Output markdown opsional
+    if out_path and not no_md:
+        from pathlib import Path
+
+        from app.report.md_report import dump_markdown_report
+        try:
+            md_dest = Path(out_path).resolve()
+            cwd = Path.cwd().resolve()
+            if not md_dest.is_relative_to(cwd):
+                render_error_panel(
+                    console, caps,
+                    f"--out path di luar direktori kerja: {md_dest}",
+                )
+                raise typer.Exit(3)
+            dump_markdown_report(report, md_dest)
+            console.print(f"  [{PAL.ok}]Laporan markdown ditulis:[/] {md_dest}")
+        except OSError as e:
+            render_error_panel(console, caps, f"Gagal tulis markdown: {e}")
+            raise typer.Exit(3) from None
+
+    import time as _time
+    _t0 = getattr(_state, "_recon_t0", _time.monotonic())
+    render_footer(
+        console, caps, scan_id, out_path if (out_path and not no_md) else None,
+        _state.api_url, _time.monotonic() - _t0, 0,
+    )
+
+
 async def _cve_scan_flow(
     payload: dict,
     *,
@@ -736,7 +895,12 @@ async def _cve_scan_flow(
             render_error_panel(console, caps, f"Gagal tulis markdown: {e}")
             raise typer.Exit(3) from None
 
-    render_footer(console, caps)
+    import time as _time
+    _t0 = getattr(_state, "_cve_t0", _time.monotonic())
+    render_footer(
+        console, caps, scan_id, out_path if (out_path and not no_md) else None,
+        _state.api_url, _time.monotonic() - _t0, 0,
+    )
 
 
 # ---------------------------------------------------------------------------

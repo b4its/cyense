@@ -147,7 +147,7 @@ def _stage_line(
     if info.status == "done":
         t.append(f"  {g.ok} ", style=f"bold {p.ok}")
     elif info.status == "failed":
-        t.append(f"  {g.fail} ", style=f"bold {p.error}")
+        t.append(f"  {g.fail} ", style=f"bold {p.erroror}")
     elif is_current:
         t.append(f"  {g.active} ", style=f"bold {p.blue_accent}")
     else:
@@ -560,7 +560,7 @@ def render_footer(
     )
     console.print()
 
-    code_style = p.ok if exit_code == 0 else (p.error if exit_code == 2 else p.sev_medium)
+    code_style = p.ok if exit_code == 0 else (p.erroror if exit_code == 2 else p.sev_medium)
     code_label = {0: "bersih", 1: "--fail-on terpenuhi", 2: "scan gagal", 3: "error koneksi"}.get(
         exit_code, f"exit {exit_code}"
     )
@@ -588,3 +588,145 @@ def render_error_panel(
     if hint:
         console.print(f"     [{p.muted}]Saran: {_esc(hint)}[/]")
     console.print()
+
+
+# ---------------------------------------------------------------------------
+# Discovery renderer — grouped display of HackerOne-tools findings
+
+def render_discovery_table(
+    console: Console,
+    caps: TermCaps,
+    findings: list[dict[str, Any]],
+) -> None:
+    """Render discovery findings (SECRET/EXPOSED/DISC/SSRF/GRAPHQL/WP).
+
+    Groups findings by category and renders each with a compact table so
+    recon output stays readable (adaptation of the HackerOne 104 tools).
+    """
+    p = PALETTE
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    secrets = [f for f in findings if f.get("rule") == "SECRET-LEAK"]
+    exposed = [f for f in findings if f.get("rule") == "EXPOSED-FILE"]
+    wp = [f for f in findings if f.get("rule") == "WP-EXPOSED"]
+    ssrf = [f for f in findings if f.get("rule") == "SSRF-SINK"]
+    graphql = [f for f in findings if f.get("rule") == "GRAPHQL-INTROSPECTION"]
+    subs = [f for f in findings if f.get("rule") == "DISC-SUBDOMAIN"]
+    api = [f for f in findings if f.get("rule") == "DISC-API-ENDPOINT"]
+    js = [f for f in findings if f.get("rule") == "DISC-JS-URL"]
+    params = [f for f in findings if f.get("rule") == "DISC-HIDDEN-PARAM"]
+    wayback = [f for f in findings if f.get("rule") == "DISC-WAYBACK"]
+    vhosts = [f for f in findings if f.get("rule") == "DISC-VHOST"]
+    dirs = [f for f in findings if f.get("rule") == "DISC-PATH"]
+
+    total = len(secrets) + len(exposed) + len(wp) + len(ssrf) + len(graphql) \
+        + len(subs) + len(api) + len(js) + len(params) + len(wayback) \
+        + len(vhosts) + len(dirs)
+    if total == 0:
+        console.print(f"  [{p.ok}]Tidak ada temuan discovery (recon bersih).[/]")
+        console.print()
+        return
+
+    console.print(f"  [bold {p.blue_primary}]DISCOVERY / RECON[/]")
+    console.print(
+        f"  [{p.muted}]Adaptasi: TruffleHog · Nikto · Subfinder · "
+        "Kiterunner · Wpscan · Arjun · SSRFTest[/]"
+    )
+    console.print(sep)
+
+    # Secrets (always on top)
+    if secrets:
+        console.print(f"  [bold {p.error}]SECRET TER-EXPOSE ({len(secrets)})[/]")
+        for f in secrets:
+            ev = f.get("evidence", {})
+            console.print(
+                f"  [{p.error}]▸[/] {ev.get('secret_type','?')} — {ev.get('count',1)}x "
+                f"[{p.muted}]{', '.join((f.get('evidence') or {}).get('samples', [])[:2])}[/]"
+            )
+        console.print()
+
+    # Exposed files + admin panels
+    if exposed:
+        console.print(f"  [bold {p.error}]FILE/PANEL TER-EXPOSE ({len(exposed)})[/]")
+        for f in exposed:
+            ev = f.get("evidence", {})
+            console.print(
+                f"  [{p.error}]▸[/] {ev.get('path','?')}  [{p.muted}]HTTP {ev.get('status','?')}[/]"
+            )
+        console.print()
+
+    # WordPress
+    if wp:
+        console.print(f"  [bold {p.sev_high}]WORDPRESS TER-EXPOSE ({len(wp)})[/]")
+        for f in wp:
+            ev = f.get("evidence", {})
+            console.print(
+                f"  [{p.sev_high}]▸[/] {ev.get('path','?')}  "
+                f"[{p.muted}]HTTP {ev.get('status','?')}[/]"
+            )
+        console.print()
+
+    # SSRF sinks + GraphQL
+    if ssrf:
+        console.print(f"  [bold {p.sev_high}]SSRF SINK ({len(ssrf)})[/]")
+        for f in ssrf:
+            ev = f.get("evidence", {})
+            console.print(f"  [{p.sev_high}]▸[/] params: {', '.join(ev.get('params', []))}")
+        console.print()
+    if graphql:
+        console.print(f"  [bold {p.sev_high}]GRAPHQL INTROSPECTION AKTIF[/]")
+        console.print()
+
+    # Subdomains
+    if subs:
+        sub_count = sum(len((f.get("evidence") or {}).get("subdomains", [])) for f in subs)
+        console.print(f"  [bold {p.blue_soft}]SUBDOMAIN ({sub_count})[/]")
+        chips = []
+        for f in subs:
+            chips.extend((f.get("evidence") or {}).get("subdomains", []))
+        console.print("  " + "  ".join(f"[{p.blue_mist}]{s}[/]" for s in chips[:20]))
+        console.print()
+
+    # API endpoints + dirs
+    if api:
+        api_count = sum((f.get("evidence") or {}).get("count", 0) for f in api)
+        console.print(f"  [bold {p.blue_soft}]API ENDPOINTS ({api_count})[/]")
+        for f in api:
+            eps = (f.get("evidence") or {}).get("endpoints", [])
+            console.print("  " + "  ".join(f"[{p.blue_mist}]{e}[/]" for e in eps[:20]))
+        console.print()
+    if dirs:
+        console.print(f"  [bold {p.blue_soft}]DIREKTORI ({len(dirs)})[/]")
+        for f in dirs:
+            ev = f.get("evidence", {})
+            console.print(f"  [{p.blue_mist}]▸[/] {ev.get('path','?')}")
+        console.print()
+
+    # JS URLs / wayback / vhost / hidden params
+    misc_rows = []
+    if js:
+        for f in js:
+            misc_rows.append(
+                f"[{p.blue_mist}]JS URLs[/] "
+                f"{(f.get('evidence') or {}).get('count', 0)} endpoint diekstrak"
+            )
+    if wayback:
+        for f in wayback:
+            misc_rows.append(
+                f"[{p.blue_mist}]Wayback[/] "
+                f"{(f.get('evidence') or {}).get('count', 0)} URL historis"
+            )
+    if vhosts:
+        for f in vhosts:
+            vhs = (f.get("evidence") or {}).get("vhosts", [])
+            misc_rows.append(f"[{p.blue_mist}]VHosts[/] {', '.join(vhs[:8])}")
+    if params:
+        for f in params:
+            ev = f.get("evidence", {})
+            misc_rows.append(f"[{p.blue_mist}]Hidden params[/] {ev.get('param','?')}")
+    if misc_rows:
+        console.print(f"  [bold {p.blue_soft}]REKON LAIN[/]")
+        for row in misc_rows:
+            console.print(f"  {row}")
+        console.print()
