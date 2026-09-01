@@ -205,15 +205,19 @@ class FetcherAgent(BaseAgent):
             return AgentResult(agent=self.name, ok=True, data=result)
 
         except Exception as exc:
-            self.log.error("fetcher failed: %s", exc)
-            self.trajectory.step("error", {"exception": str(exc)})
-            return AgentResult(agent=self.name, ok=False, error=str(exc))
+            # NEVER echo the raw exception/URL — a URL may embed credentials
+            # (user:pass@host) that would leak into logs, trajectory, report,
+            # and the API job error. Redact before recording.
+            from app.utils.redact import redact_url_credentials
+
+            safe_exc = redact_url_credentials(str(exc))
+            self.log.error("fetcher failed: %s", safe_exc)
+            self.trajectory.step("error", {"exception": safe_exc})
+            return AgentResult(agent=self.name, ok=False, error=safe_exc)
 
     @staticmethod
     def _mask_token(token: str | None) -> str:
-        """Mask token for trajectory logging."""
+        """Mask token for trajectory logging — ZERO characters revealed."""
         if not token:
             return "[none]"
-        if len(token) <= 8:
-            return "[REDACTED]"
-        return f"{token[:4]}...{token[-4:]}"
+        return "[REDACTED]"

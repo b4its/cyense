@@ -38,7 +38,7 @@ _SECRET_KEYS = {"github_token"}
 def _mask(key: str, value: Any) -> Any:
     if key in _SECRET_KEYS and value:
         s = str(value)
-        return f"{s[:4]}...{s[-4:]}" if len(s) > 8 else "[REDACTED]"
+        return "[REDACTED]" if len(s) < 16 else f"{s[:4]}...{s[-4:]}"
     return value
 
 

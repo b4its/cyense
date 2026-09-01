@@ -112,11 +112,46 @@ class JobStore:
     # -- persistence ---------------------------------------------------------
 
     def _dump(self) -> None:
+        import os
+        import tempfile
+
+        from app.utils.redact import redact_headers
+
         try:
+            jobs = []
+            for j in self.list():
+                data = j.model_dump(mode="json")
+                req = data.get("request") or {}
+                # NEVER persist raw credentials: mask token-like fields and
+                # redact sensitive headers/cookies before writing to disk.
+                for key in ("github_token", "token", "password", "secret",
+                            "api_key", "apikey"):
+                    if req.get(key):
+                        req[key] = "[REDACTED]"
+                if isinstance(req.get("headers"), dict):
+                    req["headers"] = redact_headers(req["headers"])
+                if isinstance(req.get("cookies"), dict):
+                    req["cookies"] = {k: "[REDACTED]" for k in req["cookies"]}
+                data["request"] = req
+                jobs.append(data)
             payload = {
-                "jobs": [j.model_dump(mode="json") for j in self.list()],
+                "jobs": jobs,
                 "events": self._events,
             }
-            (self._reports_dir / "store.json").write_text(json.dumps(payload, indent=2))
+            # Atomic + 0o600 (file may hold request metadata).
+            fd, tmp_name = tempfile.mkstemp(
+                dir=str(self._reports_dir), prefix=".store-", suffix=".tmp",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(payload, fh, indent=2)
+                os.chmod(tmp_name, 0o600)
+                os.replace(tmp_name, self._reports_dir / "store.json")
+            except BaseException:
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
+                raise
         except OSError:
             pass  # best effort

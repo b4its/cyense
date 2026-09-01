@@ -20,13 +20,17 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], str, str]] = [
      "high",
      "AWS Access Key ID ter-expose di respons."),
     ("aws-secret-key",
-     re.compile(r"(?i)aws.{0,20}?['\"][0-9a-zA-Z/+]{40}['\"]"),
+     re.compile(r"(?i)aws.{0,30}?['\"][0-9a-zA-Z/+]{40}['\"]"),
      "critical",
      "AWS Secret Access Key ter-expose di respons."),
     ("github-token",
      re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b"),
      "critical",
      "GitHub personal/oauth token ter-expose."),
+    ("github-fine-grained-token",
+     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}\b"),
+     "critical",
+     "GitHub fine-grained PAT ter-expose."),
     ("slack-token",
      re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,200}\b"),
      "high",
@@ -87,10 +91,14 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str], str, str]] = [
 
 
 def _redact_snippet(snippet: str) -> str:
-    """Return a safe snippet: only reveal the secret type, never the value."""
-    if len(snippet) <= 12:
-        return "[REDACTED]"
-    return f"{snippet[:6]}…{snippet[-4:]} [REDACTED]"
+    """Return a ZERO-SECRET sample: reveal nothing of the secret value.
+
+    The previous "prefix…suffix" format leaked 6+4 characters of the actual
+    secret into every report artifact — the module's contract is "never the
+    secret value itself", so samples are fully redacted.
+    """
+    del snippet  # intentionally unused — no character may be echoed
+    return "[REDACTED]"
 
 
 def scan_secrets(content: str) -> list[dict[str, Any]]:

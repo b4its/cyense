@@ -14,6 +14,8 @@ _REDACTED = "[REDACTED]"
 
 
 def redact_value(value: str) -> str:
+    if not isinstance(value, str):
+        return _REDACTED
     value = value.strip()
     if len(value) <= 8:
         return _REDACTED
@@ -38,5 +40,11 @@ def redact_cookies(cookies: dict[str, str]) -> dict[str, str]:
     return {key: _REDACTED for key in cookies}
 
 
-def redact_url_credentials(url: str) -> str:
-    return re.sub(r"(https?://)([^/@\s]+)@", r"\1[REDACTED]@", url)
+def redact_url_credentials(url: str | None) -> str:
+    if not isinstance(url, str):
+        return "[REDACTED]"
+    # Case-insensitive, any scheme, optional scheme.
+    result = re.sub(r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^/@\s]+)@", r"\1[REDACTED]@", url, flags=re.I)
+    # Scheme-relative or no-scheme user:pass@host
+    result = re.sub(r"^([^/@\s]+)@", r"[REDACTED]@", result)
+    return result
