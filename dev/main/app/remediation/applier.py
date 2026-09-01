@@ -19,7 +19,11 @@ def is_same_origin(target_path: str, source_root: Path) -> tuple[bool, str]:
     Returns (is_valid, error_message).
 
     Security: mencegah path traversal / anti-writable-outside-source-root.
+    Rejects empty target_path (otherwise Path("").resolve() → CWD).
     """
+    if not target_path or not target_path.strip():
+        return False, "Empty or blank target path"
+
     try:
         # Resolve to absolute path
         target = Path(target_path).resolve()

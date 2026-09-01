@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from app.report.csv_export import export_csv
+from app.report.cvss import enrich_finding
 
 router = APIRouter(tags=["export"])
 
@@ -86,6 +87,10 @@ async def export_pdf_endpoint(scan_id: str, request: Request) -> Response:
 
     if not findings:
         raise HTTPException(status_code=404, detail="no findings to export")
+
+    # Re-enrich after disk load (see csv endpoint above).
+    for f in findings:
+        enrich_finding(f)
 
     from app.report.pdf_report import generate_pdf_report
 

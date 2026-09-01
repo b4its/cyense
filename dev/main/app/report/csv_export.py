@@ -60,7 +60,12 @@ def export_csv(findings: list[dict[str, Any]], include_remediation: bool = True)
             'title': finding.get('title', ''),
             'description': finding.get('description', ''),
             'location': finding.get('location', ''),
-            'snippet': finding.get('snippet', ''),
+            'snippet': (
+                finding.get('evidence', {}).get('snippet')
+                or finding.get('evidence', {}).get('code')
+                or finding.get('body_snippet')
+                or ''
+            ),
             'confidence': finding.get('confidence', ''),
             'verified_at': finding.get('verified_at', ''),
         }

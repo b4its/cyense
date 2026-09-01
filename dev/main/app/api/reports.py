@@ -25,6 +25,12 @@ def _get_report(request: Request, scan_id: str) -> dict[str, object]:
 
     # Disk fallback after service restart — consistent with export/viewer.
     reports_dir: Path = request.app.state.settings.reports_dir
+
+    # Defense-in-depth: reject scan_ids with path traversal components even
+    # though they are server-generated UUID-like strings.
+    if ".." in scan_id or "/" in scan_id:
+        raise HTTPException(status_code=403, detail="invalid scan_id")
+
     path = (reports_dir / scan_id / "report.json").resolve()
     # Path traversal guard: resolved report must live inside reports_dir.
     try:

@@ -82,9 +82,12 @@ def test_sarif_rule_id_uses_cwe_when_present() -> None:
     }
     doc = build_sarif_report(_report([finding]), [finding])
     result = doc["runs"][0]["results"][0]
-    assert result["ruleId"] == "CWE-639"
+    assert result["ruleId"] == "CY011"  # now uses rule, not CWE
     rules = {r["id"] for r in doc["runs"][0]["tool"]["driver"]["rules"]}
-    assert "CWE-639" in rules
+    assert "CY011" in rules
+    # CWE must appear in the result properties
+    props = result.get("properties", {}).get("cyense", {})
+    assert props.get("cwe") == "CWE-639"
 
 
 def test_sarif_omits_null_version_control_provenance() -> None:

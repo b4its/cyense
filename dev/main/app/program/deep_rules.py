@@ -433,7 +433,9 @@ def _check_xs010(tree: ast.AST, path: Path, scan_id: str) -> list[dict[str, Any]
 # a whole-program graph.
 
 _IMPORT_RE = re.compile(
-    r"^\s*(?:from\s+[\w.]+\s+import\s+([\w,\s]+)|import\s+([\w.]+))",
+    r"^\s*(?:from\s+[\w.]+\s+import\s+"
+    r"\(?\s*([\w\s,]+)\s*\)?"  # handle parens: from x import (a, b)
+    r"|import\s+([\w.]+(?:\s+as\s+\w+)?))",
     re.M,
 )
 
@@ -472,7 +474,7 @@ def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
             if isinstance(sub.func, ast.Name):
                 callee = sub.func.id
             elif isinstance(sub.func, ast.Attribute):
-                callee = _decorator_name(sub.func.value)
+                callee = sub.func.attr  # method name, not object name (bug fix)
             if not callee or callee not in imported:
                 continue
             args_user_input = False

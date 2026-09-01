@@ -363,7 +363,12 @@ class ScanWorker:
             if out_dir is None:
                 return
             out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
+            # Atomic write: temp file + replace, matching SARIF/coverage
+            # pattern. Direct write (pre-fix) left truncated report.json
+            # on crash.
+            tmp = out_dir / "report.json.tmp"
+            tmp.write_text(json.dumps(report, indent=2, sort_keys=True))
+            tmp.replace(out_dir / "report.json")
         except OSError:
             log.warning("failed to dump report for %s", scan_id)
 

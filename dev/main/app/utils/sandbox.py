@@ -68,7 +68,16 @@ def is_safe_tarball(tar_obj: tarfile.TarFile) -> bool:
             # Reject absolute symlinks (path traversal)
             if link_target.startswith('/'):
                 return False
-            # Reject symlink traversal via ..
+            # Reject symlink traversal via '..' — check RAW parts BEFORE
+            # Path resolution, because `Path(name).parent / link_target`
+            # would eliminate '..' through path normalization, allowing a
+            # crafted entry like `a/b/c_link -> ../../../etc/passwd` to
+            # resolve to `etc/passwd` without '..' in the resolved string.
+            member_parts = Path(member.name).parts
+            target_parts = Path(link_target).parts
+            if ".." in member_parts or ".." in target_parts:
+                return False
+            # Also check the combined resolved dest path for escape
             resolved = Path(member.name).parent / link_target
             if '..' in str(resolved):
                 return False

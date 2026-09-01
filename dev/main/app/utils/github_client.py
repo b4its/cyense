@@ -97,7 +97,9 @@ class GithubClient:
         """
         url = f"https://codeload.github.com/{owner}/{repo}/tar.gz/{ref}"
 
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with httpx.AsyncClient(
+            timeout=self._timeout, follow_redirects=True,
+        ) as client:
             # Token only ever goes to allowlisted github hosts, verbatim
             headers = {"User-Agent": "cyense"}
             if self._token:
@@ -105,7 +107,8 @@ class GithubClient:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
 
-            # Check redirect stays within allowed hosts
+            # Check redirect stays within allowed hosts (the final URL after
+            # codeload redirect to CDN — but we validate the origin below).
             final_url = str(resp.url)
             from urllib.parse import urlparse
             final_host = urlparse(final_url).hostname

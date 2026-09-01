@@ -127,37 +127,56 @@ def build_sarif_report(
     meta = report.get("meta", {})
     repo_meta = meta.get("repo", {})
 
-    # Build rule definitions
-    rules = []
-    seen_cwes = set()
+    # Build rule definitions — keyed by rule ID (CY001, etc.), NOT by CWE.
+    # Previously the CWE was used as rule_id, so two rules sharing the same
+    # CWE (e.g. CY001 and CY002 both CWE-639) produced only ONE SARIF rule
+    # entry, silently dropping the second rule's description from the SARIF
+    # output and misleading GitHub code-scanning consumers.
+    rules: list[dict[str, Any]] = []
+    seen_rules: set[str] = set()
     for finding in findings:
+        rule = finding.get("rule") or ""
+        if not rule or rule in seen_rules:
+            continue
+        seen_rules.add(rule)
         cwe = finding.get("cwe") or ""
-        if cwe and cwe not in seen_cwes:
-            seen_cwes.add(cwe)
-            rule_id = cwe
-            name = f"Cyense {cwe}"
-            short_desc = finding.get("title", "")[:100]
+        rule_id = rule
+        name = f"Cyense {rule}"
+        short_desc = finding.get("title", "")[:100]
 
-            # Get severity info
-            base_sev = finding.get("severity", "info").lower()
-            cvss_score = finding.get("cvss_score")
+        # Get severity info
+        base_sev = finding.get("severity", "info").lower()
+        cvss_score = finding.get("cvss_score")
 
-            result = {
-                "id": rule_id,
-                "name": name,
-                "shortDescription": {"text": short_desc},
-                "properties": {
-                    "tags": ["security"] + _cwe_to_tags(cwe),
-                }
+        result: dict[str, Any] = {
+            "id": rule_id,
+            "name": name,
+            "shortDescription": {"text": short_desc},
+        }
+
+        # fullDescription with CWE reference
+        if cwe:
+            result["fullDescription"] = {
+                "text": f"{cwe} — {short_desc}",
             }
 
-            # Add security-severity (prefer CVSS, fallback to label)
-            if cvss_score is not None:
-                result["properties"]["security-severity"] = f"{float(cvss_score):.1f}"
-            else:
-                result["properties"]["security-severity"] = _SEVERITY_TO_SCORE.get(base_sev, "1.0")
+        result["properties"] = {
+            "tags": ["security"] + _cwe_to_tags(cwe),
+        }
 
-            rules.append(result)
+        # Add security-severity (prefer CVSS, fallback to label)
+        if cvss_score is not None:
+            result["properties"]["security-severity"] = f"{float(cvss_score):.1f}"
+        else:
+            result["properties"]["security-severity"] = _SEVERITY_TO_SCORE.get(base_sev, "1.0")
+
+        # Help URI referencing the CWE
+        if cwe:
+            cwe_num = cwe.replace("CWE-", "").strip()
+            if cwe_num.isdigit():
+                result["helpUri"] = f"https://cwe.mitre.org/data/definitions/{cwe_num}.html"
+
+        rules.append(result)
 
     # Build results
     results = []
@@ -174,8 +193,10 @@ def build_sarif_report(
         loc = finding.get("location", "")
         repo_rel_loc = _normalize_path(loc)
 
-        # Determine rule ID (prioritize CWE)
-        rule_id = cwe if cwe != "CWE-Unknown" else rule
+        # Determine rule ID — use the Cyense rule name (CY001/CY011/...)
+        # to match the rule definitions above. The CWE is stored in
+        # properties for cross-referencing by SARIF consumers.
+        rule_id = rule
 
         # Build location(s)
         locations = []
@@ -217,16 +238,17 @@ def build_sarif_report(
             "partialFingerprints": {
                 "cyenseRuleLocation/v1": finding.get("finding_id", ""),
             },
-            "properties": {
-                "cyense": {
-                    "rule": rule,
-                    "severity": sev,
-                    "confidence": finding.get("confidence", 0),
-                    "cvss_score": finding.get("cvss_score"),
-                    "cvss_vector": finding.get("cvss_vector"),
-                    "finding_id": finding.get("finding_id"),
+"properties": {
+                    "cyense": {
+                        "rule": rule,
+                        "severity": sev,
+                        "confidence": finding.get("confidence", 0),
+                        "cvss_score": finding.get("cvss_score"),
+                        "cvss_vector": finding.get("cvss_vector"),
+                        "cwe": cwe,
+                        "finding_id": finding.get("finding_id"),
+                    }
                 }
-            }
         }
 
         results.append(result_obj)

@@ -66,7 +66,7 @@ async def get_scan(request: Request, scan_id: str) -> dict[str, object]:
     if job.status == ScanStatus.COMPLETED:
         report = request.app.state.worker.result(scan_id)
         if report is not None:
-            payload["summary"] = report["summary"]
+            payload["summary"] = report.get("summary", {})
     return payload
 
 
