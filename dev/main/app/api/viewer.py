@@ -36,6 +36,23 @@ def _load_report_from_disk(scan_id: str, request: Request) -> dict[str, Any] | N
     return None
 
 
+def _report_meta_error(disk_report_path: Path) -> str | None:
+    """Return meta.error from an on-disk report, or None.
+
+    A scan whose report carries ``meta.error`` was marked FAILED by the
+    worker's controlled-failure path (worker.py: report["meta"]["error"] →
+    mark_failed). Used to show the true status for disk-only scans after a
+    service restart instead of assuming "completed".
+    """
+    if not disk_report_path.is_file():
+        return None
+    try:
+        data = json.loads(disk_report_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data.get("meta", {}).get("error")
+
+
 # NOTE: static route is registered *before* /{scan_id} so "/viewer/static/..."
 # can never be captured by the scan_id path parameter.
 @router.get("/static/{file_path:path}")
@@ -121,10 +138,18 @@ async def get_scan_data(scan_id: str, request: Request) -> dict[str, Any]:
     if job is None and not disk_report_path.is_file():
         raise HTTPException(status_code=404, detail=f"Scan {scan_id} not found")
 
-    status = job.status.value if job is not None and job.status else "completed"
+    # Disk-fallback scans (post-restart) have no Job in the store — derive
+    # status/error from the report itself so a FAILED scan isn't shown as
+    # "completed" with error: null on the dashboard.
+    if job is not None:
+        status = job.status.value if job.status else "completed"
+        error = job.error
+    else:
+        disk_error = _report_meta_error(disk_report_path)
+        status = "failed" if disk_error else "completed"
+        error = disk_error
     created_at = job.created_at if job is not None else None
     finished_at = job.finished_at if job is not None else None
-    error = job.error if job is not None else None
 
     report: dict[str, Any] | None = None
     source = "unknown"

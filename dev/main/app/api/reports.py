@@ -5,6 +5,9 @@ Also serves SARIF and coverage artifacts (ci-compliance-reporting.md §3.7).
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -17,12 +20,30 @@ router = APIRouter(tags=["reports"])
 
 def _get_report(request: Request, scan_id: str) -> dict[str, object]:
     report = request.app.state.worker.result(scan_id)
-    if report is None:
-        raise HTTPException(
-            status_code=404,
-            detail="report not available (scan pending, failed, or unknown id)",
-        )
-    return report
+    if report is not None:
+        return report
+
+    # Disk fallback after service restart — consistent with export/viewer.
+    reports_dir: Path = request.app.state.settings.reports_dir
+    path = (reports_dir / scan_id / "report.json").resolve()
+    # Path traversal guard: resolved report must live inside reports_dir.
+    try:
+        path.relative_to(reports_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="invalid scan_id") from None
+
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=500, detail=f"corrupt report on disk: {exc}"
+            ) from exc
+
+    raise HTTPException(
+        status_code=404,
+        detail="report not available (scan pending, failed, or unknown id)",
+    )
 
 
 @router.get("/scans/{scan_id}/report")

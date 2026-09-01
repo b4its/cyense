@@ -40,8 +40,27 @@ async def propose_fixes(
     """Generate patch proposals dari temuan scan (dry-run)."""
     session_store = request.app.state.fix_store
 
-    # Get scan result
+    # Get scan result — in-memory first, guarded disk fallback after restart
+    # (consistent with export/viewer/report endpoints).
     report = request.app.state.worker.result(scan_id)
+    if report is None:
+        import json
+        from pathlib import Path
+
+        reports_dir: Path = request.app.state.settings.reports_dir
+        path = (reports_dir / scan_id / "report.json").resolve()
+        try:
+            path.relative_to(reports_dir.resolve())
+        except ValueError:
+            raise HTTPException(status_code=403, detail="invalid scan_id") from None
+        if path.exists():
+            try:
+                report = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError) as exc:
+                raise HTTPException(
+                    status_code=500, detail=f"corrupt report on disk: {exc}"
+                ) from exc
+
     if not report or "findings" not in report:
         raise HTTPException(status_code=404, detail="Scan not found or no findings")
 
