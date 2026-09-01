@@ -142,7 +142,8 @@ class WebsiteEngine:
                 idor_findings.append(f)
 
         # ------------------------------------------------------------------
-        # Stage 3: XSS analysis on every fetched HTML page
+        # Stage 3: XSS analysis on every fetched HTML page + benign reflection
+        # probe on pages with query parameters.
         # ------------------------------------------------------------------
         await self._notify("analyze")
         xss_findings: list[dict[str, Any]] = []
@@ -151,6 +152,18 @@ class WebsiteEngine:
             for k, f in enumerate(page_findings, start=len(xss_findings) + 1):
                 f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
                 xss_findings.append(f)
+
+        # Active (but read-only + benign) reflection check: re-request pages
+        # that carry query params with a unique alphanumeric marker appended
+        # to each param value and see if it is echoed back unencoded.
+        reflected = await self._probe_reflected_xss(
+            pages,
+            headers=headers,
+            cookies=cookies,
+        )
+        for k, f in enumerate(reflected, start=len(xss_findings) + 1):
+            f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
+            xss_findings.append(f)
 
         # ------------------------------------------------------------------
         # Stage 4: Report
@@ -312,6 +325,104 @@ class WebsiteEngine:
                 continue
 
         return confirmed
+
+    async def _probe_reflected_xss(
+        self,
+        pages: list[dict[str, Any]],
+        *,
+        headers: dict[str, str],
+        cookies: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Benign, read-only reflected-XSS probe for HTML pages with query params.
+
+        For each 2xx HTML page that carries query parameters, re-request the
+        URL with a unique marker appended to each param value and check whether
+        the marker is echoed back WITHOUT HTML encoding. The marker is a benign
+        string ending in a single ``>`` — alphanumeric plus one ``>`` cannot
+        open a tag or execute script on its own, so nothing malicious is ever
+        injected (the scan stays in the PRD's read-only ethical envelope) —
+        this only *observes* whether user input reflects unencoded.
+
+        Returns findings of rule ``XS-LIVE-017`` with higher confidence than
+        the passive crawl-time heuristic.
+        """
+        import html as _html
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        from app.utils.http_client import HttpClient
+
+        marker = f"Cyense{self.scan_id[:6].upper()}7>"
+        encoded_marker = _html.escape(marker)
+        findings: list[dict[str, Any]] = []
+
+        html_pages = [
+            p for p in pages
+            if "html" in (p.get("content_type") or "").lower()
+            and 200 <= int(p.get("status") or 0) < 300
+        ]
+
+        async with HttpClient(
+            timeout=self.settings.request_timeout,
+            headers=headers,
+            cookies=cookies,
+            rate_limit=int(getattr(self.settings, "rate_limit", 10)),
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 5)),
+        ) as client:
+            requests_made = 0
+            for page in html_pages:
+                url = page.get("url", "") or ""
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query, keep_blank_values=True)
+                if not qs:
+                    continue
+                for name, values in qs.items():
+                    if requests_made >= 50:  # safety cap on probe requests
+                        return findings
+                    for orig in values:
+                        probe_val = marker if not orig else f"{orig}{marker}"
+                        probe_qs = dict(qs)
+                        probe_qs[name] = [probe_val]
+                        probe_url = urlunparse(
+                            parsed._replace(query=urlencode(probe_qs, doseq=True))
+                        )
+                        try:
+                            resp = await client.get(probe_url)
+                        except Exception as exc:  # noqa: BLE001 — best effort
+                            log.warning("reflection probe failed %s: %s", probe_url, exc)
+                            continue
+                        requests_made += 1
+                        if resp.status != 200:
+                            continue
+                        body = resp.body or ""
+                        # Marker reflected raw AND not HTML-encoded → sink.
+                        if marker in body and encoded_marker not in body:
+                            findings.append({
+                                "rule": "XS-LIVE-017",
+                                "severity": "high",
+                                "confidence": 0.8,
+                                "title": f"Reflected parameter confirmed: {name!r}",
+                                "description": (
+                                    f"Parameter {name!r} reflects the benign probe "
+                                    f"marker {marker!r} verbatim without HTML "
+                                    "encoding — a confirmed reflected-XSS sink."
+                                ),
+                                "evidence": {
+                                    "param": name,
+                                    "marker": marker,
+                                    "probe_url": probe_url,
+                                    "sample": body[
+                                        max(body.find(marker) - 40, 0):
+                                        body.find(marker) + 80
+                                    ][:200],
+                                },
+                                "remediation": (
+                                    "HTML-encode the reflected value (or reject/"
+                                    "validate it) before inserting into the response."
+                                ),
+                                "location": probe_url,
+                            })
+                            break  # one finding per param
+        return findings
 
     @staticmethod
     def _empty_report(

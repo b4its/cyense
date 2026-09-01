@@ -169,3 +169,138 @@ def test_probe_id_endpoints_confirms_hits(monkeypatch) -> None:
     assert len(confirmed) == 1
     assert confirmed[0]["severity"] == "critical"
     assert "6" in confirmed[0]["title"]
+
+
+# ---------------------------------------------------------------------------
+# Benign reflected-XSS probe (read-only, alphanumeric marker)
+# ---------------------------------------------------------------------------
+
+def test_reflection_probe_confirms_reflected_param(monkeypatch) -> None:
+    """A param echoed back unencoded is flagged as XS-LIVE-017."""
+    from app.engines.website_engine import WebsiteEngine
+    from app.utils.http_client import HttpClient, Response
+
+    captured: dict[str, str] = {}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def get(self, url: str) -> Response:
+            captured["probe_url"] = url
+            # Echo the whole query back raw (unencoded) — reflected sink.
+            from urllib.parse import parse_qs, urlparse
+            qs = parse_qs(urlparse(url).query)
+            body = "<html><p>search results</p></html>"
+            marker = [v for v in qs.values()][0][0]
+            return Response(
+                status=200,
+                headers={"content-type": "text/html"},
+                body=body.replace("</p>", f" {marker}</p>"),
+                elapsed_ms=1,
+                url=url,
+            )
+
+    monkeypatch.setattr(HttpClient, "__init__", _Client.__init__)
+    monkeypatch.setattr(HttpClient, "__aenter__", _Client.__aenter__)
+    monkeypatch.setattr(HttpClient, "__aexit__", _Client.__aexit__)
+    monkeypatch.setattr(HttpClient, "get", _Client.get)
+
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    pages = [
+        {
+            "url": "http://x.test/search?q=hello",
+            "status": 200,
+            "body": "<html><p>search results hello</p></html>",
+            "content_type": "text/html",
+            "headers": {"content-type": "text/html"},
+        }
+    ]
+    findings = asyncio.run(engine._probe_reflected_xss(pages, headers={}, cookies={}))
+    assert len(findings) == 1, findings
+    assert findings[0]["rule"] == "XS-LIVE-017"
+    assert findings[0]["confidence"] == 0.8
+    assert "q" in findings[0]["evidence"]["param"]
+    # The marker must be in the probe URL (probe actually fired).
+    assert "Cyense" in captured["probe_url"]
+
+
+def test_reflection_probe_ignores_encoded_reflection(monkeypatch) -> None:
+    """HTML-encoded reflection must NOT be flagged."""
+    from app.engines.website_engine import WebsiteEngine
+    from app.utils.http_client import HttpClient, Response
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return None
+
+        async def get(self, url: str) -> Response:
+            # Echo back the marker HTML-encoded.
+            import html as _html
+            from urllib.parse import parse_qs, urlparse
+            qs = parse_qs(urlparse(url).query)
+            marker = [v for v in qs.values()][0][0]
+            return Response(
+                status=200,
+                headers={"content-type": "text/html"},
+                body=f"<html><p>{_html.escape(marker)}</p></html>",
+                elapsed_ms=1,
+                url=url,
+            )
+
+    monkeypatch.setattr(HttpClient, "__init__", _Client.__init__)
+    monkeypatch.setattr(HttpClient, "__aenter__", _Client.__aenter__)
+    monkeypatch.setattr(HttpClient, "__aexit__", _Client.__aexit__)
+    monkeypatch.setattr(HttpClient, "get", _Client.get)
+
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    pages = [
+        {
+            "url": "http://x.test/search?q=hello",
+            "status": 200,
+            "body": "<html><p>search</p></html>",
+            "content_type": "text/html",
+            "headers": {"content-type": "text/html"},
+        }
+    ]
+    findings = asyncio.run(engine._probe_reflected_xss(pages, headers={}, cookies={}))
+    assert findings == []
+
+
+def test_reflection_probe_skips_non_2xx_and_no_query() -> None:
+    """Non-2xx pages and pages without query params are never probed."""
+    from app.engines.website_engine import WebsiteEngine
+
+    engine = WebsiteEngine("t", brain=None, reports_dir="/tmp", settings=_Settings())
+    pages = [
+        {
+            "url": "http://x.test/404?q=hi",  # non-2xx
+            "status": 404,
+            "body": "<html>not found</html>",
+            "content_type": "text/html",
+            "headers": {},
+        },
+        {
+            "url": "http://x.test/about",  # no query
+            "status": 200,
+            "body": "<html>about</html>",
+            "content_type": "text/html",
+            "headers": {},
+        },
+    ]
+    # No network should be touched for these pages (they are filtered before
+    # any HTTP request). We just assert the result is empty & fast.
+    findings = asyncio.run(engine._probe_reflected_xss(pages, headers={}, cookies={}))
+    assert findings == []
