@@ -61,17 +61,37 @@ def _load_spec(spec_source: str) -> dict[str, Any]:
     # through json.loads() would raise JSONDecodeError, contradicting the
     # "raw JSON/YAML strings (auto-detected)" contract.
     try:
-        return json.loads(spec_source)
+        parsed = json.loads(spec_source)
     except json.JSONDecodeError:
-        return yaml.safe_load(spec_source)
+        try:
+            parsed = yaml.safe_load(spec_source)
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"Invalid OpenAPI spec: not JSON and not valid YAML ({exc})"
+            ) from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "Invalid OpenAPI spec: expected a mapping, "
+            f"got {type(parsed).__name__}"
+        )
+    return parsed
 
 
 def _parse_text(text: str, suffix: str) -> dict[str, Any]:
-    """Parse JSON or YAML text into a dict."""
-    if suffix in (".json",):
-        return json.loads(text)
-    # Default to YAML (which is a superset of JSON)
-    return yaml.safe_load(text)
+    """Parse JSON or YAML text into a dict (validates result shape)."""
+    try:
+        if suffix in (".json",):
+            parsed = json.loads(text)
+        else:
+            parsed = yaml.safe_load(text)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise ValueError(f"Invalid OpenAPI spec content: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            "Invalid OpenAPI spec: expected a mapping, "
+            f"got {type(parsed).__name__}"
+        )
+    return parsed
 
 
 def _extract_base_url(spec: dict[str, Any]) -> str:

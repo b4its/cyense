@@ -32,6 +32,11 @@ from app.utils.logger import get_logger
 log = get_logger("worker")
 
 
+# Maximum in-memory scan results kept before evicting the oldest (LRU cap
+# to bound memory on long-running services).
+_MAX_CACHED_RESULTS = 500
+
+
 class ScanWorker:
     def __init__(self, store: JobStore, brain: Any, settings: Any) -> None:
         self.store = store
@@ -246,6 +251,10 @@ class ScanWorker:
                 return
 
             self._results[scan_id] = report
+            # Bound memory: evict oldest cached results beyond the cap.
+            if len(self._results) > _MAX_CACHED_RESULTS:
+                oldest = next(iter(self._results))
+                self._results.pop(oldest, None)
             self._dump_report(scan_id, report)
 
             # Write SARIF and coverage reports (ci-compliance-reporting.md §3.2, §3.5)
