@@ -118,6 +118,17 @@ class CrawlerAgent(BaseAgent):
                         )
                         continue
 
+                # Post-redirect domain check: follow_redirects can land on a
+                # third-party host; content from there must not be recorded
+                # or analyzed (same-domain-only guarantee).
+                final_parsed = urlparse(str(resp.url))
+                if final_parsed.netloc != domain:
+                    self.trajectory.step(
+                        "off_domain_redirect",
+                        {"url": url, "final": str(resp.url)},
+                    )
+                    continue
+
                 page = _record_page(resp, url)
                 pages.append(page)
                 self.trajectory.step(
@@ -218,17 +229,27 @@ def _find_id_endpoints(urls: list[str]) -> list[dict[str, Any]]:
                     pass
             template_parts.append(part)
 
-        # Query-based IDs
+        # Query-based IDs — keep the ID params in the template with an {ID}
+        # placeholder so active probing can target them too. Previously the
+        # query was dropped (query="") and the "{ID}" not in template guard
+        # silently skipped every query-string ID endpoint.
         query_ids: dict[str, str] = {}
+        query_parts: list[str] = []
         for k, v in parse_qs(parsed.query).items():
             if _ID_QUERY_RE.match(k) and v and _ID_SEGMENT_RE.match(v[0]):
                 query_ids[k] = v[0]
+                query_parts.append(f"{k}={{ID}}")
+            elif v:
+                query_parts.append(f"{k}={v[0]}")
+            else:
+                query_parts.append(k)
+        query_str = "&".join(query_parts)
 
         if not id_segments and not query_ids:
             continue
 
         template_path = "/" + "/".join(template_parts) if template_parts else "/"
-        template = parsed._replace(path=template_path, query="").geturl()
+        template = parsed._replace(path=template_path, query=query_str).geturl()
         if template in seen_templates:
             continue
         seen_templates.add(template)
