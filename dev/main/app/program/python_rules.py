@@ -10,6 +10,7 @@ visible in the enclosing function.
 from __future__ import annotations
 
 import ast
+import hashlib
 from typing import Any
 
 from app.core.models import Finding, Severity, VerificationEvidence
@@ -51,8 +52,15 @@ def _finding(
 
     lineno = getattr(node, "lineno", 0)
 
-    # Fix: include line number in finding_id for uniqueness (ci-compliance-reporting.md §3.6)
-    finding_id = f"{scan_id}-{rule}-{lineno}" if lineno else f"{scan_id}-{rule}"
+    # Include line number AND a stable path discriminator for uniqueness.
+    # Without the path, two findings of the same rule at the same line in
+    # different files collide (same finding_id → same remediation fix_id,
+    # making the second fix unreachable via FixStore.get_proposal).
+    path_disc = hashlib.md5(path.encode("utf-8")).hexdigest()[:6]
+    if lineno:
+        finding_id = f"{scan_id}-{rule}-{lineno}-{path_disc}"
+    else:
+        finding_id = f"{scan_id}-{rule}-{path_disc}"
 
     return Finding(
         finding_id=finding_id,

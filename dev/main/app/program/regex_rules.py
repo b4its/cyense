@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -58,9 +59,13 @@ def _regex_findings(
     for rule_id, pattern, description in patterns:
         for match in pattern.finditer(source):
             line = source.count("\n", 0, match.start()) + 1
+            # Path discriminator prevents finding_id collisions when the same
+            # rule+line appears in different files (remediation fix_id
+            # uniqueness depends on finding_id).
+            path_disc = hashlib.md5(str(path).encode("utf-8")).hexdigest()[:6]
             findings.append(
                 Finding(
-                    finding_id=f"{scan_id}-{rule_id}-{line}",
+                    finding_id=f"{scan_id}-{rule_id}-{line}-{path_disc}",
                     rule=rule_id,
                     severity=severity,
                     confidence=0.6,

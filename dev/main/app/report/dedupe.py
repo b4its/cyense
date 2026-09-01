@@ -6,6 +6,7 @@ Also fixes the finding_id collision bug in python_rules.py.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 
@@ -38,11 +39,21 @@ def deduplicate_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]
     return unique
 
 
-def generate_finding_id(scan_id: str, rule: str, lineno: int | None = None) -> str:
-    """Generate unique finding ID (fixes python_rules.py bug where lineno omitted)."""
+def generate_finding_id(
+    scan_id: str,
+    rule: str,
+    lineno: int | None = None,
+    path: str | None = None,
+) -> str:
+    """Generate unique finding ID.
 
+    Includes lineno AND a stable path discriminator so findings of the same
+    rule at the same line in different files never collide (remediation
+    fix_id uniqueness depends on finding_id).
+    """
+    disc = hashlib.md5((path or "").encode("utf-8")).hexdigest()[:6] if path else ""
     if lineno is not None and lineno > 0:
-        return f"{scan_id}-{rule}-{lineno}"
+        return f"{scan_id}-{rule}-{lineno}" + (f"-{disc}" if disc else "")
 
     # Fallback — but should not happen after fix
-    return f"{scan_id}-{rule}"
+    return f"{scan_id}-{rule}" + (f"-{disc}" if disc else "")
