@@ -25,6 +25,7 @@ from app.engines.live_xss import analyze_page_xss
 from app.utils.framework_detection import detect_technologies
 from app.utils.http_client import HttpClient
 from app.utils.logger import get_logger
+from app.utils.port_scanner import host_from_url, scan_ports
 
 log = get_logger("engine.website")
 
@@ -179,6 +180,22 @@ class WebsiteEngine:
                 f["finding_id"] = f"{self.scan_id}-WTECH{k:03d}"
                 tech_findings.append(f)
 
+        # --- 3b: Open port scan (nmap-style TCP connect) on the target host ---
+        port_findings: list[dict[str, Any]] = []
+        try:
+            target_host = host_from_url(url)
+            port_scan = await scan_ports(
+                target_host,
+                timeout=float(getattr(self.settings, "port_scan_timeout", 1.5)),
+                max_concurrency=int(getattr(self.settings, "port_scan_concurrency", 50)),
+                banner=True,
+            )
+            port_findings = self._port_scan_findings(port_scan, url)
+            for k, f in enumerate(port_findings, start=len(port_findings)):
+                f["finding_id"] = f"{self.scan_id}-PPORT{k:03d}"
+        except Exception as exc:  # noqa: BLE001 — port scan must never fail scan
+            log.warning("port scan failed for %s: %s", url, exc)
+
         xss_findings: list[dict[str, Any]] = []
         for page in pages:
             page_findings = analyze_page_xss(page)
@@ -228,7 +245,7 @@ class WebsiteEngine:
         # Stage 4: Report
         # ------------------------------------------------------------------
         await self._notify("report")
-        all_findings = idor_findings + tech_findings + xss_findings
+        all_findings = idor_findings + tech_findings + port_findings + xss_findings
         all_findings.sort(
             key=lambda f: (
                 _severity_rank(f.get("severity", "info")),
@@ -246,6 +263,7 @@ class WebsiteEngine:
             "pages_crawled": len(pages),
             "id_endpoints_found": len(id_endpoints),
             "id_endpoints_probed": len(probed),
+            "open_ports": len(port_findings),
             "domain": domain,
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
@@ -255,7 +273,10 @@ class WebsiteEngine:
                 "scan_id": self.scan_id,
                 "mode": "website",
                 "engine": "website-crawler",
-                "pipeline": ["crawl", "probe", "analyze", "framework", "sqli", "report"],
+                "pipeline": [
+                    "crawl", "probe", "analyze", "framework",
+                    "port-scan", "sqli", "report",
+                ],
                 "url": url,
             },
             "summary": summary,
@@ -265,6 +286,76 @@ class WebsiteEngine:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _port_scan_findings(
+        scan_result: Any, url: str,
+    ) -> list[dict[str, Any]]:
+        """Convert a PortScanResult into finding-shaped dicts.
+
+        One finding per open port (rule PORT-OPEN) plus one summary finding
+        (PORT-SCAN-SUMMARY) describing the scan extent.
+        """
+        findings: list[dict[str, Any]] = []
+        host = scan_result.host
+        ports = scan_result.open_ports
+
+        if ports:
+            findings.append({
+                "rule": "PORT-SCAN-SUMMARY",
+                "severity": "info",
+                "confidence": 1.0,
+                "title": f"{len(ports)} open port(s) found on {host}",
+                "description": (
+                    f"TCP connect scan of {scan_result.scanned} common ports "
+                    f"on {host} found {len(ports)} open: "
+                    + ", ".join(f"{p['port']}/{p.get('service','?')}" for p in ports)
+                    + "."
+                ),
+                "evidence": {
+                    "host": host,
+                    "ports_scanned": scan_result.scanned,
+                    "open_ports": [p["port"] for p in ports],
+                    "duration_ms": scan_result.duration_ms,
+                    "url": url,
+                },
+                "remediation": (
+                    "Close unused ports and restrict exposure with a firewall; "
+                    "move management interfaces (SSH, DB, admin) behind a VPN "
+                    "or allowlist."
+                ),
+                "location": url,
+            })
+
+        for p in ports:
+            port = p["port"]
+            service = p.get("service", "unknown")
+            findings.append({
+                "rule": "PORT-OPEN",
+                "severity": "low" if service in ("http", "https", "domain") else "medium",
+                "confidence": 0.9,
+                "title": f"Open TCP port {port} ({service}) on {host}",
+                "description": (
+                    f"Port {port}/{service} on {host} accepts TCP connections "
+                    "(TCP connect scan)."
+                ),
+                "evidence": {
+                    "host": host,
+                    "port": port,
+                    "service": service,
+                    "state": "open",
+                    **({"banner": p["banner"]} if p.get("banner") else {}),
+                    "url": url,
+                },
+                "remediation": (
+                    f"Ensure the service on port {port} ({service}) is "
+                    "required, patched, and not exposed unnecessarily; apply "
+                    "network access controls where possible."
+                ),
+                "location": url,
+            })
+
+        return findings
 
     async def _probe_xss_payloads(
         self,

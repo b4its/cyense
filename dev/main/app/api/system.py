@@ -71,6 +71,18 @@ def _detect_rule(rule: str, title: str) -> dict[str, object]:
     }
 
 
+def _port_rule(rule: str, title: str) -> dict[str, object]:
+    return {
+        "rule": rule,
+        "severity": "info",
+        "lang": "all",
+        "cwe": "CWE-200",
+        "cvss_score": 0.0,
+        "cvss_vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+        "title": title,
+    }
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -155,5 +167,9 @@ async def rules() -> dict[str, object]:
             _detect_rule("DETECT-META-GENERATOR", "Meta: generator tag analysis"),
             _detect_rule("DETECT-ECOMMERCE-SHOPIFY", "E-commerce: Shopify"),
             _detect_rule("DETECT-ECOMMERCE-WOOCOMMERCE", "E-commerce: WooCommerce"),
+        ],
+        "port_scan": [
+            _port_rule("PORT-OPEN", "Open TCP port detected (nmap-style connect)"),
+            _port_rule("PORT-SCAN-SUMMARY", "Summary of open ports on target host"),
         ],
     }
