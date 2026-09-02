@@ -197,6 +197,24 @@ async def rules() -> dict[str, object]:
             _sec_rule(s["rule"], s["title"], s["cwe"], s["severity"])
             for s in _security_catalog()
         ],
+        "live_security": [
+            _sec_rule("VERBOSE-ERROR", "Stack trace / detail error ter-expose",
+                      "CWE-209", "high"),
+            _sec_rule("UNHANDLED-ERROR",
+                      "Pesan error server ter-expose (unhandled)", "CWE-391", "medium"),
+            _sec_rule("COOKIE-NO-HTTPONLY", "Cookie tanpa flag HttpOnly",
+                      "CWE-1004", "medium"),
+            _sec_rule("COOKIE-NO-SECURE", "Cookie tanpa flag Secure", "CWE-614", "medium"),
+            _sec_rule("COOKIE-NO-SAMESITE", "Cookie tanpa atribut SameSite",
+                      "CWE-1275", "low"),
+            _sec_rule("INSECURE-TRANSPORT",
+                      "Kanal HTTP terang-terangan (tanpa TLS)", "CWE-319", "high"),
+            _sec_rule("HSTS-MISSING",
+                      "Strict-Transport-Security tidak diterapkan", "CWE-523", "medium"),
+            _sec_rule("TRACE-ENABLED", "Metode HTTP TRACE diaktifkan", "CWE-693", "medium"),
+            _sec_rule("INFO-X-POWERED-BY", "X-Powered-By mengungkap teknologi",
+                      "CWE-200", "low"),
+        ],
         "framework_detection": [
             _detect_rule("DETECT-SERVER-NGINX", "HTTP header: nginx"),
             _detect_rule("DETECT-SERVER-APACHE", "HTTP header: Apache"),

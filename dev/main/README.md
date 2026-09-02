@@ -487,10 +487,10 @@ dev/main/
 │   ├── remediation/           ← fixer, strategies, applier, store
 │   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
 │   ├── services/              ← multi_scan, scan_resume, openapi_parser
-│   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
+│   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, live_checks, etc.
 │   └── worker.py              ← asyncio worker (drains scan queue)
 ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-├── tests/                     ← 284 tests + lab app fixture
+├── tests/                     ← 290 tests + lab app fixture
 ├── wordlists/ids.txt
 ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt

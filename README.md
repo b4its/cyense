@@ -195,9 +195,11 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 | Akses domain pihak ketiga tidak aman | EXT001 | CWE-829 |
 | Heartbleed (rentang OpenSSL 1.0.1) — fingerprint header live | NIKTO-HEARTBLEED | CWE-825 |
 
-**EN — Out of scope (not detectable by static web-source analysis):** native memory-safety (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call from a signal handler, Full-trust CLR verification issue, insecure compiler optimization), OS/portability flaws, covert storage channels, Heartbleed (server-level), and the purely-process ones (vulnerability scanning tools, vulnerability template). These are listed in the reference taxonomy but are not half-detected here.
+**EN — Out of scope (not detectable by static web-source analysis):** native memory-safety (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call from a signal handler, Full-trust CLR verification issue, insecure compiler optimization), OS/portability flaws, covert storage channels, and the purely-process ones (vulnerability scanning tools, vulnerability template). These are listed in the reference taxonomy but are not half-detected here.
 
-**ID — Di luar cakupan (tidak terdeteksi oleh analisis statis web-source):** memory-safety native (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call dari signal handler, Full-trust CLR verification issue, insecure compiler optimization), flaw OS/portability, covert storage channels, Heartbleed (level server), dan yang murni proses (vulnerability scanning tools, vulnerability template). Ini tercantum di taksonomi referensi tetapi tidak di-deteksi-parsial di sini.
+**EN — Live security checks (website/link targets / `app/utils/live_checks.py`):** beyond source analysis, the website & domain engines run response-passive checks over the crawled pages — verbose/unhandled error disclosure (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), cookie flag weaknesses (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), insecure transport + missing HSTS (`INSECURE-TRANSPORT`, `HSTS-MISSING`), dangerous methods (`TRACE-ENABLED`) and tech disclosure (`INFO-X-POWERED-BY`), plus the server-level `NIKTO-HEARTBLEED` fingerprint from the header suite.
+
+**ID — Cek keamanan live (target website/link / `app/utils/live_checks.py`):** selain analisis source, engine website & domain menjalankan cek response-passive pada halaman yang di-crawl — disclosure error verbose/unhandled (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), kelemahan flag cookie (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), transport tidak aman + HSTS hilang (`INSECURE-TRANSPORT`, `HSTS-MISSING`), metode berbahaya (`TRACE-ENABLED`) dan disclosure teknologi (`INFO-X-POWERED-BY`), plus fingerprint server-level `NIKTO-HEARTBLEED` dari header suite.
 
 ---
 
@@ -234,7 +236,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-284 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
+290 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
 ruff check: All checks passed (0 errors)
 ```
 
@@ -313,7 +315,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 284 tests via pytest
+make test       # 290 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -416,10 +418,10 @@ cyense/
 │   │   │   ├── remediation/           ← fixer, strategies, applier, store
 │   │   │   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
 │   │   │   ├── services/              ← multi_scan, scan_resume, openapi_parser
-│   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
+│   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, live_checks, etc.
 │   │   │   └── worker.py              ← asyncio worker (drains scan queue)
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 284 tests + lab app fixture
+│   │   ├── tests/                     ← 290 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
@@ -468,11 +470,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 284 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 290 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 284/284 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 284/284 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 290/290 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 284/284 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless

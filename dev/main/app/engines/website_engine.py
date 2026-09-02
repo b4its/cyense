@@ -1390,6 +1390,48 @@ class WebsiteEngine:
             log.warning("Nuclei stage failed: %s", exc)
         findings.extend(nuclei_findings)
 
+        # 18. Live CWE sec checks — response-passive over crawled pages
+        # (verbose errors, cookie flags, transport/HSTS, methods, disclosures).
+        await self._notify("sec-live")
+        sec_findings: list[dict[str, Any]] = []
+        try:
+            from app.utils.live_checks import (
+                check_allow_methods,
+                check_cookie_security,
+                check_transport_security,
+                check_verbose_errors,
+                check_x_powered_by,
+            )
+
+            for page in pages:
+                header_dict = dict(page.get("headers", {}))
+                body = page.get("body") or ""
+                page_url = page.get("url", url)
+
+                for r in check_verbose_errors(body, page_url):
+                    r.setdefault("location", page_url)
+                    sec_findings.append(r)
+                for r in check_cookie_security(header_dict):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_allow_methods(header_dict):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_x_powered_by(header_dict):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+
+            # Transport/HSTS is a whole-target property — check once.
+            combined_headers: dict[str, str] = {}
+            for page in pages:
+                combined_headers.update(page.get("headers", {}))
+            for r in check_transport_security(url, combined_headers):
+                r["location"] = url
+                sec_findings.append(r)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("sec-live stage failed: %s", exc)
+        findings.extend(sec_findings)
+
         # Assign finding_ids
         for k, f in enumerate(findings, start=1):
             f["finding_id"] = f"{self.scan_id}-WDISC{k:03d}"
