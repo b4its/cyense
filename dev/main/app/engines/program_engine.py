@@ -178,6 +178,8 @@ def run_program_scan(
         "files_read_errors": files_read_errors,  # for coverage.complete flag
         "level": level_profile.name,
         "level_rules_active": _active_rule_ids(level_profile, run_idor, run_xss, run_sqli, run_sec),
+        "scan_types": list(scan_types),
+        "lang": lang,
     }
 
 

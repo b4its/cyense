@@ -99,12 +99,14 @@ def _cve_rule(rule: str, title: str) -> dict[str, object]:
     }
 
 
-def _sec_rule(rule: str, title: str, cwe: str, severity: str) -> dict[str, object]:
-    """Metadata card for a CWE-broad security rule (app/program/security_rules.py)."""
+def _sec_rule(
+    rule: str, title: str, cwe: str, severity: str, lang: str = "all",
+) -> dict[str, object]:
+    """Metadata card for a CWE-broad security rule / live check."""
     return {
         "rule": rule,
         "severity": severity,
-        "lang": "all",
+        "lang": lang,
         "cwe": cwe,
         "cvss_score": 0.0,
         "cvss_vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
@@ -194,7 +196,7 @@ async def rules() -> dict[str, object]:
             _sqli_rule("SQLI006", "all", "raw SQL string interpolating a variable"),
         ],
         "security": [
-            _sec_rule(s["rule"], s["title"], s["cwe"], s["severity"])
+            _sec_rule(s["rule"], s["title"], s["cwe"], s["severity"], s["lang"])
             for s in _security_catalog()
         ],
         "live_security": [
@@ -239,7 +241,7 @@ async def rules() -> dict[str, object]:
             _sec_rule("XML-ENDPOINT", "Endpoint XML/SOAP (surface XXE)",
                       "CWE-611", "medium"),
             _sec_rule("INJ-LIVE-SSTI", "Template/Expression Language injection (SSTI)",
-                      "CWE-917", "critical"),
+                      "CWE-917", "high"),
             _sec_rule("INJ-LIVE-CRLF", "CRLF injection / response splitting", "CWE-93",
                       "high"),
         ],

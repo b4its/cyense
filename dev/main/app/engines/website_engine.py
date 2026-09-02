@@ -1635,6 +1635,7 @@ class WebsiteEngine:
         from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
         from app.utils.live_checks import (
+            _CRLF_PAYLOAD,
             _SSTI_PAYLOADS,
             classify_injection_reflection,
         )
@@ -1666,7 +1667,7 @@ class WebsiteEngine:
                 if not params:
                     continue
                 name, orig = params[0]
-                for payload in _SSTI_PAYLOADS:
+                for payload in _SSTI_PAYLOADS + (_CRLF_PAYLOAD,):
                     if requests_made >= max_requests:
                         break
                     probe_qs = dict(qs)

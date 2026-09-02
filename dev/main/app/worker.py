@@ -383,6 +383,10 @@ class ScanWorker:
             meta["level"] = result["level"]
         if "level_rules_active" in result:
             meta["level_rules_active"] = result["level_rules_active"]
+        if "scan_types" in result:
+            meta["scan_types"] = result["scan_types"]
+        if "lang" in result:
+            meta["lang"] = result["lang"]
         return {
             "meta": meta,
             "summary": summary,

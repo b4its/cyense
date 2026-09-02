@@ -156,7 +156,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "FILE001", "CWE-434", "high", "Unrestricted file upload",
         _ALL,
-        r"(?i)(?:move_uploaded_file|save_uploaded_file|write\(|save\(|file_put_contents|createReadStream|writeFile)\s*\([^)]*(?:request|req\.files|_FILES|form|upload)",
+        r"(?i)(?:move_uploaded_file|save_uploaded_file|write\b|save\b|file_put_contents|createReadStream|writeFile)\s*\([^)]*(?:request|req\.files|_FILES|form|upload)",
         "User-controlled upload/bytes are written to disk without extension/type validation.",
         "Validate MIME + extension against an allowlist, store outside webroot, and re-encode the file.",
     ),
@@ -180,7 +180,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "CRLF001", "CWE-93", "high", "CRLF injection",
         _ALL,
-        r"(?i)(?:setHeader|add_header|header\(|append_header|set_header|setresponseheader)\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)",
+        r"(?i)(?:setHeader|add_header|header\b|append_header|set_header|setresponseheader)\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)",
         "An HTTP response header is built from user input — CRLF/header-injection risk.",
         "Sanitize/strip CRLF and validate against an allowlist before writing headers.",
     ),
@@ -211,7 +211,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "PROC001", "CWE-78", "critical", "Process control / OS command injection",
         _ALL,
-        r"(?i)(?:os\.system|os\.popen|subprocess\.(?:call|Popen|run|check_output|check_call)|system\s*\(|exec\s*\(|shell_exec|passthru|proc_open|child_process\.(?:exec|spawn))\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)\b",
+        r"(?i)(?:os\.system|os\.popen|subprocess\.(?:call|Popen|run|check_output|check_call)|system\b|exec\b|shell_exec|passthru|proc_open|child_process\.(?:exec|spawn))\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)\b",
         "A shell/process command is built from user input.",
         "Never pass user input to a shell; use argument-array APIs with an allowlist and `shell=False`.",
     ),
@@ -282,7 +282,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "RACE001", "CWE-362", "medium", "Race condition (TOCTOU) on file access",
         _ALL,
-        r"(?i)(?:os\.path\.exists|os\.access|is_file\s*\(|file_exists)\s*\([^)]*\)[^;\n]{0,80}(?:open|unlink|remove|rename|os\.remove)\s*\(",
+        r"(?i)(?:os\.path\.exists|os\.access|is_file\b|file_exists)\s*\([^)]*\)[^;\n]{0,80}(?:open|unlink|remove|rename|os\.remove)\s*\(",
         "A file is checked then used without atomicity — TOCTOU race.",
         "Open the file first and operate on the descriptor, or use an atomic compare-and-swap.",
     ),
@@ -382,7 +382,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "RES001", "CWE-404", "high", "Unreleased resource (js/php)",
         _langs(_LANG_JS, _LANG_PHP),
-        r"(?i)(?:open\s*\(|fopen\s*\(|fs\.(?:createReadStream|readFile|writeFile)|new\s+File|curl_init|file_get_contents|PDO|mysqli_connect|mysql_connect)\s*\([^)]*\)\s*[^;\n]*?(?=;|\n)",
+        r"(?i)(?:open\b|fopen\b|fs\.(?:createReadStream|readFile|writeFile)|new\s+File|curl_init|file_get_contents|PDO|mysqli_connect|mysql_connect)\s*\([^)]*\)\s*[^;\n]*?(?=;|\n)",
         "A resource (file/socket/DB handle) is acquired without an evident release/close path.",
         "Use a try/with/finally that always closes the handle, or a managed connection pool.",
     ),
@@ -409,14 +409,21 @@ for _r in _RULES:
 
 def security_rule_catalog() -> list[dict[str, Any]]:
     """Return the CWE security rule catalog for ``GET /api/v1/rules``."""
+    _LANG_MAP = {"py": "python", "js": "js", "php": "php", "all": "all"}
+
+    def _lang_of(spec: dict[str, Any]) -> str:
+        langs = spec["langs"]
+        if "all" in langs:
+            return "all"
+        resolved = [_LANG_MAP.get(lg, lg) for lg in langs]
+        return ",".join(sorted(resolved))
+
     entries = [
         {
             "rule": spec["id"],
             "cwe": spec["cwe"],
             "severity": spec["severity"],
-            "lang": {"py": "python", "js": "js", "php": "php", "all": "all"}[
-                next(iter(spec["langs"])) if len(spec["langs"]) == 1 else "all"
-            ],
+            "lang": _lang_of(spec),
             "title": spec["title"],
             "description": spec["description"],
             "remediation": spec["remediation"],
@@ -521,7 +528,10 @@ def _ast_python_findings(path: Path, source: str, scan_id: str) -> list[Any]:
     for node in ast.walk(tree):
         if isinstance(node, (ast.Try, getattr(ast, "TryStar", ast.Try))):
             for stmt in node.finalbody:
-                if any(isinstance(s, (ast.Return, ast.Break, ast.Continue)) for s in _flatten(stmt)):
+                if ast.walk(stmt) and any(
+                    isinstance(s, (ast.Return, ast.Break, ast.Continue))
+                    for s in ast.walk(stmt)
+                ):
                     results.append(Finding(
                         finding_id=f"{scan_id}-FIN001-{node.lineno}-{path_disc}",
                         rule="FIN001",
@@ -540,42 +550,45 @@ def _ast_python_findings(path: Path, source: str, scan_id: str) -> list[Any]:
                     ))
 
     # RES001 — resource handle opened and never released (no with/close).
-    has_close = ".close(" in source
+    # Track per-handle: only flag a name that is never closed anywhere.
+    closed_names = set(re.findall(r"(\w+)\.close\s*\(", source))
+    seen_ids: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
+            continue
+        val = node.value
+        if not isinstance(val, ast.Call):
+            continue
+        fname = _call_name(val.func)
+        if fname not in _RESOURCE_OPENERS:
             continue
         for tgt in node.targets:
             if not isinstance(tgt, ast.Name):
                 continue
-            val = node.value
-            if not isinstance(val, ast.Call):
+            if tgt.id in closed_names:
                 continue
-            func = val.func
-            fname = _call_name(func)
-            if fname in _RESOURCE_OPENERS and not has_close:
-                results.append(Finding(
-                    finding_id=f"{scan_id}-RES001-{node.lineno}-{path_disc}",
-                    rule="RES001",
-                    severity=Severity("high"),
-                    confidence=0.55,
-                    title="Unreleased resource (Python)",
-                    description=(
-                        f"`{tgt.id} = {fname}(...)` acquires a resource that is "
-                        "never released via `with`/`close()` in this file."
-                    ),
-                    evidence={"file": str(path), "line": node.lineno, "name": tgt.id},
-                    verification=VerificationEvidence(notes="static AST (CWE)"),
-                    remediation="Wrap acquisition in a `with` statement or always close in `finally`.",
-                    location=f"{path}:{node.lineno}",
-                    cwe="CWE-404",
-                ))
+            finding_id = f"{scan_id}-RES001-{node.lineno}-{path_disc}"
+            if finding_id in seen_ids:
+                continue
+            seen_ids.add(finding_id)
+            results.append(Finding(
+                finding_id=finding_id,
+                rule="RES001",
+                severity=Severity("high"),
+                confidence=0.55,
+                title="Unreleased resource (Python)",
+                description=(
+                    f"`{tgt.id} = {fname}(...)` acquires a resource that is "
+                    "never released via `with`/`.close()` in this file."
+                ),
+                evidence={"file": str(path), "line": node.lineno, "name": tgt.id},
+                verification=VerificationEvidence(notes="static AST (CWE)"),
+                remediation="Wrap acquisition in a `with` statement or always close in `finally`.",
+                location=f"{path}:{node.lineno}",
+                cwe="CWE-404",
+            ))
 
     return results
-
-
-def _flatten(node: ast.AST) -> list[ast.AST]:
-    """Collect the node plus direct children (used to find return/break/continue)."""
-    return [node]
 
 
 def _call_name(func: ast.AST) -> str:

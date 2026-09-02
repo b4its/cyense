@@ -80,26 +80,35 @@ def check_cookie_security(headers: dict[str, str]) -> list[dict[str, Any]]:
         if hdr_key.lower() != _COOKIE_HDR:
             continue
         for cookie in _split_cookies(hdr_val):
-            name = cookie.split("=", 1)[0].strip()
+            parts = [p.strip() for p in cookie.split(";")]
+            if not parts:
+                continue
+            name_value = parts[0]
+            name = name_value.split("=", 1)[0].strip()
             if not name:
                 continue
-            lower = cookie.lower()
-            if "httponly" not in lower:
+            attrs = [p.lower() for p in parts[1:]]
+            if not any(a == "httponly" or a.startswith("httponly=") for a in attrs):
                 findings.append(_cookie_flag(
                     name, "HttpOnly", "medium", "CWE-1004",
                     "Cookie tanpa flag HttpOnly — dapat dibaca JavaScript (XSS).",
                     "Tambahkan flag HttpOnly pada cookie sesi.",
                 ))
-            if "secure" not in lower:
+            if not any(a == "secure" or a.startswith("secure=") for a in attrs):
                 findings.append(_cookie_flag(
                     name, "Secure", "medium", "CWE-614",
                     "Cookie tanpa flag Secure — dapat bocor lewat kanal HTTP.",
                     "Set flag Secure agar cookie hanya dikirim via HTTPS.",
                 ))
-            if "samesite" not in lower and "lax" not in lower and "strict" not in lower:
+            has_samesite = any(a == "samesite" or a.startswith("samesite=") for a in attrs)
+            samesite_val = ""
+            for a in attrs:
+                if a.startswith("samesite="):
+                    samesite_val = a.split("=", 1)[1].strip().lower()
+            if not has_samesite or samesite_val == "none":
                 findings.append(_cookie_flag(
                     name, "SameSite", "low", "CWE-1275",
-                    "Cookie tanpa atribut SameSite — rentan CSRF.",
+                    "Cookie tanpa atribut SameSite (atau SameSite=None) — rentan CSRF.",
                     "Tetapkan SameSite=Lax/Strict pada cookie sesi.",
                 ))
     return findings
@@ -223,8 +232,10 @@ def check_x_powered_by(headers: dict[str, str]) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 _SENSITIVE_QUERY_KEYS = re.compile(
-    r"(?i)(?:\b|_)(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|"
-    r"authz?[_-]?token|token|key|otp|session|credential|jwt|auth)\b"
+    r"(?i)(?:password|passwd|pwd|secret|api[_-]?key|private[_-]?key|"
+    r"access[_-]?token|auth[_-]?token|authz[_-]?token|bearer|otp|"
+    r"refresh[_-]?token|session[_-]?id|sessionid|credential|jwt|"
+    r"id[_-]?token|signature|client[_-]?secret|db[_-]?pass)\b"
 )
 
 
@@ -373,8 +384,14 @@ def check_xml_endpoint(headers: dict[str, str], url: str = "") -> list[dict[str,
 # ---------------------------------------------------------------------------
 
 # Benign arithmetic markers whose evaluated value is 49. If a template/EL engine
-# evaluates the expression, the literal "49" leaks back into the response.
-_SSTI_PAYLOADS = ("${7*7}", "{{7*7}}", "<%= 7*7 %>", "#{7*7}")
+# evaluates the expression, the literal "54444439" leaks back into the response.
+# (7*7777777) — a value unlikely to occur naturally, cutting false positives.
+_SSTI_PAYLOADS = ("${7*7777777}", "{{7*7777777}}", "<%= 7*7777777 %>", "#{7*7777777}")
+_SSTI_MARKER = "54444439"
+
+# A CRLF / response-splitting marker. When url-encoded it becomes %0d%0a; a
+# vulnerable server echoes it back as a literal CRLF followed by our header.
+_CRLF_PAYLOAD = "\r\nX-Injected-CRLF: 1"
 
 
 def classify_injection_reflection(body: str, payload: str) -> str | None:
@@ -386,16 +403,16 @@ def classify_injection_reflection(body: str, payload: str) -> str | None:
     """
     if not body:
         return None
-    if payload in _SSTI_PAYLOADS or payload in ("$%7b7*7%7d", "%7B7*7%7D"):
-        if "49" in body:
+    if payload in _SSTI_PAYLOADS or payload in ("$%7b7*7777777%7d", "%7B7*7777777%7D"):
+        # The expression was *evaluated*: the marker token is gone and the
+        # arithmetic result leaks back. If the marker is still present raw,
+        # it was merely reflected (not executed) — that is not SSTI.
+        if payload not in body and _SSTI_MARKER in body:
             return "INJ-LIVE-SSTI"
         return None
     if payload.startswith("\r\n") or "%0d" in payload.lower():
-        marker = "injected-crlf"
-        if marker in body and ("\r\n" in body or "\n" in body):
-            return "INJ-LIVE-CRLF"
-        # Raw newline reflected in a place it should not be.
-        if "\r\n" in body:
+        # Response splitting: a reflected newline + our injected header marker.
+        if "x-injected-crlf" in body.lower() and "\r\n" in body:
             return "INJ-LIVE-CRLF"
         return None
     return None
@@ -494,10 +511,15 @@ def check_follina(body: str, url: str = "") -> list[dict[str, Any]]:
     rather than executing anything.
     """
     findings: list[dict[str, Any]] = []
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            return findings
     lower = (body or "").lower()
-    is_office = ("word/document.xml" in lower or "w:document" in lower
+    is_office = ("word/document.xml" in lower or "w:" in lower
                  or "\\rtf" in lower or "word/_rels/document.xml.rels" in lower
-                 or body[:2] == b"PK")
+                 or lower.startswith("pk"))
     if not is_office:
         return findings
     if ("ms-msdt:" in lower or "word/_rels/document.xml.rels" in lower

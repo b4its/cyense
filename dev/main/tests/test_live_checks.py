@@ -129,10 +129,13 @@ def test_csv_and_upload_and_xml_surfaces() -> None:
 
 def test_injection_reflection_classifier() -> None:
     # Evaluated SSTI/EL: engine returned the arithmetic result.
-    assert classify_injection_reflection("result = 49", "${7*7}") == "INJ-LIVE-SSTI"
-    assert classify_injection_reflection("<b>49</b>", "{{7*7}}") == "INJ-LIVE-SSTI"
-    # Not evaluated → no finding.
-    assert classify_injection_reflection("<b>${7*7}</b>", "${7*7}") is None
-    # CRLF with a reflected newline.
-    assert classify_injection_reflection("a\r\nb injected-crlf", "\r\n") == "INJ-LIVE-CRLF"
-    assert classify_injection_reflection("a\r\nb", "\r\n") == "INJ-LIVE-CRLF"
+    assert classify_injection_reflection("total = 54444439", "${7*7777777}") == "INJ-LIVE-SSTI"
+    assert classify_injection_reflection("<b>54444439</b>", "{{7*7777777}}") == "INJ-LIVE-SSTI"
+    # Not evaluated (marker still present raw) → no finding.
+    assert classify_injection_reflection("<b>${7*7777777}</b>", "${7*7777777}") is None
+    # A page that merely contains the digits is NOT SSTI.
+    assert classify_injection_reflection("the 49ers won 2013", "{{7*7777777}}") is None
+    # CRLF with a reflected newline + injected header marker.
+    assert classify_injection_reflection(
+        "a\r\nX-Injected-CRLF: 1", "\r\nX-Injected-CRLF: 1",
+    ) == "INJ-LIVE-CRLF"
