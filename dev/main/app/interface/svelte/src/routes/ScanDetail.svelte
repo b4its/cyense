@@ -17,14 +17,13 @@
   let celebrate = false
   let celebrated = false
 
-  const PIPELINE = ['crawl', 'analyze', 'framework', 'port-scan', 'cve', 'probe', 'sqli', 'report']
+  const PIPELINE = ['crawl', 'analyze', 'framework', 'port-scan', 'cve', 'discovery',
+                     'harvest', 'nikto', 'nuclei', 'probe', 'sqli', 'report']
 
   async function load() {
     loading = true; error = ''
     try {
       job = await api.getScan(scanId)
-      // Report may 404 while a scan is still running — show progress from
-      // getScan and only fetch the report once complete.
       if (job.status === 'completed' || job.status === 'failed') {
         try { report = await api.getReport(scanId) } catch { report = null }
       } else {
@@ -43,7 +42,6 @@
   $: stages = (report?.meta?.pipeline || PIPELINE).map((name, i) => {
     const isCompleted = job?.status === 'completed'
     const isFailed = job?.status === 'failed'
-    // Failed scans: mark stages before the failure as done, the rest failed.
     return {
       name,
       status: isCompleted ? 'done'
@@ -56,7 +54,10 @@
   $: cves = findings.filter((f) => f.rule === 'CVE-MATCH')
   $: techs = findings.filter((f) => f.rule?.startsWith('DETECT-'))
   $: ports = findings.filter((f) => f.rule === 'PORT-OPEN' || f.rule === 'PORT-SCAN-SUMMARY')
-  $: xss = findings.filter((f) => f.rule?.startsWith('XS'))
+  $: harvest = findings.filter((f) => f.rule?.startsWith('HARVEST'))
+  $: nikto = findings.filter((f) => f.rule?.startsWith('NIKTO'))
+  $: nuclei = findings.filter((f) => f.rule?.startsWith('NUCLEUS'))
+  $: xs = findings.filter((f) => f.rule?.startsWith('XS'))
   $: sqli = findings.filter((f) => f.rule?.includes('SQLI'))
   $: idor = findings.filter((f) => f.rule?.startsWith('IDOR'))
   $: routesF = findings.filter((f) => f.rule === 'DISC-ROUTE')
@@ -230,6 +231,66 @@
               {#each discovery.filter((f) => !secrets.includes(f) && !exposedFiles.includes(f)) as f, i}
                 <div id="f-recon-{i}"><FindingCard f={f} /></div>
               {/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if harvest.length}
+          <section class="block" id="harvest">
+            <h2>Harvest — OSINT Pasif</h2>
+            <p class="sub">Subdomain dari crt.sh &amp; Wayback, fingerprint teknologi, email, IP.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each harvest as f, i}<div id="f-harvest-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if nikto.length}
+          <section class="block" id="nikto">
+            <h2>Nikto — Keamanan Server</h2>
+            <p class="sub">Header berbahaya, header hilang, directory listing, info disclosure, software usang.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each nikto as f, i}<div id="f-nikto-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if nuclei.length}
+          <section class="block" id="nuclei">
+            <h2>Nuclei — Template Vulnerability</h2>
+            <p class="sub">CORS misconfig, XSS protection, data sensitif, SSTI, SSRF, shell exec, CRLF.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each nuclei as f, i}<div id="f-nuclei-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if xs.length}
+          <section class="block" id="xss">
+            <h2>XSS Live</h2>
+            <p class="sub">Reflected XSS, inline handlers, eval, document.cookie exfil, DOM sinks.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each xs as f, i}<div id="f-xss-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if sqli.length}
+          <section class="block" id="sqli">
+            <h2>SQLi Live</h2>
+            <p class="sub">Error-based SQL injection dan boolean differential pada parameter URL.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each sqli as f, i}<div id="f-sqli-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if idor.length}
+          <section class="block" id="idor">
+            <h2>IDOR</h2>
+            <p class="sub">Endpoint dengan parameter ID yang berpotensi IDOR.</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each idor as f, i}<div id="f-idor-{i}"><FindingCard f={f} /></div>{/each}
             </div>
           </section>
         {/if}

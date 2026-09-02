@@ -622,9 +622,15 @@ def render_discovery_table(
 
     routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
     api_routes = [f for f in findings if f.get("rule") == "API-ROUTE"]
+    harvest = [f for f in findings if f.get("rule", "").startswith("HARVEST")]
+    nikto = [f for f in findings if f.get("rule", "").startswith("NIKTO")]
+    nuclei = [f for f in findings if f.get("rule", "").startswith("NUCLEUS")]
+    xs_live = [f for f in findings if f.get("rule", "").startswith("XS-LIVE")]
+    sqli_live = [f for f in findings if f.get("rule", "").startswith("SQLI-LIVE")]
     total = len(secrets) + len(exposed) + len(wp) + len(ssrf) + len(graphql) \
         + len(subs) + len(api) + len(js) + len(params) + len(wayback) \
-        + len(vhosts) + len(dirs) + len(routes_f) + len(api_routes)
+        + len(vhosts) + len(dirs) + len(routes_f) + len(api_routes) \
+        + len(harvest) + len(nikto) + len(nuclei) + len(xs_live) + len(sqli_live)
     if total == 0:
         console.print(f"  [{p.ok}]Tidak ada temuan discovery (recon bersih).[/]")
         console.print()
@@ -752,6 +758,56 @@ def render_discovery_table(
         console.print(f"  [bold {p.blue_soft}]REKON LAIN[/]")
         for row in misc_rows:
             console.print(f"  {row}")
+        console.print()
+
+    # Harvester-style passive OSINT findings.
+    if harvest:
+        console.print(f"  [bold {p.blue_primary}]HARVEST — OSINT PASIF ({len(harvest)})[/]")
+        for f in harvest:
+            console.print(
+                f"  [{p.blue_mist}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')}[/]"
+            )
+        console.print()
+
+    # Nikto-style web server security checks.
+    if nikto:
+        console.print(f"  [bold {p.sev_high}]NIKTO — KEAMANAN SERVER ({len(nikto)})[/]")
+        for f in nikto:
+            console.print(
+                f"  [{p.sev_high}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')} / {f.get('rule','')}[/]"
+            )
+        console.print()
+
+    # Nuclei-style template-based vulnerability checks.
+    if nuclei:
+        console.print(f"  [bold {p.sev_medium}]NUCLEI — TEMPLATE VULNS ({len(nuclei)})[/]")
+        for f in nuclei:
+            console.print(
+                f"  [{p.sev_medium}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')} / {f.get('rule','')}[/]"
+            )
+        console.print()
+
+    # Live XSS findings.
+    if xs_live:
+        console.print(f"  [bold {p.sev_high}]XSS LIVE ({len(xs_live)})[/]")
+        for f in xs_live:
+            console.print(
+                f"  [{p.sev_high}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')} / {f.get('rule','')}[/]"
+            )
+        console.print()
+
+    # Live SQLi findings.
+    if sqli_live:
+        console.print(f"  [bold {p.sev_high}]SQLi LIVE ({len(sqli_live)})[/]")
+        for f in sqli_live:
+            console.print(
+                f"  [{p.sev_high}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')} / {f.get('rule','')}[/]"
+            )
         console.print()
 
 

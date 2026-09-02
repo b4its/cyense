@@ -955,6 +955,10 @@ async def _routes_flow(payload: dict) -> None:
     routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
     sensitive_f = [f for f in findings if f.get("rule") == "API-ROUTE"]
 
+    # Render full discovery/recon table alongside routes
+    from app.cli.renderer import render_discovery_table
+    render_discovery_table(console, caps, findings)
+
     all_routes: list[dict] = []
     for f in routes_f:
         all_routes.extend((f.get("evidence") or {}).get("routes", []))
@@ -965,6 +969,20 @@ async def _routes_flow(payload: dict) -> None:
     else:
         console.print(f"  [{PAL.ok}]Tidak ada route yang ditemukan.[/]")
         console.print()
+
+    # XSS / SQLi / IDOR findings
+    xss_findings = [f for f in findings if f.get("rule", "").startswith("XS")]
+    sqli_findings = [f for f in findings if f.get("rule", "").startswith("SQLI")]
+    idor_findings = [f for f in findings if f.get("rule", "").startswith("IDOR")]
+    if xss_findings:
+        from app.cli.renderer import render_findings_table
+        render_findings_table(console, caps, xss_findings, summary)
+    if sqli_findings:
+        from app.cli.renderer import render_findings_table
+        render_findings_table(console, caps, sqli_findings, summary)
+    if idor_findings:
+        from app.cli.renderer import render_findings_table
+        render_findings_table(console, caps, idor_findings, summary)
 
     import time as _time
     _t0 = getattr(_state, "_routes_t0", _time.monotonic())
@@ -1028,9 +1046,8 @@ async def _cve_scan_flow(
     cve_findings = [f for f in findings if f.get("rule") == "CVE-MATCH"]
     tech_findings = [f for f in findings if f.get("rule", "").startswith("DETECT-")]
     port_findings = [f for f in findings if f.get("rule") == "PORT-OPEN"]
-    other = [f for f in findings
-             if f not in cve_findings and f not in tech_findings
-             and f not in port_findings]
+    skip_rules = {"CVE-MATCH"} | {r for r in tech_findings} | {r for r in port_findings}
+    other = [f for f in findings if f.get("rule") not in skip_rules]
 
     # Teknologi terdeteksi
     if tech_findings:

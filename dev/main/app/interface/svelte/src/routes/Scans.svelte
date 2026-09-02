@@ -41,13 +41,16 @@
       </div>
       <div class="field">
         <label for="scan-mode">Mode</label>
-        <select id="scan-mode" bind:value={mode}>
-          <option value="website">website</option>
-          <option value="domain">domain</option>
-          <option value="link">link</option>
-          <option value="program">program</option>
-          <option value="github">github</option>
-        </select>
+      <select id="scan-mode" bind:value={mode}>
+        <option value="website">website</option>
+        <option value="domain">domain</option>
+        <option value="link">link</option>
+        <option value="cve">cve</option>
+        <option value="recon">recon</option>
+        <option value="routes">routes</option>
+        <option value="program">program</option>
+        <option value="github">github</option>
+      </select>
       </div>
       <button class="btn primary" disabled={submitting}>{submitting ? '…' : 'Scan'}</button>
     </form>
