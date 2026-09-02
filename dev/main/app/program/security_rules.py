@@ -27,6 +27,7 @@ optimization), OS/portability flaws, covert storage channels, Heartbleed
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import re
 from pathlib import Path
@@ -114,7 +115,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "PW002", "CWE-256", "high", "Password plaintext storage",
         _ALL,
-        r"(?is)(?:insert\s+into|save\(|create\(|sql\.execute|INSERT)\s*[^;\n]{0,120}\bpassword\b[^;\n]{0,80}(?:request|_GET|_POST|req\.|form)",
+        r"(?is)(?:insert\s+into|save\(|create\(|sql\.execute|INSERT)\s*[^;\n]{0,120}\bpassword\b[^;\n]{0,80}(?:request|\$?_GET|\$?_POST|req\.|form)",
         "A user-supplied password is persisted without hashing.",
         "Hash passwords with a slow, salted KDF (bcrypt/argon2id/scrypt) before storage.",
     ),
@@ -162,7 +163,7 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "PATH001", "CWE-22", "high", "Path traversal / directory restriction error",
         _ALL,
-        r"(?i)(?:open\(|open\(|file_get_contents|read_text|readFile|include|require|os\.path\.join|Path\()\s*[^;)\n]*(?:request|req\.|_GET|_POST)",
+        r"(?i)(?:open\(|open\(|file_get_contents|read_text|readFile|include|require|os\.path\.join|Path\()\s*[^;)\n]*(?:request|req\.|\$?_GET|\$?_POST)",
         "A filesystem path is built from user input without containment checks.",
         "Resolve()+ensure the value stays under the allowed root (os.path.realpath / Path.resolve).",
     ),
@@ -179,21 +180,21 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "CRLF001", "CWE-93", "high", "CRLF injection",
         _ALL,
-        r"(?i)(?:setHeader|add_header|header\(|append_header|set_header|setresponseheader)\s*\([^)]*(?:request|req\.|_GET|_POST|input)",
+        r"(?i)(?:setHeader|add_header|header\(|append_header|set_header|setresponseheader)\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)",
         "An HTTP response header is built from user input — CRLF/header-injection risk.",
         "Sanitize/strip CRLF and validate against an allowlist before writing headers.",
     ),
     (
         "CSV001", "CWE-1236", "medium", "CSV formula injection",
         _ALL,
-        r"(?i)(?:fputcsv|csv\.writer|writerow\s*\(|CsvWriter|write_row|array_to_csv)\s*\([^)]*(?:request|req\.|_GET|_POST|row|data)",
+        r"(?i)(?:fputcsv|csv\.writer|writerow\s*\(|CsvWriter|write_row|array_to_csv)\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|row|data)",
         "CSV output is built from dynamic data without neutralizing formula prefixes (=, +, -, @).",
         "Prefix cell values with a single quote or tab when they begin with = + - @ to prevent formula injection.",
     ),
     (
         "SESS001", "CWE-384", "high", "Session variable overloading / fixation",
         _ALL,
-        r"(?i)(?:session\[[^]]+\]|req\.session\.[a-z_]+|request\.session\.[a-z_]+|_SESSION\[[^]]+\])\s*=\s*(?:request|req\.|_GET|_POST|input)",
+        r"(?i)(?:session\[[^]]+\]|req\.session\.[a-z_]+|request\.session\.[a-z_]+|_SESSION\[[^]]+\])\s*=\s*(?:request|req\.|\$?_GET|\$?_POST|input)",
         "A session value is assigned from user input without a rotation (fixation/overloading).",
         "Regenerate the session id on privilege change and never trust client-supplied session fields.",
     ),
@@ -210,21 +211,21 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
     (
         "PROC001", "CWE-78", "critical", "Process control / OS command injection",
         _ALL,
-        r"(?i)(?:os\.system|os\.popen|subprocess\.(?:call|Popen|run|check_output|check_call)|system\s*\(|exec\s*\(|shell_exec|passthru|proc_open|child_process\.(?:exec|spawn))\s*\([^)]*(?:request|req\.|_GET|_POST|input)\b",
+        r"(?i)(?:os\.system|os\.popen|subprocess\.(?:call|Popen|run|check_output|check_call)|system\s*\(|exec\s*\(|shell_exec|passthru|proc_open|child_process\.(?:exec|spawn))\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)\b",
         "A shell/process command is built from user input.",
         "Never pass user input to a shell; use argument-array APIs with an allowlist and `shell=False`.",
     ),
     (
         "REFL001", "CWE-470", "medium", "Unsafe use of reflection",
         _ALL,
-        r"(?i)getattr\s*\([^,]+\s*,\s*(?:request|req\.|_GET|_POST|input)|call_user_func\s*\([^)]*(?:request|req\.|_GET|_POST|input)|invoke\s*\([^)]*(?:request|req\.|input)",
+        r"(?i)getattr\s*\([^,]+\s*,\s*(?:request|req\.|\$?_GET|\$?_POST|input)|call_user_func\s*\([^)]*(?:request|req\.|\$?_GET|\$?_POST|input)|invoke\s*\([^)]*(?:request|req\.|input)",
         "Reflection/indirect call is driven by user-controlled names.",
         "Resolve method names against a fixed allowlist instead of arbitrary user input.",
     ),
     (
         "DATA001", "CWE-94", "critical", "Improper data validation — code injection",
         _ALL,
-        r"\b(?:eval|exec|new\s+Function|create_function)\s*\(\s*(?:request|req\.|_GET|_POST|input|location|document\.(?:cookie|referrer)|window\.name)|\bcompile\s*\(\s*(?:request|req\.|_GET|_POST|input)",
+        r"\b(?:eval|exec|new\s+Function|create_function)\s*\(\s*(?:request|req\.|\$?_GET|\$?_POST|input|location|document\.(?:cookie|referrer)|window\.name)|\bcompile\s*\(\s*(?:request|req\.|\$?_GET|\$?_POST|input)",
         "User input reaches a code-evaluating sink (eval/exec/Function) — code injection.",
         "Remove eval; use JSON.parse + an allowlist or a safe template engine with escaping.",
     ),
@@ -336,6 +337,55 @@ _RULES: list[tuple[str, str, str, str, frozenset[str], str, str, str]] = [
         "A possibly-None result is dereferenced, a business-logic skip of the null/error path.",
         "Handle the empty/None result explicitly before chaining access.",
     ),
+    # ------------------------------------------------------------------ #
+    # Expression language / template injection                            #
+    # ------------------------------------------------------------------ #
+    (
+        "ELI001", "CWE-917", "medium",
+        "Expression Language injection (EL/SpEL/OGNL/SSTI)",
+        _ALL,
+        r"(?i)\$\{[^}\n]*(?:request|req\.|\$?_GET|\$?_POST|input|\{\{)|<%\s*=\s*(?:request|req\.|\$?_GET|\$?_POST|input)|<%=?\s*[a-z_]+\.(?:request|input)\s*%>|\bT\s*\(\s*(?:java|org|org\.spring)|@\s*[a-z]+\s*\(|\{\{\s*[^}\n]*(?:request|req\.|input)\s*\}\}",
+        "A server-side expression-language/template expression is built from user-controlled data (EL/SpEL/OGNL/SSTI).",
+        "Whitelist expressions, escape user data, or use a sandboxed template engine with auto-escaping.",
+    ),
+    # ------------------------------------------------------------------ #
+    # Numeric precision / session id / authorization                     #
+    # ------------------------------------------------------------------ #
+    (
+        "NUM001", "CWE-681", "low", "Insufficient numeric precision",
+        _ALL,
+        r"(?i)(?:price|amount|balance|money|total|cost|tax|discount|currency|salary|budget|payment)\s*[:=]\s*(?:float\s*\(|parseFloat\s*\(|double\s*\(|Decimal\s*\(\s*['\"][^'\"\n]*['\"]\))",
+        "A monetary/quantity value uses a floating point type, risking rounding/precision bugs.",
+        "Use a fixed-point/currency type (decimal.Decimal / integer cents) for money.",
+    ),
+    (
+        "SESS002", "CWE-330", "medium", "Insufficient session ID length / weak session id",
+        _ALL,
+        r"(?i)(?:session[_-]?id|sid|sessionID|PHPSESSID|aspxauth)\s*[:=]\s*(?:md5\s*\(|uniqid\s*\(|rand\s*\(|\brandom\s*\(|substr\s*\([^)]{0,20}session|base64_encode\s*\([^)]*(?:time|uniqid))",
+        "A session identifier is generated from a weak/short source instead of a cryptographically random one.",
+        "Generate session ids with a CSPRNG (secrets.token_urlsafe) of sufficient length and set HttpOnly/Secure.",
+    ),
+    (
+        "AUTH001", "CWE-269", "high", "Multiple admin levels / weak authorization",
+        _ALL,
+        r"(?i)(?:is[_-]?admin|isAdmin|role\b|roles?\b|permission\b|is[_-]?superuser|group\b)\s*[:=]\s*(?:request|req\.|\$?_GET|\$?_POST|input)|\b(?:admin|role|permission)\s*=\s*\b(?:request|req\.|\$?_GET|\$?_POST|input)\b",
+        "An authorization/role decision is derived from client-controlled data — privilege escalation / multiple admin levels.",
+        "Authorize server-side from a trusted session/DB source; never trust a client-supplied role flag.",
+    ),
+    (
+        "EXT001", "CWE-829", "high", "Insecure third-party domain access",
+        _ALL,
+        r"(?i)(?:fetch\s*\(|axios\.(?:get|post|put|delete)|http\.(?:get|post|request)|URL\s*\(|createElement\s*\(\s*['\"]script['\"]|src\s*=\s*)\s*[^)>\n]*(?:request|req\.|\$?_GET|\$?_POST|input|user[_-]?input)",
+        "A third-party/external resource (script, fetch, script src) is loaded from user-controlled input.",
+        "Load only from a fixed allowlist of trusted origins; validate/normalize and enforce Content-Security-Policy.",
+    ),
+    (
+        "RES001", "CWE-404", "high", "Unreleased resource (js/php)",
+        _langs(_LANG_JS, _LANG_PHP),
+        r"(?i)(?:open\s*\(|fopen\s*\(|fs\.(?:createReadStream|readFile|writeFile)|new\s+File|curl_init|file_get_contents|PDO|mysqli_connect|mysql_connect)\s*\([^)]*\)\s*[^;\n]*?(?=;|\n)",
+        "A resource (file/socket/DB handle) is acquired without an evident release/close path.",
+        "Use a try/with/finally that always closes the handle, or a managed connection pool.",
+    ),
 ]
 
 # Compile regexes once (lazy).
@@ -359,7 +409,7 @@ for _r in _RULES:
 
 def security_rule_catalog() -> list[dict[str, Any]]:
     """Return the CWE security rule catalog for ``GET /api/v1/rules``."""
-    return [
+    entries = [
         {
             "rule": spec["id"],
             "cwe": spec["cwe"],
@@ -373,6 +423,17 @@ def security_rule_catalog() -> list[dict[str, Any]]:
         }
         for spec, _ in _COMPILED
     ]
+    # AST-based Python checks that are not part of the regex table.
+    entries.append({
+        "rule": "FIN001",
+        "cwe": "CWE-583",
+        "severity": "medium",
+        "lang": "python",
+        "title": "Return inside finally block",
+        "description": "A control-flow statement inside a `finally` block masks cleanup exceptions.",
+        "remediation": "Move return/break/continue out of `finally`; let cleanup always run.",
+    })
+    return entries
 
 
 def _line_of(source: str, pos: int) -> int:
@@ -425,7 +486,108 @@ def _findings_for(
 
 
 def analyze_python_file(path: Path, source: str, scan_id: str) -> list[Any]:
-    return _findings_for(path, source, scan_id, _LANG_PY)
+    return _findings_for(path, source, scan_id, _LANG_PY) + _ast_python_findings(
+        path, source, scan_id
+    )
+
+
+# ---------------------------------------------------------------------------
+# Python AST checks — structural rules that regex cannot express cleanly.
+# ---------------------------------------------------------------------------
+
+# Resource-acquiring call names whose handle should be released/closed.
+_RESOURCE_OPENERS = frozenset({
+    "open", "codecs.open", "socket.socket", "subprocess.Popen",
+    "sqlite3.connect", "tempfile.NamedTemporaryFile", "tempfile.TemporaryFile",
+    "gzip.open", "zipfile.ZipFile",
+})
+
+
+def _ast_python_findings(path: Path, source: str, scan_id: str) -> list[Any]:
+    """Structural Python checks: return-in-finally (CWE-583) and resource leak
+    (CWE-404). Returns a list of :class:`Finding`."""
+
+    from app.core.models import Finding, Severity, VerificationEvidence
+
+    path_disc = hashlib.md5(str(path).encode("utf-8")).hexdigest()[:6]
+    results: list[Any] = []
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return results
+
+    # FIN001 — Return inside finally block (suppresses cleanup exceptions).
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Try, getattr(ast, "TryStar", ast.Try))):
+            for stmt in node.finalbody:
+                if any(isinstance(s, (ast.Return, ast.Break, ast.Continue)) for s in _flatten(stmt)):
+                    results.append(Finding(
+                        finding_id=f"{scan_id}-FIN001-{node.lineno}-{path_disc}",
+                        rule="FIN001",
+                        severity=Severity("medium"),
+                        confidence=0.8,
+                        title="Return inside finally block",
+                        description=(
+                            "A control-flow statement inside a `finally` block "
+                            "masks cleanup exceptions and can swallow errors."
+                        ),
+                        evidence={"file": str(path), "line": node.lineno},
+                        verification=VerificationEvidence(notes="static AST (CWE)"),
+                        remediation="Move the return/break/continue out of `finally`; let cleanup always run.",
+                        location=f"{path}:{node.lineno}",
+                        cwe="CWE-583",
+                    ))
+
+    # RES001 — resource handle opened and never released (no with/close).
+    has_close = ".close(" in source
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for tgt in node.targets:
+            if not isinstance(tgt, ast.Name):
+                continue
+            val = node.value
+            if not isinstance(val, ast.Call):
+                continue
+            func = val.func
+            fname = _call_name(func)
+            if fname in _RESOURCE_OPENERS and not has_close:
+                results.append(Finding(
+                    finding_id=f"{scan_id}-RES001-{node.lineno}-{path_disc}",
+                    rule="RES001",
+                    severity=Severity("high"),
+                    confidence=0.55,
+                    title="Unreleased resource (Python)",
+                    description=(
+                        f"`{tgt.id} = {fname}(...)` acquires a resource that is "
+                        "never released via `with`/`close()` in this file."
+                    ),
+                    evidence={"file": str(path), "line": node.lineno, "name": tgt.id},
+                    verification=VerificationEvidence(notes="static AST (CWE)"),
+                    remediation="Wrap acquisition in a `with` statement or always close in `finally`.",
+                    location=f"{path}:{node.lineno}",
+                    cwe="CWE-404",
+                ))
+
+    return results
+
+
+def _flatten(node: ast.AST) -> list[ast.AST]:
+    """Collect the node plus direct children (used to find return/break/continue)."""
+    return [node]
+
+
+def _call_name(func: ast.AST) -> str:
+    """Return a dotted call name like ``subprocess.Popen`` or ``open``."""
+    parts: list[str] = []
+    node = func
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name):
+        parts.append(node.id)
+    return ".".join(reversed(parts))
 
 
 def analyze_js_file(path: Path, source: str, scan_id: str) -> list[Any]:

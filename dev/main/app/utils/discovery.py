@@ -704,6 +704,29 @@ def nikto_check_server_headers(
             "location": "server-headers",
         })
 
+    # Heartbleed fingerprint (CVE-2014-0160): OpenSSL 1.0.1 – 1.0.1f.
+    # Server-level, detected via banner/header version disclosure.
+    for h_val in (server_val, header_map.get("x-powered-by", "")):
+        mm = re.search(r"OpenSSL/\s*1\.0\.1([a-f]?)", h_val, re.IGNORECASE)
+        if mm:
+            findings.append({
+                "rule": "NIKTO-HEARTBLEED",
+                "severity": "high",
+                "confidence": 0.85,
+                "cwe": "CWE-825",
+                "title": "Terkena Heartbleed (OpenSSL 1.0.1 range)",
+                "description": (
+                    f"Banner/header mengungkap {mm.group(0)} — versi OpenSSL "
+                    "rentan terhadap Heartbleed (CVE-2014-0160)."
+                ),
+                "evidence": {"header": "Server", "value": h_val},
+                "remediation": (
+                    "Upgrade OpenSSL ke >=1.0.1g (atau 1.0.2+) dan lakukan "
+                    "pergantian key material yang sempat ter-expose."
+                ),
+                "location": "server-headers",
+            })
+
     return findings
 
 

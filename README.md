@@ -118,7 +118,7 @@ cyense scan program --level high --i-have-permission --source-type sample
 cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ```
 
-**66 static detection rules / 66 aturan deteksi statis** — 13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`, **36 CWE-broad security** `DES001–RND002` (deserialization, crypto, passwords, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy, least-privilege) — plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`:
+**73 static detection rules / 73 aturan deteksi statis** — 13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`, **43 CWE-broad security** `DES001–RND002` (deserialization, crypto, passwords, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy, least-privilege) — plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`:
 
 | Rule | Pattern / Pola | Language | Severity |
 |------|----------------|----------|----------|
@@ -165,6 +165,12 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 | Over-broad catch, missing error handling, unchecked error condition | ERR001–003 | CWE-396/390/391 |
 | Null dereference, race condition (TOCTOU), ReDoS regex | NULL001, RACE001, REGEX001 | CWE-476/362/1333 |
 | Obsolete methods, sensitive logging, PII exposure, least-privilege, unchecked return | OBS001, LOG001, PRIV001, LEAST001, BIZ001 | CWE-477/532/359/250/253 |
+| Expression Language injection (EL/SpEL/OGNL/SSTI), template injection | ELI001 | CWE-917 |
+| Return inside finally block, unreleased resource | FIN001, RES001 | CWE-583/404 |
+| Insufficient numeric precision (float for currency) | NUM001 | CWE-681 |
+| Insufficient session ID length / weak session id, multiple admin levels / weak authz | SESS002, AUTH001 | CWE-330/269 |
+| Insecure third-party domain access | EXT001 | CWE-829 |
+| Heartbleed (OpenSSL 1.0.1 range) — live header fingerprint | NIKTO-HEARTBLEED | CWE-825 |
 
 **ID — Kelas aturan keempat — security CWE (`DES001`–`RND002`)** — memetakan taksonomi CWE/OWASP luas ke source code web (Python/JS/PHP) sebagai kandidat regex deterministik, masing-masing bertag CWE id (agar SARIF/CVSS/coverage konsisten):
 
@@ -182,6 +188,12 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 | Catch terlalu luas, error handling hilang, kondisi error tidak dicek | ERR001–003 | CWE-396/390/391 |
 | Null dereference, race condition (TOCTOU), regex ReDoS | NULL001, RACE001, REGEX001 | CWE-476/362/1333 |
 | Metode usang, logging sensitif, eksposur PII, least-privilege, return tidak dicek | OBS001, LOG001, PRIV001, LEAST001, BIZ001 | CWE-477/532/359/250/253 |
+| Expression Language injection (EL/SpEL/OGNL/SSTI), injeksi template | ELI001 | CWE-917 |
+| Return di dalam blok finally, resource tidak dilepas | FIN001, RES001 | CWE-583/404 |
+| Presisi numerik kurang (float untuk uang) | NUM001 | CWE-681 |
+| Panjang session ID kurang / session-id lemah, multiple admin levels / authz lemah | SESS002, AUTH001 | CWE-330/269 |
+| Akses domain pihak ketiga tidak aman | EXT001 | CWE-829 |
+| Heartbleed (rentang OpenSSL 1.0.1) — fingerprint header live | NIKTO-HEARTBLEED | CWE-825 |
 
 **EN — Out of scope (not detectable by static web-source analysis):** native memory-safety (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call from a signal handler, Full-trust CLR verification issue, insecure compiler optimization), OS/portability flaws, covert storage channels, Heartbleed (server-level), and the purely-process ones (vulnerability scanning tools, vulnerability template). These are listed in the reference taxonomy but are not half-detected here.
 
@@ -222,7 +234,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-281 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
+284 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
 ruff check: All checks passed (0 errors)
 ```
 
@@ -301,7 +313,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 281 tests via pytest
+make test       # 284 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -407,7 +419,7 @@ cyense/
 │   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
 │   │   │   └── worker.py              ← asyncio worker (drains scan queue)
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 281 tests + lab app fixture
+│   │   ├── tests/                     ← 284 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
@@ -456,11 +468,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 281 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 284 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 66 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 281/281 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 66 aturan statis + rule live, 4 level analisis, 281/281 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 284/284 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 284/284 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
