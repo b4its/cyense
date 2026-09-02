@@ -180,8 +180,13 @@ cyense scan github <repo_url>    # GitHub repo audit / audit repo GitHub
 cyense scan program              # Local source audit / audit source lokal
 cyense scan link <url>           # Dynamic IDOR probing / probing IDOR dinamis
 cyense scan website <url>        # Public website crawl (IDOR + XSS) / crawl website publik
+cyense scan domain <domain>      # Full domain scan (subdomains + per-host) / scan domain penuh
+cyense scan api <spec>           # Scan endpoints from OpenAPI/Swagger spec / scan endpoint dari spec
 cyense scan resume <scan_id>     # Resume interrupted scan / lanjutkan scan
 cyense scan multi <targets.txt>  # Multi-target scan from file / multi-target dari file
+cyense recon <url>               # Recon menyeluruh (CVE + tech + ports) / full recon
+cyense cve <url>                 # CVE/kerentanan terkenal untuk teknologi website
+cyense routes <url>              # Routing enumeration / enumerasi routing
 cyense report <scan_id>          # Re-render old report / render ulang laporan
 cyense list                      # Recent scans table / tabel scan terakhir
 cyense history                   # Scan history + filter / riwayat scan + filter
@@ -191,6 +196,7 @@ cyense export csv|pdf <id>       # Download CSV/PDF / unduh CSV/PDF
 cyense config get|set|list|reset # CLI preferences / preferensi CLI
 cyense rules                     # Active rules catalog / katalog aturan
 cyense fix <scan_id>             # Propose remediation patches / usulan remediasi
+cyense launch                    # Interactive launcher (CLI vs Website) / launcher interaktif
 cyense version                   # CLI + service version / versi CLI + service
 ```
 
@@ -320,8 +326,8 @@ make cli ARGS="scan program --i-have-permission --level max"     # + cross-file 
 
 | Level | Files | Rules | Extra |
 |-------|-------|-------|-------|
-| **low** | ≤100 | CY001–CY010, XS001–XS008 | Quick CI/pre-commit check |
-| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008 | Balanced coverage |
+| **low** | ≤100 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Quick CI/pre-commit check |
+| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Balanced coverage |
 | **high** | ≤5000 | + CY011, CY012, XS009, XS010 | Data flow tracking |
 | **max** | unlimited | + CY013, XS011 | Cross-file + call graph |
 
@@ -468,20 +474,24 @@ See `.env.example` / Lihat `.env.example`.
 ```
 dev/main/
 ├── app/
-│   ├── main.py                ← app factory + lifespan
-│   ├── api/                   ← scans, reports, system, remediations, export, viewer
-│   ├── core/                  ← models, config, store
-│   ├── agents/                ← brain, recon, prober, verifier, fetcher, orchestrator
-│   ├── engines/               ← link, program, github, diff_scope
-│   ├── program/               ← rules CY001-CY010 + sample fixture
+│   ├── main.py                ← app factory + lifespan (`app = create_app()`)
+│   ├── api/                   ← scans, reports, system, remediations, export, viewer, ui
+│   ├── core/                  ← models, config, store (+github models)
+│   ├── agents/                ← brain, recon, prober, verifier, fetcher, crawler, orchestrator
+│   ├── engines/               ← link, program, github, website, domain, live_xss, live_sqli, diff_scope, scan_levels
+│   ├── cli/                   ← typer CLI + web viewer + renderer + theme
+│   ├── interface/             ← Svelte web UI frontend + static viewer assets
+│   ├── program/               ← rules CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 + sample fixture
 │   ├── remediation/           ← fixer, strategies, applier, store
-│   ├── report/                ← json + html + sarif + csv + pdf + coverage
-│   ├── services/              ← multi_scan, scan_resume
-│   └── utils/                 ← http_client, sandbox, github_client, pii, etc.
+│   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
+│   ├── services/              ← multi_scan, scan_resume, openapi_parser
+│   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
+│   └── worker.py              ← asyncio worker (drains scan queue)
 ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-├── tests/                     ← 51 tests + lab app fixture
+├── tests/                     ← 276 tests + lab app fixture
 ├── wordlists/ids.txt
-├── Dockerfile · docker-compose.yml · pyproject.toml
+├── brain/                     ← 🧠 knowledge.json + memory antar-scan
+├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
 └── README.md                  ← this file / file ini
 ```
 

@@ -30,7 +30,9 @@
 
 ## 2. How the Agent Solves It / Bagaimana Agent Menyelesaikannya
 
-### Multi-agent pipeline — 6 agents, one orchestrator / 6 agen, satu orkestrator
+### Multi-agent pipeline — core link-mode agents / Pipeline multi-agen — agen inti mode link
+
+*(website/domain modes add the `CrawlerAgent`; remediation adds `FixerAgent`. / mode website/domain menambahkan `CrawlerAgent`; remediasi menambahkan `FixerAgent`.)*
 
 ```
 POST /scans ──► asyncio queue ──► Orchestrator
@@ -73,7 +75,7 @@ POST /scans ──► asyncio queue ──► Orchestrator
 
 ---
 
-## 3. Five Scan Modes / Lima Mode Scan
+## 3. Scan Modes / Mode Scan (link · program · github · website · domain · api)
 
 | Mode | Input | Pipeline | Output |
 |------|-------|----------|--------|
@@ -81,6 +83,8 @@ POST /scans ──► asyncio queue ──► Orchestrator
 | **`program`** | Source code (mounted `/workspace` or built-in sample) / Source code (mounted `/workspace` atau sample bawaan | Static analysis / Analisis statis | `file:line` + rule CY001–CY010 + XS001–XS008 + SQLI001–SQLI006 + remediation |
 | **`github`** | Repo link `https://github.com/owner/repo` / Link repo | Fetcher (tarball + sandbox) → Analyze → Report | Static findings + reproducible `commit_sha` + brain cache / Temuan statis + `commit_sha` reprodusibel + brain cache |
 | **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report | ID-bearing endpoints + live XSS surface (CSP, HSTS, eval/innerHTML in HTML *and external JS*, confirmed reflected params via benign probe, srcdoc, cookie exfiltration, missing headers) + live SQLi (error-based + blind boolean) |
+| **`domain`** | A domain `example.com` (no scheme needed) / Sebuah domain `example.com` (tanpa scheme) | DomainEngine: enumerate subdomains (Wayback + DNS) → run website pipeline per live host → aggregate / enumerasi subdomain → pipeline website per host hidup → agregasi | Per-host findings (tagged `host`) + per-host summary table + subdomain enumeration / Temuan per-host (ditandai `host`) + tabel ringkasan per-host + enumerasi subdomain |
+| **`api`** | OpenAPI/Swagger spec `openapi.yaml` or an endpoint exposing one / Spec OpenAPI/Swagger `openapi.yaml` atau endpoint yang memaparkannya | parse_openapi_spec → extract path params → test each declared endpoint (Strix pattern) | IDOR candidates on every declared endpoint / kandidat IDOR di setiap endpoint yang dideklarasikan |
 | **`fixes`** | Findings from any scan / Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + proof finding disappeared + backup/revert / Diff patch + bukti temuan hilang + backup/revert |
 
 ### Analysis Levels / Level Analisis
@@ -114,7 +118,7 @@ cyense scan program --level high --i-have-permission --source-type sample
 cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ```
 
-**18 detection rules / 18 aturan deteksi:**
+**30 static detection rules / 30 aturan deteksi statis** (13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`) plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`:
 
 | Rule | Pattern / Pola | Language | Severity |
 |------|----------------|----------|----------|
@@ -180,7 +184,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-192 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli
+276 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
 ruff check: All checks passed (0 errors)
 ```
 
@@ -259,7 +263,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 192 tests via pytest
+make test       # 276 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -282,18 +286,22 @@ make lint       # ruff, 0 errors
 | GET | `/scans/resumable` | List resumable scans / Daftar scan yang bisa dilanjutkan |
 | DELETE | `/scans/{id}` | Delete scan & artifacts / Hapus scan & artefak |
 | GET | `/rules` | Active rules catalog / Daftar rule aktif |
+| GET | `/viewer/{id}` | Web viewer landing page / Halaman web viewer |
+| GET | `/viewer/{id}/data` | Viewer JSON data / Data JSON viewer |
+| GET | `/viewer/{id}/trajectories` | Agent trajectory logs / Log trajectory agent |
+| GET | `/viewer/static/{file_path}` | Viewer static assets / Aset statis viewer |
 | POST | `/scans/{id}/fixes` | Generate patch proposals (dry-run) / Generate usulan patch (dry-run) |
 | GET | `/fixes/{session_id}` | List proposals / Daftar proposal |
 | GET | `/fixes/{session_id}/diff` | Combined unified diff / Unified diff gabungan |
 | POST | `/fixes/{session_id}/apply` | Apply (requires `confirm:true`) + backup + verify / Apply (wajib `confirm:true`) + backup + verify |
 | POST | `/fixes/{session_id}/revert` | Restore from backup / Restore dari backup |
 
-**State machine / Mesin state:** `QUEUED → RUNNING (recon|probe|verify|resolve|fetch|analyze|report) → COMPLETED | FAILED`
+**State machine / Mesin state:** `QUEUED → RUNNING (recon|probe|verify|resolve|fetch|analyze|crawl|discovery|cve|port|idor|xss|harvest|nikto|nuclei|report) → COMPLETED | FAILED`
 
 ### Example: github mode & remediation / Contoh: mode github & remediasi
 
 ```bash
-# Audit public GitHub repo (fetcher + sandbox + CY001-CY010 rules)
+# Audit public GitHub repo (fetcher + sandbox + CY001-CY013/XS/SQLI rules)
 curl -X POST http://localhost:8000/api/v1/scans \
   -H 'Content-Type: application/json' \
   -d '{"mode":"github","repo_url":"https://github.com/owner/repo",
@@ -341,28 +349,34 @@ cyense/
 │       ├── idor-remediation.md        ← remediation PRD
 │       ├── ci-compliance-reporting.md ← SARIF/CVSS/coverage/diff-scope PRD
 │       ├── enhanced-reporting-viewer.md ← viewer/pdf/csv/multi PRD
-│       └── cli-experience.md          ← CLI PRD
+│       ├── cli-experience.md          ← CLI PRD
+│       ├── xss-detection.md           ← XSS rules PRD
+│       └── xss-remediation.md         ← XSS fix strategies PRD
 ├── dev/
 │   ├── main/                          ★ MAIN IMPLEMENTATION / IMPLEMENTASI UTAMA
 │   │   ├── app/
-│   │   │   ├── main.py                ← app factory + lifespan
-│   │   │   ├── api/                   ← scans, reports, system, remediations, export, viewer
+│   │   │   ├── main.py                ← app factory + lifespan (`app = create_app()`)
+│   │   │   ├── api/                   ← scans, reports, system, remediations, export, viewer, ui
 │   │   │   ├── core/                  ← models, config, store (+github models)
-│   │   │   ├── agents/                ← brain, recon, prober, verifier, fetcher, orchestrator
-│   │   │   ├── engines/               ← link, program, github, diff_scope
-│   │   │   ├── program/               ← CY001-CY010 rules + sample fixture
+│   │   │   ├── agents/                ← brain, recon, prober, verifier, fetcher, crawler, orchestrator
+│   │   │   ├── engines/               ← link, program, github, website, domain, live_xss, live_sqli, diff_scope, scan_levels
+│   │   │   ├── cli/                   ← typer CLI + web viewer + renderer + theme
+│   │   │   ├── interface/             ← Svelte web UI frontend + static viewer assets
+│   │   │   ├── program/               ← CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 rules + sample fixture
 │   │   │   ├── remediation/           ← fixer, strategies, applier, store
-│   │   │   ├── report/                ← json + html + sarif + csv + pdf + coverage
-│   │   │   ├── services/              ← multi_scan, scan_resume
-│   │   │   └── utils/                 ← http_client, sandbox, github_client, pii, etc.
+│   │   │   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
+│   │   │   ├── services/              ← multi_scan, scan_resume, openapi_parser
+│   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
+│   │   │   └── worker.py              ← asyncio worker (drains scan queue)
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 192 tests + lab app fixture
+│   │   ├── tests/                     ← 276 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
-│   │   ├── Dockerfile · docker-compose.yml · pyproject.toml
+│   │   ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
+│   │   ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
 │   │   └── README.md                  ← service-level README
-│   ├── brain/                         ← 🧠 knowledge.json + memory antar-scan
-│   └── target/                        ← program mode target (read-only)
-└── document/                          ← hackathon reference (gitignored)
+│   ├── brain/                         ← 🧠 knowledge.json volume (mounted)/ memori antar-scan
+│   └── target/                        ← program mode target volume (`/workspace`, read-only)
+└── reports/                           ← per-scan artifacts (gitignored) / artefak per-scan
 ```
 
 ### Agent trajectories (deliverable #4) / Trajectory agent
@@ -404,11 +418,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 123 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 276 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 5 scan modes, 7 agents, 18 rules (4 analysis levels: low/medium/high/max), 192/192 tests / MVP lengkap: 5 mode scan, 7 agen, 18 aturan (4 level analisis: low/medium/high/max), 192/192 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 30 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006) + live rules, 4 analysis levels (low/medium/high/max), 276/276 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 30 aturan statis + rule live, 4 level analisis, 276/276 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
