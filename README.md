@@ -95,8 +95,8 @@ POST /scans ──► asyncio queue ──► Orchestrator
 
 | Level | Files | Active Rules | Extra Analysis |
 |-------|-------|--------------|----------------|
-| **low** | ≤100 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Quick CI/pre-commit check / cek CI cepat |
-| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Balanced coverage / cakupan seimbang |
+| **low** | ≤100 | CY001–CY010, XS001–XS008, SQLI001–SQLI006, DES001–RND002 | Quick CI/pre-commit check / cek CI cepat |
+| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008, SQLI001–SQLI006, DES001–RND002 | Balanced coverage / cakupan seimbang |
 | **high** | ≤5000 | + **CY011, CY012, XS009, XS010** | Data flow tracking |
 | **max** | unlimited | + **CY013, XS011** | Cross-file analysis + call graph |
 
@@ -118,7 +118,7 @@ cyense scan program --level high --i-have-permission --source-type sample
 cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ```
 
-**30 static detection rules / 30 aturan deteksi statis** (13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`) plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`:
+**66 static detection rules / 66 aturan deteksi statis** — 13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`, **36 CWE-broad security** `DES001–RND002` (deserialization, crypto, passwords, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy, least-privilege) — plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`:
 
 | Rule | Pattern / Pola | Language | Severity |
 |------|----------------|----------|----------|
@@ -148,6 +148,44 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 **EN — A third rule class — SQL Injection (`SQLI001`–`SQLI006`)** — runs in the same static engine (program & github): `cursor.execute()`/`executemany()` with f-string/`%`/`format()` (Python), Django `raw()`/`extra()` and SQLAlchemy `text()` with interpolation, JS `query()`/`execute()` with template-literal/concatenation, PHP `mysqli_query`/`pg_query`/`PDO::query` with superglobals or concatenation, and raw f-string SQL (SQLI006). Parameterized queries (`?`/`%s` with separate values) are **not** flagged. In website mode, live SQLi probing sends payloads and detects **error-based** (DB error signatures: MySQL/PostgreSQL/Oracle/SQLite/MSSQL/DB2) and **blind boolean-differential** (`' AND 1=1` vs `' AND 1=2`) — rule `SQLI-LIVE`.
 
 **ID — Kelas aturan ketiga — SQL Injection (`SQLI001`–`SQLI006`)** — berjalan di mesin statis yang sama (program & github): `cursor.execute()`/`executemany()` dengan f-string/`%`/`format()` (Python), Django `raw()`/`extra()` dan SQLAlchemy `text()` dengan interpolasi, JS `query()`/`execute()` dengan template-literal/concatenation, PHP `mysqli_query`/`pg_query`/`PDO::query` dengan superglobal atau concatenation, dan f-string SQL mentah (SQLI006). Query terparameterisasi (`?`/`%s` dengan nilai terpisah) **tidak** dilaporkan. Pada mode website, probing SQLi live mengirim payload dan mendeteksi **error-based** (signature error DB: MySQL/PostgreSQL/Oracle/SQLite/MSSQL/DB2) serta **blind boolean-differential** (`' AND 1=1` vs `' AND 1=2`) — rule `SQLI-LIVE`.
+
+**EN — A fourth rule class — CWE-broad security (`DES001`–`RND002`)** — maps the wide CWE/OWASP vulnerability taxonomy onto web source code (Python/JS/PHP) as deterministic regex candidates, each tagged with its CWE id (so SARIF/CVSS/coverage stay consistent):
+
+| Vulnerability / Kerentanan | Rules / Aturan | CWE |
+|------------------------------|----------------|-----|
+| Insecure Deserialization (pickle/yaml.load/marshal/shelve, PHP `unserialize`) | DES001, DES002 | CWE-502 |
+| Broken/risky crypto (MD5/SHA1, DES/ECB/RC4), hardcoded key | CRYPTO001–003 | CWE-327/321 |
+| Insecure randomness, insufficient entropy, PRNG seed | RND001–002 | CWE-338/335 |
+| Hard-coded password, plaintext storage, empty-string password, credentials in URL | PW001–004 | CWE-259/256/287/598 |
+| Insecure transport (HTTP), disabled TLS verification | TRAN001–002 | CWE-319/295 |
+| Unrestricted file upload, path traversal, insecure temp file | FILE001, PATH001, TMP001 | CWE-434/22/377 |
+| CRLF injection, CSV formula injection, session overloading/fixation | CRLF001, CSV001, SESS001 | CWE-93/1236/384 |
+| Process control / OS command injection, unsafe reflection, code injection | PROC001, REFL001, DATA001 | CWE-78/470/94 |
+| XML External Entity (XXE), missing XML validation | XXE001, XML001 | CWE-611/20 |
+| Over-broad catch, missing error handling, unchecked error condition | ERR001–003 | CWE-396/390/391 |
+| Null dereference, race condition (TOCTOU), ReDoS regex | NULL001, RACE001, REGEX001 | CWE-476/362/1333 |
+| Obsolete methods, sensitive logging, PII exposure, least-privilege, unchecked return | OBS001, LOG001, PRIV001, LEAST001, BIZ001 | CWE-477/532/359/250/253 |
+
+**ID — Kelas aturan keempat — security CWE (`DES001`–`RND002`)** — memetakan taksonomi CWE/OWASP luas ke source code web (Python/JS/PHP) sebagai kandidat regex deterministik, masing-masing bertag CWE id (agar SARIF/CVSS/coverage konsisten):
+
+| Kerentanan / Vulnerability | Aturan / Rules | CWE |
+|------------------------------|----------------|-----|
+| Insecure Deserialization (pickle/yaml.load/marshal/shelve, PHP `unserialize`) | DES001, DES002 | CWE-502 |
+| Crypto rusak/berisiko (MD5/SHA1, DES/ECB/RC4), hardcoded key | CRYPTO001–003 | CWE-327/321 |
+| Randomness tidak aman, entropi kurang, seed PRNG | RND001–002 | CWE-338/335 |
+| Password hardcoded, penyimpanan plaintext, password kosong, kredensial di URL | PW001–004 | CWE-259/256/287/598 |
+| Transport tidak aman (HTTP), verifikasi TLS dimatikan | TRAN001–002 | CWE-319/295 |
+| Upload file tidak dibatasi, path traversal, temp file tidak aman | FILE001, PATH001, TMP001 | CWE-434/22/377 |
+| Injeksi CRLF, injeksi formula CSV, session overloading/fixation | CRLF001, CSV001, SESS001 | CWE-93/1236/384 |
+| Process control / injeksi perintah OS, unsafe reflection, code injection | PROC001, REFL001, DATA001 | CWE-78/470/94 |
+| XML External Entity (XXE), validasi XML hilang | XXE001, XML001 | CWE-611/20 |
+| Catch terlalu luas, error handling hilang, kondisi error tidak dicek | ERR001–003 | CWE-396/390/391 |
+| Null dereference, race condition (TOCTOU), regex ReDoS | NULL001, RACE001, REGEX001 | CWE-476/362/1333 |
+| Metode usang, logging sensitif, eksposur PII, least-privilege, return tidak dicek | OBS001, LOG001, PRIV001, LEAST001, BIZ001 | CWE-477/532/359/250/253 |
+
+**EN — Out of scope (not detectable by static web-source analysis):** native memory-safety (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call from a signal handler, Full-trust CLR verification issue, insecure compiler optimization), OS/portability flaws, covert storage channels, Heartbleed (server-level), and the purely-process ones (vulnerability scanning tools, vulnerability template). These are listed in the reference taxonomy but are not half-detected here.
+
+**ID — Di luar cakupan (tidak terdeteksi oleh analisis statis web-source):** memory-safety native (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call dari signal handler, Full-trust CLR verification issue, insecure compiler optimization), flaw OS/portability, covert storage channels, Heartbleed (level server), dan yang murni proses (vulnerability scanning tools, vulnerability template). Ini tercantum di taksonomi referensi tetapi tidak di-deteksi-parsial di sini.
 
 ---
 
@@ -184,7 +222,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-276 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
+281 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
 ruff check: All checks passed (0 errors)
 ```
 
@@ -263,7 +301,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 276 tests via pytest
+make test       # 281 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -362,14 +400,14 @@ cyense/
 │   │   │   ├── engines/               ← link, program, github, website, domain, live_xss, live_sqli, diff_scope, scan_levels
 │   │   │   ├── cli/                   ← typer CLI + web viewer + renderer + theme
 │   │   │   ├── interface/             ← Svelte web UI frontend + static viewer assets
-│   │   │   ├── program/               ← CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 rules + sample fixture
+│   │   │   ├── program/               ← CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 + DES001-RND002 rules + sample fixture
 │   │   │   ├── remediation/           ← fixer, strategies, applier, store
 │   │   │   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
 │   │   │   ├── services/              ← multi_scan, scan_resume, openapi_parser
 │   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
 │   │   │   └── worker.py              ← asyncio worker (drains scan queue)
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 276 tests + lab app fixture
+│   │   ├── tests/                     ← 281 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
@@ -418,11 +456,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 276 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 281 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 30 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006) + live rules, 4 analysis levels (low/medium/high/max), 276/276 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 30 aturan statis + rule live, 4 level analisis, 276/276 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 66 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 281/281 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 66 aturan statis + rule live, 4 level analisis, 281/281 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless

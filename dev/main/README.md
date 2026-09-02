@@ -326,8 +326,8 @@ make cli ARGS="scan program --i-have-permission --level max"     # + cross-file 
 
 | Level | Files | Rules | Extra |
 |-------|-------|-------|-------|
-| **low** | ≤100 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Quick CI/pre-commit check |
-| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008, SQLI001–SQLI006 | Balanced coverage |
+| **low** | ≤100 | CY001–CY010, XS001–XS008, SQLI001–SQLI006, DES001–RND002 | Quick CI/pre-commit check |
+| **medium** (default) | ≤1000 | CY001–CY010, XS001–XS008, SQLI001–SQLI006, DES001–RND002 | Balanced coverage |
 | **high** | ≤5000 | + CY011, CY012, XS009, XS010 | Data flow tracking |
 | **max** | unlimited | + CY013, XS011 | Cross-file + call graph |
 
@@ -338,6 +338,8 @@ make cli ARGS="scan program --i-have-permission --level max"     # + cross-file 
 - **XS009** (high, JS): `document.cookie` leaked to external origin
 - **XS010** (high, Python): `eval/exec/compile` with user-controlled input
 - **XS011** (max, Python): Cross-file XSS via imported template renderers
+
+**CWE-broad security rules (all levels) / rule security CWE (semua level):** `app/program/security_rules.py` adds 36 rule IDs (`DES001`–`RND002`) covering deserialization, crypto, password, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy and least-privilege — each tagged with its CWE id (`GET /api/v1/rules` → `security`).
 
 ### 5️⃣ View Results / Lihat Hasil
 
@@ -481,14 +483,14 @@ dev/main/
 │   ├── engines/               ← link, program, github, website, domain, live_xss, live_sqli, diff_scope, scan_levels
 │   ├── cli/                   ← typer CLI + web viewer + renderer + theme
 │   ├── interface/             ← Svelte web UI frontend + static viewer assets
-│   ├── program/               ← rules CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 + sample fixture
+│   ├── program/               ← rules CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 + DES001-RND002 + sample fixture
 │   ├── remediation/           ← fixer, strategies, applier, store
 │   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
 │   ├── services/              ← multi_scan, scan_resume, openapi_parser
 │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, etc.
 │   └── worker.py              ← asyncio worker (drains scan queue)
 ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-├── tests/                     ← 276 tests + lab app fixture
+├── tests/                     ← 281 tests + lab app fixture
 ├── wordlists/ids.txt
 ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt

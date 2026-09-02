@@ -29,7 +29,7 @@ SCAN_MODES: dict[str, ScanModeProfile] = {
     ),
     "standard": ScanModeProfile(
         name="standard",
-        scan_types=("idor", "xss", "sqli"),  # default: all three
+        scan_types=("idor", "xss", "sqli", "sec"),  # default: all rule classes
         default_scope_mode="auto",
         max_files=3000,
         description="Routine testing; balanced speed vs coverage",
@@ -37,7 +37,7 @@ SCAN_MODES: dict[str, ScanModeProfile] = {
     ),
     "deep": ScanModeProfile(
         name="deep",
-        scan_types=("idor", "xss", "sqli"),
+        scan_types=("idor", "xss", "sqli", "sec"),
         default_scope_mode="full",  # disable diff-scope (slower)
         max_files=-1,  # use global cap
         description="Thorough review for release audits",

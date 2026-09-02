@@ -99,6 +99,25 @@ def _cve_rule(rule: str, title: str) -> dict[str, object]:
     }
 
 
+def _sec_rule(rule: str, title: str, cwe: str, severity: str) -> dict[str, object]:
+    """Metadata card for a CWE-broad security rule (app/program/security_rules.py)."""
+    return {
+        "rule": rule,
+        "severity": severity,
+        "lang": "all",
+        "cwe": cwe,
+        "cvss_score": 0.0,
+        "cvss_vector": "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+        "title": title,
+    }
+
+
+def _security_catalog() -> list[dict[str, object]]:
+    """Lazy CWE security rule list, sourced from the static rule module."""
+    from app.program import security_rules
+    return security_rules.security_rule_catalog()
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -173,6 +192,10 @@ async def rules() -> dict[str, object]:
             _sqli_rule("SQLI004", "js", "query()/execute() with concatenated SQL"),
             _sqli_rule("SQLI005", "php", "query built with superglobal/concatenation"),
             _sqli_rule("SQLI006", "all", "raw SQL string interpolating a variable"),
+        ],
+        "security": [
+            _sec_rule(s["rule"], s["title"], s["cwe"], s["severity"])
+            for s in _security_catalog()
         ],
         "framework_detection": [
             _detect_rule("DETECT-SERVER-NGINX", "HTTP header: nginx"),

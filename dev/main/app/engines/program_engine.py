@@ -11,12 +11,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.program import xss_rules
+from app.program import security_rules, xss_rules
 from app.program.python_rules import analyze_python_file
 from app.program.regex_rules import analyze_js_file, analyze_php_file
 from app.program.sqli_rules import analyze_js_sqli, analyze_php_sqli, analyze_python_sqli
 
-DEFAULT_SCAN_TYPES = ("idor", "xss", "sqli")
+DEFAULT_SCAN_TYPES = ("idor", "xss", "sqli", "sec")
 
 # File suffixes supported per language (and for the "auto" aggregator)
 SUFFIX_MAP = {"python": {".py"}, "js": {".js", ".ts"}, "php": {".php"}}
@@ -81,6 +81,7 @@ def run_program_scan(
     run_idor = "idor" in scan_types
     run_xss = "xss" in scan_types
     run_sqli = "sqli" in scan_types
+    run_sec = "sec" in scan_types
 
     # Level-aware file cap: explicit max_files wins, otherwise use profile.
     if max_files is None:
@@ -144,6 +145,8 @@ def run_program_scan(
                 )
             if run_sqli:
                 findings.extend(analyze_python_sqli(path, source, scan_id))
+            if run_sec:
+                findings.extend(security_rules.analyze_python_file(path, source, scan_id))
         elif resolved_lang == "js":
             if run_idor:
                 findings.extend(analyze_js_file(path, source, scan_id))
@@ -154,6 +157,8 @@ def run_program_scan(
                 )
             if run_sqli:
                 findings.extend(analyze_js_sqli(path, source, scan_id))
+            if run_sec:
+                findings.extend(security_rules.analyze_js_file(path, source, scan_id))
         elif resolved_lang == "php":
             if run_idor:
                 findings.extend(analyze_php_file(path, source, scan_id))
@@ -164,13 +169,15 @@ def run_program_scan(
                 )
             if run_sqli:
                 findings.extend(analyze_php_sqli(path, source, scan_id))
+            if run_sec:
+                findings.extend(security_rules.analyze_php_file(path, source, scan_id))
 
     return {
         "files_scanned": files_scanned,
         "findings": findings,
         "files_read_errors": files_read_errors,  # for coverage.complete flag
         "level": level_profile.name,
-        "level_rules_active": _active_rule_ids(level_profile, run_idor, run_xss, run_sqli),
+        "level_rules_active": _active_rule_ids(level_profile, run_idor, run_xss, run_sqli, run_sec),
     }
 
 
@@ -180,6 +187,7 @@ def run_program_scan(
 
 def _active_rule_ids(
     level_profile, run_idor: bool, run_xss: bool, run_sqli: bool = True,
+    run_sec: bool = True,
 ) -> list[str]:
     """Return the rule IDs that will run at this level (for report metadata)."""
     base_idor = ["CY001", "CY002", "CY003", "CY004", "CY005", "CY006",
@@ -201,6 +209,10 @@ def _active_rule_ids(
     if run_sqli:
         # SQLi rules run at every level (cheap, deterministic patterns).
         all_rules.extend(base_sqli)
+    if run_sec:
+        # CWE-broad security rules run at every level (cheap, deterministic).
+        from app.program import security_rules
+        all_rules.extend(spec["rule"] for spec in security_rules.security_rule_catalog())
 
     from app.engines.scan_levels import rules_for_level
     return rules_for_level(all_rules, level_profile.name)
