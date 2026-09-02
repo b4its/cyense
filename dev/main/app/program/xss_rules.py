@@ -6,6 +6,7 @@ Works purely on source text — repo code is never executed.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -114,8 +115,14 @@ def _finding(
     title: str,
     remediation: str,
 ) -> Finding:
+    # Stable path discriminator for uniqueness — see python_rules.py note.
+    path_disc = hashlib.md5(str(path).encode("utf-8")).hexdigest()[:6]
+    finding_id = (
+        f"{scan_id}-{rule_id}-{line}-{path_disc}" if line
+        else f"{scan_id}-{rule_id}-{path_disc}"
+    )
     return Finding(
-        finding_id=f"{scan_id}-{rule_id}-{line}",
+        finding_id=finding_id,
         rule=rule_id,
         severity=severity,
         confidence=0.6,

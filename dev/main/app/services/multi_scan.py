@@ -55,7 +55,11 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
         # Target-level values win; config fills the rest (no duplicate kwargs).
         github_kwargs: dict[str, Any] = {
             k: v for k, v in config.items()
-            if k in ("subdir", "ref", "lang", "github_token", "force", "i_have_permission")
+            if k in (
+                "subdir", "ref", "lang", "github_token", "force",
+                "instruction", "diff_base", "scan_mode", "scope_mode",
+                "level", "resume_from", "i_have_permission",
+            )
         }
         # Pop config values FIRST (short-circuit `or` would skip the pop).
         cfg_ref = github_kwargs.pop("ref", None)
@@ -72,7 +76,10 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
 
         program_kwargs = {
             k: v for k, v in config.items()
-            if k in ("lang", "source_type", "i_have_permission")
+            if k in (
+                "lang", "source_type", "instruction", "scan_mode",
+                "scope_mode", "level", "resume_from", "i_have_permission",
+            )
         }
         cfg_lang = program_kwargs.pop("lang", "python")
         # A "local:/path/to/project" target carries its source directory in
@@ -92,6 +99,7 @@ def build_request(target: dict[str, Any], common_config: dict[str, Any]) -> Scan
             k: v for k, v in config.items()
             if k in (
                 "headers", "cookies", "baseline_id", "probe_ids", "method",
+                "instruction", "scan_mode", "scope_mode", "resume_from",
                 "i_have_permission",
             )
         }

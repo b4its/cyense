@@ -92,6 +92,7 @@ class WebsiteEngine:
         rate_limit: int = 10,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
+        skip_port_scan: bool = False,
     ) -> dict[str, Any]:
         started = time.monotonic()
         headers = dict(headers or {})
@@ -140,20 +141,21 @@ class WebsiteEngine:
         # ------------------------------------------------------------------
         port_findings: list[dict[str, Any]] = []
         open_ports_data: list[dict[str, Any]] = []
-        try:
-            target_host = host_from_url(url)
-            port_scan = await scan_ports(
-                target_host,
-                timeout=float(getattr(self.settings, "port_scan_timeout", 1.5)),
-                max_concurrency=int(getattr(self.settings, "port_scan_concurrency", 50)),
-                banner=True,
-            )
-            open_ports_data = port_scan.open_ports
-            port_findings = self._port_scan_findings(port_scan, url)
-            for k, f in enumerate(port_findings, start=1):
-                f["finding_id"] = f"{self.scan_id}-PPORT{k:03d}"
-        except Exception as exc:  # noqa: BLE001 — port scan must never fail scan
-            log.warning("port scan failed for %s: %s", url, exc)
+        if not skip_port_scan:
+            try:
+                target_host = host_from_url(url)
+                port_scan = await scan_ports(
+                    target_host,
+                    timeout=float(getattr(self.settings, "port_scan_timeout", 1.5)),
+                    max_concurrency=int(getattr(self.settings, "port_scan_concurrency", 50)),
+                    banner=True,
+                )
+                open_ports_data = port_scan.open_ports
+                port_findings = self._port_scan_findings(port_scan, url)
+                for k, f in enumerate(port_findings, start=1):
+                    f["finding_id"] = f"{self.scan_id}-PPORT{k:03d}"
+            except Exception as exc:  # noqa: BLE001 — port scan must never fail scan
+                log.warning("port scan failed for %s: %s", url, exc)
 
         # ------------------------------------------------------------------
         # Stage 2c: CVE lookup — match detected tech + open ports to known CVEs,
@@ -993,7 +995,7 @@ class WebsiteEngine:
                 # Combine the crawled/JS/wayback corpora into extra_paths —
                 # normalize through extract_paths_from_urls with the target
                 # hostname so off-domain wayback noise never pollutes routes.
-                from urllib.parse import urlparse as _urlparse
+                target_host = _up(url).hostname or ""
 
                 from app.utils.route_discovery import extract_paths_from_urls
 
@@ -1004,7 +1006,6 @@ class WebsiteEngine:
                     corpus_urls.append(u)
                 for wb in wb_urls[:30]:
                     corpus_urls.append(wb)
-                target_host = _urlparse(url).hostname or ""
                 extra_paths = extract_paths_from_urls(corpus_urls, target_host)
 
                 route_result = await discover_routes(
@@ -1069,15 +1070,14 @@ class WebsiteEngine:
         # emails, IPs, technology fingerprints from headers/body).
         await self._notify("harvest")
         harvest_findings: list[dict[str, Any]] = []
-        host = _urlparse(url).hostname or ""
+        host = _up(url).hostname or ""
         try:
             from app.utils.discovery import (
-                harvest_subdomains_crtsh,
-                harvest_subdomains_wayback,
                 harvest_emails,
                 harvest_ips,
-                harvest_tech_from_headers,
+                harvest_subdomains_crtsh,
                 harvest_tech_fingerprints,
+                harvest_tech_from_headers,
             )
 
             # 15a. Subdomain enumeration via crt.sh.
@@ -1121,7 +1121,7 @@ class WebsiteEngine:
             subs_wayback = set()
             for u in wb_urls:
                 try:
-                    h = _urlparse(u).hostname or ""
+                    h = _up(u).hostname or ""
                     if h.endswith("." + host) and h != host:
                         subs_wayback.add(h)
                 except ValueError:
@@ -1285,11 +1285,11 @@ class WebsiteEngine:
         nikto_findings: list[dict[str, Any]] = []
         try:
             from app.utils.discovery import (
-                nikto_check_server_headers,
-                nikto_check_outdated_software,
-                nikto_check_sql_errors,
                 nikto_check_directory_listing,
                 nikto_check_info_disclosure,
+                nikto_check_outdated_software,
+                nikto_check_server_headers,
+                nikto_check_sql_errors,
             )
 
             # 16a. Header checks on all crawled pages.
@@ -1342,11 +1342,10 @@ class WebsiteEngine:
         try:
             from app.utils.discovery import (
                 nuclei_check_cors_misconfig,
-                nuclei_check_xss_protection,
-                nuclei_check_security_headers,
+                nuclei_check_crlf_injection,
                 nuclei_check_sensitive_files,
                 nuclei_check_template_matches,
-                nuclei_check_crlf_injection,
+                nuclei_check_xss_protection,
             )
 
             for page in pages:

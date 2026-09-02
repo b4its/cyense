@@ -713,9 +713,9 @@ def _version_in_range(version: str, low: str, high: str) -> bool:
         return tuple(int(p) for p in v.split(".")[:4])
     try:
         v = _parse(version)
-        l = _parse(low)
-        h = _parse(high)
-        return l <= v <= h
+        lo = _parse(low)
+        hi = _parse(high)
+        return lo <= v <= hi
     except (ValueError, IndexError):
         return True
 

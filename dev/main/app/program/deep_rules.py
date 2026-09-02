@@ -23,6 +23,7 @@ callers may wrap them in ``Finding`` if they need Pydantic validation.
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -51,7 +52,12 @@ def _finding(
     cwe: str | None = None,
     confidence: float = 0.80,
 ) -> dict[str, Any]:
-    finding_id = f"{scan_id}-{rule}-{line}" if (scan_id and line) else f"{scan_id}-{rule}"
+    path_disc = hashlib.md5(str(path).encode("utf-8")).hexdigest()[:6]
+    finding_id = (
+        f"{scan_id}-{rule}-{line}-{path_disc}" if (scan_id and line)
+        else f"{scan_id}-{rule}-{path_disc}" if scan_id
+        else f"{rule}-{path_disc}"
+    )
     return {
         "finding_id": finding_id,
         "rule": rule,

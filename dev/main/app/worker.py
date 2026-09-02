@@ -184,6 +184,7 @@ class ScanWorker:
                     rate_limit=int(request_dict.get("rate_limit", 10)),
                     headers=request_dict.get("headers") or {},
                     cookies=request_dict.get("cookies") or {},
+                    skip_port_scan=bool(request_dict.get("skip_port_scan", False)),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -512,6 +513,7 @@ async def run_website_scan(
     rate_limit: int = 10,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
+    skip_port_scan: bool = False,
     brain: Any = None,
     reports_dir: str = "",
     settings: Any = None,
@@ -534,4 +536,5 @@ async def run_website_scan(
         rate_limit=rate_limit,
         headers=headers or {},
         cookies=cookies or {},
+        skip_port_scan=skip_port_scan,
     )

@@ -683,6 +683,7 @@ def cli_cve(
         "max_depth": 1,               # fokus CVE → cukup halaman awal + tautan
         "max_pages": max_pages,
         "rate_limit": rate_limit,
+        "skip_port_scan": no_port_scan,
         "i_have_permission": True,
     }
     if not online:
@@ -952,6 +953,7 @@ async def _routes_flow(payload: dict) -> None:
         raise typer.Exit(3) from None
 
     findings = report.get("findings", [])
+    summary = report.get("summary", {})
     routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
     sensitive_f = [f for f in findings if f.get("rule") == "API-ROUTE"]
 
@@ -1046,7 +1048,8 @@ async def _cve_scan_flow(
     cve_findings = [f for f in findings if f.get("rule") == "CVE-MATCH"]
     tech_findings = [f for f in findings if f.get("rule", "").startswith("DETECT-")]
     port_findings = [f for f in findings if f.get("rule") == "PORT-OPEN"]
-    skip_rules = {"CVE-MATCH"} | {r for r in tech_findings} | {r for r in port_findings}
+    tech_rules = {f.get("rule") for f in tech_findings} | {f.get("rule") for f in port_findings}
+    skip_rules = {"CVE-MATCH"} | tech_rules
     other = [f for f in findings if f.get("rule") not in skip_rules]
 
     # Teknologi terdeteksi
@@ -1558,6 +1561,11 @@ def scan_multi(
                 payload["url"] = target["url"]
             else:
                 payload["mode"] = "program"
+                # A "local:/path" target carries its source directory — forward
+                # it so the scan analyzes that tree instead of the default
+                # workspace_dir (was previously dropped here).
+                if target.get("path"):
+                    payload["source_dir"] = target["path"]
 
             try:
                 async with open_client(_state.api_url, timeout=30) as c:

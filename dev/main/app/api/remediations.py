@@ -176,10 +176,19 @@ async def apply_fixes(
     applied: list[str] = []
     failed: list[str] = []
 
-    # Source root determination
-    source_root = Path(settings.workspace_dir)
-    if not source_root.exists():
-        source_root = Path(settings.reports_dir).parent / "src"
+    # Source root determination. A github scan extracts its tree into
+    # reports/<scan_id>/src — that is the correct same-origin root for its
+    # proposals. Otherwise fall back to the workspace volume (mounted program
+    # mode), and finally to CWD rather than a hardcoded "./src" that never
+    # matches any real scan source.
+    scan_id = session_data.get("session", {}).get("scan_id", "")
+    scan_src = Path(settings.reports_dir) / scan_id / "src" if scan_id else None
+    if scan_src is not None and scan_src.exists():
+        source_root = scan_src
+    else:
+        source_root = Path(settings.workspace_dir)
+        if not source_root.exists():
+            source_root = Path.cwd()
 
     for fix_id in body.fix_ids:
         proposal = session_store.get_proposal(session_id, fix_id)

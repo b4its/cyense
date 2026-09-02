@@ -36,7 +36,7 @@ def _xss_rule(
         "rule": rule,
         "severity": severity,
         "lang": lang,
-        "cwe": "CWE-79" if rule != "XS004" else "CWE-95",
+        "cwe": "CWE-95" if rule in ("XS004", "XS010") else "CWE-79",
         "cvss_score": score,
         "cvss_vector": vector,
         "title": title,

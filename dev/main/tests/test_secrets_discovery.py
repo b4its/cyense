@@ -12,22 +12,21 @@ from app.utils.discovery import (
     COMMON_PARAM_NAMES,
     SENSITIVE_PATHS,
     extract_js_urls,
-    wayback_cdx_url,
     harvest_emails,
     harvest_ips,
-    harvest_tech_from_headers,
     harvest_tech_fingerprints,
-    nikto_check_server_headers,
-    nikto_check_outdated_software,
-    nikto_check_sql_errors,
+    harvest_tech_from_headers,
     nikto_check_directory_listing,
     nikto_check_info_disclosure,
+    nikto_check_outdated_software,
+    nikto_check_server_headers,
+    nikto_check_sql_errors,
     nuclei_check_cors_misconfig,
-    nuclei_check_xss_protection,
-    nuclei_check_security_headers,
+    nuclei_check_crlf_injection,
     nuclei_check_sensitive_files,
     nuclei_check_template_matches,
-    nuclei_check_crlf_injection,
+    nuclei_check_xss_protection,
+    wayback_cdx_url,
 )
 from app.utils.secrets import scan_secrets
 
@@ -404,9 +403,10 @@ def test_harvest_tech_fingerprints_empty() -> None:
 
 def test_harvest_subdomains_crtsh_no_secret() -> None:
     """Function accepts domain and returns list; no network crash."""
-    from app.utils.discovery import harvest_subdomains_crtsh
     # crt.sh may be unreachable — must not raise.
     import asyncio
+
+    from app.utils.discovery import harvest_subdomains_crtsh
     try:
         result = asyncio.get_event_loop().run_until_complete(
             harvest_subdomains_crtsh("example.com")
@@ -459,7 +459,10 @@ def test_nikto_check_server_headers_clean() -> None:
 
 
 def test_nikto_check_sql_errors() -> None:
-    body = "You have an error in your SQL syntax; check the manual near 'WHERE id=1' at line 1 — MySQL error"
+    body = (
+        "You have an error in your SQL syntax; check the manual near "
+        "'WHERE id=1' at line 1 — MySQL error"
+    )
     findings = nikto_check_sql_errors(body)
     assert len(findings) > 0
     assert all(f["rule"] == "NIKTO-SQL-ERROR" for f in findings)

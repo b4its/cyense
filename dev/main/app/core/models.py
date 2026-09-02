@@ -165,6 +165,9 @@ class WebsiteScanRequest(BaseModel):
     rate_limit: int = Field(default=10, ge=1, le=100)
     headers: dict[str, str] = {}
     cookies: dict[str, str] = {}
+    # Skip the open-port scan stage (nmap-style TCP connect) when the target
+    # does not want the extra load; wired to the CLI --no-port-scan option.
+    skip_port_scan: bool = False
     i_have_permission: bool = False
     instruction: str | None = None
     scan_mode: str = "standard"

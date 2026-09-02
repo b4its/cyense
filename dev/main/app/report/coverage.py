@@ -42,8 +42,13 @@ def build_coverage_document(
     )
 
     # Machine-observed facts only (no LLM claims)
+    # rules_executed is the set of rules the engine actually ran. Program/github
+    # scans record this in meta.level_rules_active; otherwise fall back to the
+    # rules that produced findings so the two fields stay a superset/subset pair.
+    _executed = set(meta.get("level_rules_active") or [])
+    _executed |= {f.get("rule") for f in findings}
     machine_observed = {
-        "rules_executed": sorted({f.get("rule") for f in findings}),
+        "rules_executed": sorted(_executed),
         "rules_with_findings": sorted(set(f.get("rule") for f in findings)),
         "files_scanned": summary.get("files_scanned") or summary.get("files_analyzed", 0),
         "findings_total": summary.get("total", len(findings)),
