@@ -209,9 +209,13 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 - **Follina (CVE-2022-30190)** → content signature atas file Office/RTF yang dilayani (`FOLLINA`).
 - **Covert storage channel, portability flaw, vulnerability-scanning-tools, vulnerability template** → concern OS/tool-meta; didokumentasikan, bukan di-deteksi-parsial.
 
-**EN — Live security checks (website/link targets / `app/utils/live_checks.py`):** beyond source analysis, the website & domain engines run response-passive checks over the crawled pages — verbose/unhandled error disclosure (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), cookie flag weaknesses (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), insecure transport + missing HSTS (`INSECURE-TRANSPORT`, `HSTS-MISSING`), dangerous methods (`TRACE-ENABLED`) and tech disclosure (`INFO-X-POWERED-BY`), plus server-level fingerprints `NIKTO-HEARTBLEED` (OpenSSL 1.0.1), live TLS-cert expiry, platform exposure and Follina signature.
+**EN — Live security checks (website/link targets / `app/utils/live_checks.py`):** beyond source analysis, the website & domain engines run response-passive checks over the crawled pages — verbose/unhandled error disclosure (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), cookie flag weaknesses (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), insecure transport + missing HSTS (`INSECURE-TRANSPORT`, `HSTS-MISSING`), dangerous methods (`TRACE-ENABLED`), tech disclosure (`INFO-X-POWERED-BY`), OWASP attack-surface classification (`INFO-QUERY-SECRET`, `CSV-DOWNLOAD`, `UPLOAD-FORM`, `DESERIALIZE-ENDPOINT`, `XML-ENDPOINT`), plus server-level fingerprints `NIKTO-HEARTBLEED` (OpenSSL 1.0.1), live TLS-cert expiry, platform exposure and the Follina signature.
 
-**ID — Cek keamanan live (target website/link / `app/utils/live_checks.py`):** selain analisis source, engine website & domain menjalankan cek response-passive pada halaman yang di-crawl — disclosure error verbose/unhandled (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), kelemahan flag cookie (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), transport tidak aman + HSTS hilang (`INSECURE-TRANSPORT`, `HSTS-MISSING`), metode berbahaya (`TRACE-ENABLED`) dan disclosure teknologi (`INFO-X-POWERED-BY`), plus fingerprint server-level `NIKTO-HEARTBLEED` (OpenSSL 1.0.1), kedaluwarsa sertifikat TLS live, platform-exposure dan signature Follina.
+**EN — Active injection probing (website/link):** the engine also sends *benign, read-only* injection markers (`${7*7}`, `{{7*7}}`, `<%= 7*7 %>`) to discovered query parameters and reports `INJ-LIVE-SSTI` when the expression is evaluated (marker `49` leaks) and `INJ-LIVE-CRLF` on a reflected newline — covering Expression-Language / template injection and CRLF/response-splitting on live targets.
+
+**ID — Cek keamanan live (target website/link / `app/utils/live_checks.py`):** selain analisis source, engine website & domain menjalankan cek response-passive pada halaman yang di-crawl — disclosure error verbose/unhandled (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), kelemahan flag cookie (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), transport tidak aman + HSTS hilang (`INSECURE-TRANSPORT`, `HSTS-MISSING`), metode berbahaya (`TRACE-ENABLED`), disclosure teknologi (`INFO-X-POWERED-BY`), klasifikasi attack-surface OWASP (`INFO-QUERY-SECRET`, `CSV-DOWNLOAD`, `UPLOAD-FORM`, `DESERIALIZE-ENDPOINT`, `XML-ENDPOINT`), plus fingerprint server-level `NIKTO-HEARTBLEED` (OpenSSL 1.0.1), kedaluwarsa sertifikat TLS live, platform-exposure dan signature Follina.
+
+**ID — Probing injeksi aktif (website/link):** engine juga mengirim marker injeksi *benign & read-only* (`${7*7}`, `{{7*7}}`, `<%= 7*7 %>`) ke parameter query yang ditemukan dan melaporkan `INJ-LIVE-SSTI` bila expression dievaluasi (marker `49` bocor) serta `INJ-LIVE-CRLF` bila newline terefleksi — mencakup Expression-Language/template injection dan CRLF/response-splitting pada target live.
 
 ---
 
@@ -248,7 +252,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-294 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
+297 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
 ruff check: All checks passed (0 errors)
 ```
 
@@ -327,7 +331,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 294 tests via pytest
+make test       # 297 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -433,7 +437,7 @@ cyense/
 │   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, live_checks, etc.
 │   │   │   └── worker.py              ← asyncio worker (drains scan queue)
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 294 tests + lab app fixture
+│   │   ├── tests/                     ← 297 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
@@ -482,11 +486,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 294 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 297 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 294/294 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 294/294 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 297/297 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 294/294 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless

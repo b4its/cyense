@@ -341,6 +341,8 @@ make cli ARGS="scan program --i-have-permission --level max"     # + cross-file 
 
 **CWE-broad security rules (all levels) / rule security CWE (semua level):** `app/program/security_rules.py` adds 43 rule IDs (`DES001`–`RND002`) covering deserialization, crypto, password, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, expression-language (EL/SpEL/OGNL/SSTI), error handling, races, regex, obsolete, numeric precision, session-id, authorization, third-party domain, resource release, return-in-finally, logging/privacy and least-privilege — each tagged with its CWE id (`GET /api/v1/rules` → `security`). Live server-level checks (e.g. Heartbleed) live under `NIKTO-*`.
 
+**Live HTTP checks (website/link) / Cek HTTP live:** `app/utils/live_checks.py` runs response-passive checks over crawled pages (verbose errors, cookie flags, transport/HSTS, TRACE, tech disclosure), OWASP attack-surface classification (query secrets, CSV download, upload form, deserialization/content-type, XML/SOAP), platform exposure (.NET/Java/PHP), TLS-cert expiry & Follina signature; plus an active benign injection probe (`INJ-LIVE-SSTI`/`INJ-LIVE-CRLF`) — see `/rules` → `live_security`.
+
 ### 5️⃣ View Results / Lihat Hasil
 
 ```bash
@@ -490,7 +492,7 @@ dev/main/
 │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, live_checks, etc.
 │   └── worker.py              ← asyncio worker (drains scan queue)
 ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-├── tests/                     ← 294 tests + lab app fixture
+├── tests/                     ← 297 tests + lab app fixture
 ├── wordlists/ids.txt
 ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt

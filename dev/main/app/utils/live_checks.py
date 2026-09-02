@@ -218,6 +218,190 @@ def check_x_powered_by(headers: dict[str, str]) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# Response-passive surface checks — turn crawled pages into the exact attack
+# surfaces of the vulnerability taxonomy. These need no new requests.
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_QUERY_KEYS = re.compile(
+    r"(?i)(?:\b|_)(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|"
+    r"authz?[_-]?token|token|key|otp|session|credential|jwt|auth)\b"
+)
+
+
+def check_sensitive_query_params(url: str) -> list[dict[str, Any]]:
+    """Sensitive data passed in the URL query string (OWASP Information
+    exposure through query strings, CWE-598)."""
+    parsed = urlparse(url or "")
+    if parsed.scheme not in ("http", "https"):
+        return []
+    findings: list[dict[str, Any]] = []
+    for q in (parsed.query or "").split("&"):
+        if "=" not in q:
+            continue
+        key = q.split("=", 1)[0]
+        if _SENSITIVE_QUERY_KEYS.search(key):
+            findings.append({
+                "rule": "INFO-QUERY-SECRET",
+                "severity": "medium",
+                "confidence": 0.85,
+                "cwe": "CWE-598",
+                "title": f"Data sensitif di query string URL: {key}",
+                "description": (
+                    f"Parameter `{key}` dipakai di query string — bocor ke "
+                    "Referer/log/history meski pakai HTTPS (OWASP information "
+                    "exposure through query strings)."
+                ),
+                "evidence": {"param": key, "url": url},
+                "remediation": "Pindahkan data sensitif ke body POST / header aman.",
+                "location": url,
+            })
+    return findings
+
+
+def check_csv_exposure(headers: dict[str, str], url: str = "") -> list[dict[str, Any]]:
+    """CSV endpoint that may embed untrusted input (OWASP CSV/Formula Injection,
+    CWE-1236)."""
+    header_map = {k.lower(): v for k, v in headers.items()}
+    ct = (header_map.get("content-type") or "").lower()
+    findings: list[dict[str, Any]] = []
+    if "text/csv" in ct or "application/csv" in ct or "text/tab-separated-values" in ct:
+        findings.append({
+            "rule": "CSV-DOWNLOAD",
+            "severity": "medium",
+            "confidence": 0.75,
+            "cwe": "CWE-1236",
+            "title": "Endpoint CSV terdeteksi (risiko formula injection)",
+            "description": (
+                "Respons ber-content-type CSV. Jika sel dibangun dari input "
+                "user tanpa netralisasi `= + - @`, terjadi CSV/Formula injection."
+            ),
+            "evidence": {"content_type": ct, "url": url},
+            "remediation": "Netralisasi sel yang diawali `=`, `+`, `-`, `@`, tab/CR/LF.",
+            "location": url,
+        })
+    return findings
+
+
+def check_upload_form(body: str, url: str = "") -> list[dict[str, Any]]:
+    """Detect an unrestricted file-upload surface (OWASP Unrestricted File
+    Upload, CWE-434) from an upload form."""
+    findings: list[dict[str, Any]] = []
+    lower = (body or "").lower()
+    has_file_input = 'type="file"' in lower or "type='file'" in lower
+    has_multipart = "multipart/form-data" in lower
+    has_upload_name = "upload" in lower and ("<form" in lower or "<input" in lower)
+    if (has_file_input and has_multipart) or (has_file_input and has_upload_name):
+        findings.append({
+            "rule": "UPLOAD-FORM",
+            "severity": "high",
+            "confidence": 0.7,
+            "cwe": "CWE-434",
+            "title": "Form upload file ditemukan (Unrestricted File Upload)",
+            "description": (
+                "Halaman memuat form upload (input type=file / multipart) — "
+                "validasi ekstensi/MIME diperlukan untuk mencegah upload berbahaya."
+            ),
+            "evidence": {"url": url},
+            "remediation": (
+                "Validasi ekstensi + MIME allowlist, simpan di luar webroot, "
+                "re-encode file."
+            ),
+            "location": url,
+        })
+    return findings
+
+
+def check_serialized_endpoint(headers: dict[str, str], url: str = "") -> list[dict[str, Any]]:
+    """Endpoint accepting serialized objects (OWASP Deserialization / Insecure
+    Deserialization, CWE-502)."""
+    header_map = {k.lower(): v for k, v in headers.items()}
+    ct = (header_map.get("content-type") or "").lower()
+    findings: list[dict[str, Any]] = []
+    if any(t in ct for t in (
+        "application/x-java-serialized-object", "application/x-python-pickle",
+        "application/x-php-serialized", "application/x-python-serialized",
+        "application/x-ruby-marshal",
+    )):
+        findings.append({
+            "rule": "DESERIALIZE-ENDPOINT",
+            "severity": "high",
+            "confidence": 0.8,
+            "cwe": "CWE-502",
+            "title": "Endpoint deserialisasi object terdeteksi",
+            "description": (
+                f"Endpoint menerima content-type serialized ({ct}) — berisiko "
+                "Deserialization / Insecure Deserialization."
+            ),
+            "evidence": {"content_type": ct, "url": url},
+            "remediation": (
+                "Gunakan representasi aman (JSON/safe loader) & validasi strict; "
+                "jangan deserialize input tak tepercaya."
+            ),
+            "location": url,
+        })
+    return findings
+
+
+def check_xml_endpoint(headers: dict[str, str], url: str = "") -> list[dict[str, Any]]:
+    """XML/SOAP endpoint — XXE & Missing XML Validation surface (CWE-611/20)."""
+    header_map = {k.lower(): v for k, v in headers.items()}
+    ct = (header_map.get("content-type") or "").lower()
+    findings: list[dict[str, Any]] = []
+    if "application/xml" in ct or "text/xml" in ct or "application/soap+xml" in ct:
+        findings.append({
+            "rule": "XML-ENDPOINT",
+            "severity": "medium",
+            "confidence": 0.7,
+            "cwe": "CWE-611",
+            "title": "Endpoint XML/SOAP terdeteksi (surface XXE)",
+            "description": (
+                f"Respons ber-content-type XML ({ct}). Jika parser tidak "
+                "menonaktifkan external-entity/DTD, rentan XXE & Missing XML Validation."
+            ),
+            "evidence": {"content_type": ct, "url": url},
+            "remediation": (
+                "Nonaktifkan external entity & validasi terhadap schema "
+                "sebelum parse XML."
+            ),
+            "location": url,
+        })
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Active injection reflection — classify a probe response. Pure & unit-testable.
+# ---------------------------------------------------------------------------
+
+# Benign arithmetic markers whose evaluated value is 49. If a template/EL engine
+# evaluates the expression, the literal "49" leaks back into the response.
+_SSTI_PAYLOADS = ("${7*7}", "{{7*7}}", "<%= 7*7 %>", "#{7*7}")
+
+
+def classify_injection_reflection(body: str, payload: str) -> str | None:
+    """Return the injection rule id if *payload* was evaluated/reflected.
+
+    * For SSTI/EL payloads (``${7*7}`` etc.) we look for the evaluated
+      ``49`` marker (the engine executed the expression).
+    * For CRLF we look for a raw CR/LF sequence echoed back in the body.
+    """
+    if not body:
+        return None
+    if payload in _SSTI_PAYLOADS or payload in ("$%7b7*7%7d", "%7B7*7%7D"):
+        if "49" in body:
+            return "INJ-LIVE-SSTI"
+        return None
+    if payload.startswith("\r\n") or "%0d" in payload.lower():
+        marker = "injected-crlf"
+        if marker in body and ("\r\n" in body or "\n" in body):
+            return "INJ-LIVE-CRLF"
+        # Raw newline reflected in a place it should not be.
+        if "\r\n" in body:
+            return "INJ-LIVE-CRLF"
+        return None
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Active / fingerprint checks for the "native / runtime / platform" families
 # that are invisible to static web-source analysis. The accurate approach is
 # to fingerprint the *platform* the app runs on (or the served artifact) and

@@ -271,6 +271,14 @@ class WebsiteEngine:
                 f["finding_id"] = f"{self.scan_id}-WXSS{k:03d}"
                 xss_findings.append(f)
 
+            # Active SSTI/EL + CRLF injection-signature probe (read-only).
+            inj_findings = await self._probe_injection_signatures(
+                pages, headers=headers, cookies=cookies,
+            )
+            for k, f in enumerate(inj_findings, start=len(xss_findings) + 1):
+                f["finding_id"] = f"{self.scan_id}-WINJ{k:03d}"
+                xss_findings.append(f)
+
         # ------------------------------------------------------------------
         # Stage 5: SQL injection probing (error-based + boolean differential)
         # ------------------------------------------------------------------
@@ -1398,12 +1406,17 @@ class WebsiteEngine:
             from app.utils.live_checks import (
                 check_allow_methods,
                 check_cookie_security,
+                check_csv_exposure,
                 check_follina,
                 check_platform_exposure,
+                check_sensitive_query_params,
+                check_serialized_endpoint,
                 check_tls_certificate,
                 check_transport_security,
+                check_upload_form,
                 check_verbose_errors,
                 check_x_powered_by,
+                check_xml_endpoint,
             )
 
             for page in pages:
@@ -1427,6 +1440,22 @@ class WebsiteEngine:
                     r["location"] = page_url
                     sec_findings.append(r)
                 for r in check_follina(body, page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                # Attack-surface classification from OWASP taxonomy.
+                for r in check_sensitive_query_params(page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_csv_exposure(header_dict, page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_upload_form(body, page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_serialized_endpoint(header_dict, page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_xml_endpoint(header_dict, page_url):
                     r["location"] = page_url
                     sec_findings.append(r)
 
@@ -1586,6 +1615,102 @@ class WebsiteEngine:
                     # Payload matched for this param — continue to the next
                     # param (the earlier `break`s already stopped payload/orig
                     # loops; do NOT break the outer param loop).
+        return findings
+
+    async def _probe_injection_signatures(
+        self,
+        pages: list[dict[str, Any]],
+        *,
+        headers: dict[str, str],
+        cookies: dict[str, str],
+        max_requests: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Active, benign injection-signature probing (SSTI/EL + CRLF).
+
+        Sends a tiny set of arithmetic/CRLF markers to the first parameter of
+        a few query-bearing pages and, if the expression is *evaluated* (the
+        marker ``49`` leaks back) or a raw CR/LF is reflected, reports it.
+        Read-only and non-destructive.
+        """
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        from app.utils.live_checks import (
+            _SSTI_PAYLOADS,
+            classify_injection_reflection,
+        )
+
+        findings: list[dict[str, Any]] = []
+        html_pages = [
+            p for p in pages
+            if "html" in (p.get("content_type") or "").lower()
+            and 200 <= int(p.get("status") or 0) < 300
+        ]
+        if not html_pages:
+            return findings
+
+        async with HttpClient(
+            timeout=self.settings.request_timeout,
+            headers=headers,
+            cookies=cookies,
+            rate_limit=int(getattr(self.settings, "rate_limit", 10)),
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 5)),
+        ) as client:
+            requests_made = 0
+            for page in html_pages:
+                if requests_made >= max_requests:
+                    break
+                page_url = page.get("url", "") or ""
+                parsed = urlparse(page_url)
+                qs = parse_qs(parsed.query, keep_blank_values=True)
+                params = [(n, v[0]) for n, v in qs.items() if v]
+                if not params:
+                    continue
+                name, orig = params[0]
+                for payload in _SSTI_PAYLOADS:
+                    if requests_made >= max_requests:
+                        break
+                    probe_qs = dict(qs)
+                    probe_qs[name] = [orig + payload]
+                    probe_url = urlunparse(
+                        parsed._replace(query=urlencode(probe_qs, doseq=True))
+                    )
+                    try:
+                        resp = await client.get(probe_url)
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("injection probe failed %s: %s", probe_url, exc)
+                        continue
+                    requests_made += 1
+                    if resp.status != 200:
+                        continue
+                    rule = classify_injection_reflection(resp.body or "", payload)
+                    if rule is None:
+                        continue
+                    severity = "high" if rule == "INJ-LIVE-SSTI" else "medium"
+                    findings.append({
+                        "rule": rule,
+                        "severity": severity,
+                        "confidence": 0.85,
+                        "cwe": "CWE-917" if rule == "INJ-LIVE-SSTI" else "CWE-93",
+                        "title": (
+                            "Template/EL injection terkonfirmasi (SSTI)"
+                            if rule == "INJ-LIVE-SSTI"
+                            else "CRLF injection terkonfirmasi (response splitting)"
+                        ),
+                        "description": (
+                            f"Parameter {name!r} mengevaluasi/merefleksikan marker "
+                            f"injeksi {payload!r} — Expression Language injection "
+                            "atau CRLF/response-splitting terkonfirmasi."
+                        ),
+                        "evidence": {
+                            "payload": payload, "param": name, "probe_url": probe_url,
+                        },
+                        "remediation": (
+                            "Jangan gabungkan input user ke expression/template "
+                            "engine; nonaktifkan external/CRLF dan parameterisasi."
+                        ),
+                        "location": probe_url,
+                    })
+                    break
         return findings
 
     async def _probe_id_endpoints(

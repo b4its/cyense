@@ -5,12 +5,18 @@ from __future__ import annotations
 from app.utils.live_checks import (
     check_allow_methods,
     check_cookie_security,
+    check_csv_exposure,
     check_follina,
     check_platform_exposure,
+    check_sensitive_query_params,
+    check_serialized_endpoint,
     check_tls_certificate,
     check_transport_security,
+    check_upload_form,
     check_verbose_errors,
     check_x_powered_by,
+    check_xml_endpoint,
+    classify_injection_reflection,
 )
 
 
@@ -98,3 +104,35 @@ async def test_tls_cert_valid_no_finding(monkeypatch) -> None:
         lambda *a, **k: ("Dec 31 23:59:59 2099 GMT", "example.com"),
     )
     assert _rules(await check_tls_certificate("https://example.com")) == set()
+
+
+def test_sensitive_query_params() -> None:
+    assert "INFO-QUERY-SECRET" in _rules(
+        check_sensitive_query_params("https://x/auth?user=bob&authz_token=1234&expire=1")
+    )
+    assert _rules(check_sensitive_query_params("https://x/?q=search&page=2")) == set()
+
+
+def test_csv_and_upload_and_xml_surfaces() -> None:
+    assert "CSV-DOWNLOAD" in _rules(check_csv_exposure({"Content-Type": "text/csv; charset=utf-8"}, "https://x/report"))
+    assert _rules(check_csv_exposure({"Content-Type": "text/html"}, "https://x")) == set()
+    body = (
+        '<form action="/upload" enctype="multipart/form-data">'
+        '<input type="file" name="f"></form>'
+    )
+    assert "UPLOAD-FORM" in _rules(check_upload_form(body, "https://x/upload"))
+    assert "XML-ENDPOINT" in _rules(check_xml_endpoint({"Content-Type": "application/xml"}, "https://x/api"))
+    assert "DESERIALIZE-ENDPOINT" in _rules(
+        check_serialized_endpoint({"Content-Type": "application/x-java-serialized-object"}, "https://x/rpc")
+    )
+
+
+def test_injection_reflection_classifier() -> None:
+    # Evaluated SSTI/EL: engine returned the arithmetic result.
+    assert classify_injection_reflection("result = 49", "${7*7}") == "INJ-LIVE-SSTI"
+    assert classify_injection_reflection("<b>49</b>", "{{7*7}}") == "INJ-LIVE-SSTI"
+    # Not evaluated → no finding.
+    assert classify_injection_reflection("<b>${7*7}</b>", "${7*7}") is None
+    # CRLF with a reflected newline.
+    assert classify_injection_reflection("a\r\nb injected-crlf", "\r\n") == "INJ-LIVE-CRLF"
+    assert classify_injection_reflection("a\r\nb", "\r\n") == "INJ-LIVE-CRLF"
