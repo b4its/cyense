@@ -195,11 +195,23 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 | Akses domain pihak ketiga tidak aman | EXT001 | CWE-829 |
 | Heartbleed (rentang OpenSSL 1.0.1) — fingerprint header live | NIKTO-HEARTBLEED | CWE-825 |
 
-**EN — Out of scope (not detectable by static web-source analysis):** native memory-safety (buffer overflow, double-free, use-after-free, improper pointer subtraction, string termination, memory leak, undefined behavior), native-binding (unsafe JNI, unsafe mobile code, unsafe function call from a signal handler, Full-trust CLR verification issue, insecure compiler optimization), OS/portability flaws, covert storage channels, and the purely-process ones (vulnerability scanning tools, vulnerability template). These are listed in the reference taxonomy but are not half-detected here.
+**EN — Approach for the native/runtime/OS families (accurate, not 'out of scope'):** these are invisible to static web-source analysis, so Cyense uses a different, more accurate approach per family:
+- **Domain/account expiry** → observed directly via the TLS certificate: `TLS-CERT-EXPIRED` / `TLS-CERT-EXPIRY-SOON` / `TLS-CERT-CHECK-FAILED` (live SSL socket).
+- **Native memory-safety** (buffer overflow, double-free/use-after-free, memory leak, improper pointer subtraction, string termination, undefined behavior) → version→CVE matching (`CVE-MATCH`) over fingerprinted software + `NIKTO-SERVER-HEADER`/`NIKTO-OUTDATED-SOFTWARE`, since the deployed version is what carries those bugs.
+- **Unsafe JNI / unsafe mobile code / signal handler, Full-trust CLR, insecure compiler optimization, OWASP .NET** → platform-exposure fingerprint (`PLATFORM-JAVA`, `PLATFORM-DOTNET`, `PLATFORM-PHP`) that surfaces the runtime & the native risk families the reviewer must then assess on that platform.
+- **Follina (CVE-2022-30190)** → content signature over served Office/RTF files (`FOLLINA`).
+- **Covert storage channel, portability flaw, vulnerability-scanning-tools, vulnerability template** → host-level/OS or tool-meta concerns; they are documented rather than half-detected.
 
-**EN — Live security checks (website/link targets / `app/utils/live_checks.py`):** beyond source analysis, the website & domain engines run response-passive checks over the crawled pages — verbose/unhandled error disclosure (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), cookie flag weaknesses (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), insecure transport + missing HSTS (`INSECURE-TRANSPORT`, `HSTS-MISSING`), dangerous methods (`TRACE-ENABLED`) and tech disclosure (`INFO-X-POWERED-BY`), plus the server-level `NIKTO-HEARTBLEED` fingerprint from the header suite.
+**ID — Pendekatan untuk keluarga native/runtime/OS (akurat, bukan 'out of scope'):** keluarga ini tak terlihat oleh analisis statis web-source, sehingga Cyense memakai pendekatan berbeda yang lebih akurat per keluarga:
+- **Kedaluwarsa domain/akun** → diamati langsung via sertifikat TLS: `TLS-CERT-EXPIRED` / `TLS-CERT-EXPIRY-SOON` / `TLS-CERT-CHECK-FAILED` (socket SSL live).
+- **Memory-safety native** (buffer overflow, double-free/use-after-free, memory leak, improper pointer subtraction, string termination, undefined behavior) → pencocokan versi→CVE (`CVE-MATCH`) atas software yang di-fingerprint + `NIKTO-SERVER-HEADER`/`NIKTO-OUTDATED-SOFTWARE`, sebab versi yang di-deploy itulah yang membawa bug tersebut.
+- **Unsafe JNI / mobile code / signal handler, Full-trust CLR, insecure compiler optimization, OWASP .NET** → fingerprint keamanan platform (`PLATFORM-JAVA`, `PLATFORM-DOTNET`, `PLATFORM-PHP`) yang menyingkap runtime dan keluarga risiko native yang harus dinilai pada platform itu.
+- **Follina (CVE-2022-30190)** → content signature atas file Office/RTF yang dilayani (`FOLLINA`).
+- **Covert storage channel, portability flaw, vulnerability-scanning-tools, vulnerability template** → concern OS/tool-meta; didokumentasikan, bukan di-deteksi-parsial.
 
-**ID — Cek keamanan live (target website/link / `app/utils/live_checks.py`):** selain analisis source, engine website & domain menjalankan cek response-passive pada halaman yang di-crawl — disclosure error verbose/unhandled (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), kelemahan flag cookie (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), transport tidak aman + HSTS hilang (`INSECURE-TRANSPORT`, `HSTS-MISSING`), metode berbahaya (`TRACE-ENABLED`) dan disclosure teknologi (`INFO-X-POWERED-BY`), plus fingerprint server-level `NIKTO-HEARTBLEED` dari header suite.
+**EN — Live security checks (website/link targets / `app/utils/live_checks.py`):** beyond source analysis, the website & domain engines run response-passive checks over the crawled pages — verbose/unhandled error disclosure (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), cookie flag weaknesses (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), insecure transport + missing HSTS (`INSECURE-TRANSPORT`, `HSTS-MISSING`), dangerous methods (`TRACE-ENABLED`) and tech disclosure (`INFO-X-POWERED-BY`), plus server-level fingerprints `NIKTO-HEARTBLEED` (OpenSSL 1.0.1), live TLS-cert expiry, platform exposure and Follina signature.
+
+**ID — Cek keamanan live (target website/link / `app/utils/live_checks.py`):** selain analisis source, engine website & domain menjalankan cek response-passive pada halaman yang di-crawl — disclosure error verbose/unhandled (`VERBOSE-ERROR`, `UNHANDLED-ERROR`), kelemahan flag cookie (`COOKIE-NO-HTTPONLY/SECURE/SAMESITE`), transport tidak aman + HSTS hilang (`INSECURE-TRANSPORT`, `HSTS-MISSING`), metode berbahaya (`TRACE-ENABLED`) dan disclosure teknologi (`INFO-X-POWERED-BY`), plus fingerprint server-level `NIKTO-HEARTBLEED` (OpenSSL 1.0.1), kedaluwarsa sertifikat TLS live, platform-exposure dan signature Follina.
 
 ---
 
@@ -236,7 +248,7 @@ cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ### Regression suite
 
 ```
-290 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
+294 passed in ~2s — api, agents, rules, utils, github, remediation, worker, sarif, website, live_xss, sqli, cve, multi, launcher
 ruff check: All checks passed (0 errors)
 ```
 
@@ -315,7 +327,7 @@ curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
 ### Run test suite / Jalankan test suite
 
 ```bash
-make test       # 290 tests via pytest
+make test       # 294 tests via pytest
 make lint       # ruff, 0 errors
 ```
 
@@ -421,7 +433,7 @@ cyense/
 │   │   │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, live_checks, etc.
 │   │   │   └── worker.py              ← asyncio worker (drains scan queue)
 │   │   ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-│   │   ├── tests/                     ← 290 tests + lab app fixture
+│   │   ├── tests/                     ← 294 tests + lab app fixture
 │   │   ├── wordlists/ids.txt
 │   │   ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 │   │   ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt
@@ -470,11 +482,11 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 290 tests, 0 lint errors | measured quality / kualitas terukur |
+| pytest + ruff | 294 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 290/290 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 284/284 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 294/294 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 294/294 tests
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless

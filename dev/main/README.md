@@ -490,7 +490,7 @@ dev/main/
 │   ├── utils/                 ← http_client, sandbox, github_client, pii, discovery, live_checks, etc.
 │   └── worker.py              ← asyncio worker (drains scan queue)
 ├── baseline/naive_engine.py   ← comparison baseline / baseline pembanding
-├── tests/                     ← 290 tests + lab app fixture
+├── tests/                     ← 294 tests + lab app fixture
 ├── wordlists/ids.txt
 ├── brain/                     ← 🧠 knowledge.json + memory antar-scan
 ├── Dockerfile · docker-compose.yml · pyproject.toml · requirements.txt

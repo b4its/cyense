@@ -5,6 +5,9 @@ from __future__ import annotations
 from app.utils.live_checks import (
     check_allow_methods,
     check_cookie_security,
+    check_follina,
+    check_platform_exposure,
+    check_tls_certificate,
     check_transport_security,
     check_verbose_errors,
     check_x_powered_by,
@@ -54,3 +57,44 @@ def test_trace_and_x_powered_by() -> None:
     assert "TRACE-ENABLED" in _rules(check_allow_methods({"Allow": "GET, POST, TRACE"}))
     assert _rules(check_allow_methods({"Allow": "GET, POST"})) == set()
     assert "INFO-X-POWERED-BY" in _rules(check_x_powered_by({"X-Powered-By": "Express"}))
+
+
+def test_platform_exposure() -> None:
+    assert "PLATFORM-DOTNET" in _rules(
+        check_platform_exposure({"X-AspNet-Version": "4.0.30319"}, "")
+    )
+    assert "PLATFORM-JAVA" in _rules(
+        check_platform_exposure({"Set-Cookie": "JSESSIONID=abc"}, "")
+    )
+    assert "PLATFORM-PHP" in _rules(
+        check_platform_exposure({"X-Powered-By": "PHP/8.1"}, "")
+    )
+    assert _rules(check_platform_exposure({"Server": "nginx"}, "<html>hi</html>")) == set()
+
+
+def test_follina_signature() -> None:
+    assert "FOLLINA" in _rules(
+        check_follina("word/_rels/document.xml.rels http://evil/shell.html ms-msdt:")
+    )
+    assert _rules(check_follina("<html>login</html>")) == set()
+
+
+async def test_tls_cert_expiry(monkeypatch) -> None:
+    # Simulate an expired certificate without touching the network.
+    import app.utils.live_checks as lc
+    monkeypatch.setattr(
+        lc, "_read_cert_not_after",
+        lambda *a, **k: ("Dec 31 23:59:59 2020 GMT", "example.com"),
+    )
+    res = await check_tls_certificate("https://example.com")
+    assert "TLS-CERT-EXPIRED" in _rules(res)
+    assert any(f["severity"] == "critical" for f in res)
+
+
+async def test_tls_cert_valid_no_finding(monkeypatch) -> None:
+    import app.utils.live_checks as lc
+    monkeypatch.setattr(
+        lc, "_read_cert_not_after",
+        lambda *a, **k: ("Dec 31 23:59:59 2099 GMT", "example.com"),
+    )
+    assert _rules(await check_tls_certificate("https://example.com")) == set()

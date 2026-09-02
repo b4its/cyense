@@ -1398,6 +1398,9 @@ class WebsiteEngine:
             from app.utils.live_checks import (
                 check_allow_methods,
                 check_cookie_security,
+                check_follina,
+                check_platform_exposure,
+                check_tls_certificate,
                 check_transport_security,
                 check_verbose_errors,
                 check_x_powered_by,
@@ -1420,12 +1423,22 @@ class WebsiteEngine:
                 for r in check_x_powered_by(header_dict):
                     r["location"] = page_url
                     sec_findings.append(r)
+                for r in check_platform_exposure(header_dict, body):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+                for r in check_follina(body, page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
 
             # Transport/HSTS is a whole-target property — check once.
             combined_headers: dict[str, str] = {}
             for page in pages:
                 combined_headers.update(page.get("headers", {}))
             for r in check_transport_security(url, combined_headers):
+                r["location"] = url
+                sec_findings.append(r)
+            # TLS cert expiry is observed directly on the target connection.
+            for r in await check_tls_certificate(url):
                 r["location"] = url
                 sec_findings.append(r)
         except Exception as exc:  # noqa: BLE001
