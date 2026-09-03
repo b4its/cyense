@@ -2938,6 +2938,384 @@ def ci_check(
 
 
 # ---------------------------------------------------------------------------
+# crypt — cryptography toolbelt (encrypt/decrypt/hash/keys)
+# ---------------------------------------------------------------------------
+
+crypt_app = typer.Typer(
+    help="Toolbelt kriptografi: hash, AES/Blowfish/Twofish, ChaCha20/Salsa20/RC4, "
+         "RSA, ECC, KDF.",
+    no_args_is_help=True,
+)
+app.add_typer(crypt_app, name="crypt")
+
+
+def _crypt_panel(title: str, lines: list[str], json_data: dict | None = None) -> None:
+    """Print a key/value panel or raw JSON (--json)."""
+    if _state.caps.json_out:
+        typer.echo(json.dumps(json_data or {"title": title, "lines": lines}, indent=2))
+        return
+    from app.cli.theme import PALETTE as PAL
+
+    _state.console.print(f"\n  [bold {PAL.blue_primary}]{title}[/]")
+    for ln in lines:
+        if isinstance(ln, tuple) and len(ln) == 2:
+            k, v = ln
+            _state.console.print(f"  [{PAL.blue_soft}]{k}:[/]  [dim]{v}[/]")
+        else:
+            _state.console.print(f"  [dim]{ln}[/]")
+    _state.console.print()
+
+
+@crypt_app.command("hash")
+def crypt_hash(
+    data: Annotated[str, typer.Argument(help="Teks/string yang di-hash.")],
+    algo: Annotated[
+        str, typer.Option("--algo", "-a", help="Algoritma hash (md5, sha1, sha256, ...).")
+    ] = "sha256",
+) -> None:
+    """Hash sebuah string (MD5, SHA-1, SHA-2, SHA-3, Blake2)."""
+    from app.utils.cryptotool import hash_digest
+
+    digest = hash_digest(algo, data)
+    _crypt_panel(f"HASH {algo} ({len(digest) // 2} byte)", [
+        ("input", data),
+        ("digest", digest),
+    ], {"algo": algo, "input": data, "digest": digest})
+
+
+@crypt_app.command("identify")
+def crypt_identify(
+    digest: Annotated[str, typer.Argument(help="Hex digest yang ingin dikenali.")],
+) -> None:
+    """Tebak algoritma hash dari panjang digest."""
+    from app.utils.cryptotool import identify_hash
+
+    _crypt_panel("IDENTIFY HASH", [
+        ("digest", digest),
+        ("length", f"{len(digest)} hex chars"),
+        ("candidates", ", ".join(identify_hash(digest)) or "(tidak dikenal)"),
+    ], {"digest": digest, "candidates": identify_hash(digest)})
+
+
+@crypt_app.command("aes")
+def crypt_aes(
+    action: Annotated[str, typer.Argument(help="encrypt | decrypt")],
+    data: Annotated[str, typer.Argument(help="Plaintext (encrypt) atau base64 (decrypt).")],
+    key: Annotated[str, typer.Option("--key", "-k", help="Kunci 16/24/32 byte (128/192/256 bit).")],
+    mode: Annotated[str, typer.Option("--mode", "-m", help="ecb | cbc | ctr | gcm.")] = "cbc",
+    iv: Annotated[
+        str | None, typer.Option("--iv", help="IV/nonce hex atau teks (opsional).")
+    ] = None,
+) -> None:
+    """AES encrypt/decrypt (standar enkripsi simetris global)."""
+    from app.utils.cryptotool import aes_decrypt, aes_encrypt
+
+    ivb = iv.encode() if iv else None
+    try:
+        if action.lower() == "encrypt":
+            result = aes_encrypt(key, data, mode=mode, nonce=ivb)
+        elif action.lower() == "decrypt":
+            result = aes_decrypt(key, data, mode=mode, nonce=ivb)
+        else:
+            raise typer.BadParameter("action harus 'encrypt' atau 'decrypt'")
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"AES {action} gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"AES {action.upper()} ({mode})", [
+        ("key", key),
+        ("result", result),
+    ], {"action": action, "mode": mode, "result": result})
+
+
+@crypt_app.command("blowfish")
+def crypt_blowfish(
+    action: Annotated[str, typer.Argument(help="encrypt | decrypt")],
+    data: Annotated[str, typer.Argument(help="Plaintext (encrypt) atau base64 (decrypt).")],
+    key: Annotated[str, typer.Option("--key", "-k", help="Kunci (min. 4 byte).")],
+    mode: Annotated[str, typer.Option("--mode", "-m", help="ecb | cbc.")] = "cbc",
+) -> None:
+    """Blowfish encrypt/decrypt (Schneier, cepat & fleksibel)."""
+    from app.utils.cryptotool import blowfish_decrypt, blowfish_encrypt
+
+    try:
+        if action.lower() == "encrypt":
+            result = blowfish_encrypt(key, data, mode=mode)
+        else:
+            result = blowfish_decrypt(key, data, mode=mode)
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"Blowfish {action} gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"BLOWFISH {action.upper()} ({mode})", [
+        ("key", key),
+        ("result", result),
+    ], {"action": action, "mode": mode, "result": result})
+
+
+@crypt_app.command("twofish")
+def crypt_twofish(
+    action: Annotated[str, typer.Argument(help="encrypt | decrypt")],
+    data: Annotated[str, typer.Argument(help="Plaintext (encrypt) atau base64 (decrypt).")],
+    key: Annotated[str, typer.Option("--key", "-k", help="Kunci 16/24/32 byte.")],
+    mode: Annotated[str, typer.Option("--mode", "-m", help="ecb | cbc.")] = "cbc",
+) -> None:
+    """Twofish encrypt/decrypt (finalis AES, Schneier, pure-Python)."""
+    from app.utils.cryptotool import twofish_decrypt, twofish_encrypt
+
+    try:
+        if action.lower() == "encrypt":
+            result = twofish_encrypt(key, data, mode=mode)
+        else:
+            result = twofish_decrypt(key, data, mode=mode)
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"Twofish {action} gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"TWOFISH {action.upper()} ({mode})", [
+        ("key", key),
+        ("result", result),
+    ], {"action": action, "mode": mode, "result": result})
+
+
+@crypt_app.command("chacha")
+def crypt_chacha(
+    action: Annotated[str, typer.Argument(help="encrypt | decrypt")],
+    data: Annotated[str, typer.Argument(help="Plaintext (encrypt) atau base64 (decrypt).")],
+    key: Annotated[str, typer.Option("--key", "-k", help="Kunci 32 byte.")],
+    nonce: Annotated[str, typer.Option("--nonce", "-n", help="Nonce 8 byte.")],
+) -> None:
+    """ChaCha20 stream cipher encrypt/decrypt."""
+    from app.utils.cryptotool import chacha20_decrypt, chacha20_encrypt
+
+    nonceb = nonce if isinstance(nonce, bytes) else nonce.encode()
+    keyb = key.encode()
+    try:
+        if action.lower() == "encrypt":
+            result = chacha20_encrypt(keyb, nonceb, data)
+        else:
+            result = chacha20_decrypt(keyb, nonceb, data)
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"ChaCha20 {action} gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"CHACHA20 {action.upper()}", [
+        ("key", key),
+        ("nonce", nonce),
+        ("result", result),
+    ], {"action": action, "result": result})
+
+
+@crypt_app.command("salsa")
+def crypt_salsa(
+    action: Annotated[str, typer.Argument(help="encrypt | decrypt")],
+    data: Annotated[str, typer.Argument(help="Plaintext (encrypt) atau base64 (decrypt).")],
+    key: Annotated[str, typer.Option("--key", "-k", help="Kunci 16/32 byte.")],
+    nonce: Annotated[str, typer.Option("--nonce", "-n", help="Nonce 8 byte.")],
+) -> None:
+    """Salsa20 stream cipher encrypt/decrypt."""
+    from app.utils.cryptotool import salsa20_decrypt, salsa20_encrypt
+
+    nonceb = nonce.encode()
+    keyb = key.encode()
+    try:
+        if action.lower() == "encrypt":
+            result = salsa20_encrypt(keyb, nonceb, data)
+        else:
+            result = salsa20_decrypt(keyb, nonceb, data)
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"Salsa20 {action} gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"SALSA20 {action.upper()}", [
+        ("key", key),
+        ("nonce", nonce),
+        ("result", result),
+    ], {"action": action, "result": result})
+
+
+@crypt_app.command("rc4")
+def crypt_rc4(
+    action: Annotated[str, typer.Argument(help="encrypt | decrypt")],
+    data: Annotated[str, typer.Argument(help="Plaintext (encrypt) atau base64 (decrypt).")],
+    key: Annotated[str, typer.Option("--key", "-k", help="Kunci RC4 (sembarang panjang).")],
+) -> None:
+    """RC4 stream cipher (legacy — hanya interoperabilitas, sudah rusak)."""
+    from app.utils.cryptotool import rc4_decrypt, rc4_encrypt
+
+    keyb = key.encode()
+    try:
+        if action.lower() == "encrypt":
+            result = rc4_encrypt(keyb, data)
+        else:
+            result = rc4_decrypt(keyb, data)
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"RC4 {action} gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"RC4 {action.upper()} (LEGACY/BROKEN)", [
+        ("key", key),
+        ("result", result),
+    ], {"action": action, "result": result})
+
+
+@crypt_app.command("rsa")
+def crypt_rsa(
+    action: Annotated[
+        str,
+        typer.Argument(help="generate | encrypt | decrypt | sign | verify"),
+    ],
+    data: Annotated[
+        str | None,
+        typer.Argument(
+            help="Data (pesan/teks), wajib utk encrypt/decrypt/sign/verify."
+        ),
+    ] = None,
+    key: Annotated[
+        str | None,
+        typer.Option(
+            "--key", "-k",
+            help="PEM key (public utk encrypt, private utk decrypt/sign).",
+        ),
+    ] = None,
+    bits: Annotated[
+        int, typer.Option("--bits", help="Ukuran kunci saat generate.")
+    ] = 2048,
+    signature: Annotated[
+        str | None,
+        typer.Option("--sig", help="Base64 signature (utk verify)."),
+    ] = None,
+) -> None:
+    """RSA: generate kunci, encrypt (OAEP), decrypt, sign (PSS), verify."""
+    from app.utils.cryptotool import (
+        rsa_decrypt,
+        rsa_encrypt,
+        rsa_generate,
+        rsa_sign,
+        rsa_verify,
+    )
+
+    a = action.lower()
+    try:
+        if a == "generate":
+            result = rsa_generate(bits)
+            _crypt_panel(f"RSA GENERATE {bits} bit", [
+                ("private_pem", result["private_pem"]),
+                ("public_pem", result["public_pem"]),
+            ], result)
+        elif a in ("encrypt", "decrypt", "sign", "verify"):
+            if not key or data is None:
+                raise typer.BadParameter(f"rsa {a} membutuhkan --key dan data")
+            if a == "encrypt":
+                result = rsa_encrypt(key, data)
+                _crypt_panel("RSA ENCRYPT (OAEP)", [("result", result)], {"result": result})
+            elif a == "decrypt":
+                result = rsa_decrypt(key, data)
+                _crypt_panel("RSA DECRYPT (OAEP)", [("result", result)], {"result": result})
+            elif a == "sign":
+                result = rsa_sign(key, data)
+                _crypt_panel("RSA SIGN (PSS)", [("signature", result)], {"signature": result})
+            else:
+                if not signature:
+                    raise typer.BadParameter("rsa verify membutuhkan --sig")
+                ok = rsa_verify(key, data, signature)
+                _crypt_panel("RSA VERIFY", [
+                    ("valid", "TRUE" if ok else "FALSE"),
+                ], {"valid": ok})
+        else:
+            raise typer.BadParameter("action harus generate|encrypt|decrypt|sign|verify")
+    except typer.BadParameter:
+        raise
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"RSA {action} gagal: {e}")
+        raise typer.Exit(1) from None
+
+
+@crypt_app.command("ecc")
+def crypt_ecc(
+    action: Annotated[str, typer.Argument(help="generate | sign | verify")],
+    data: Annotated[
+        str | None, typer.Argument(help="Pesan (utk sign/verify).")
+    ] = None,
+    key: Annotated[
+        str | None,
+        typer.Option("--key", "-k", help="PEM key private (sign) / public (verify)."),
+    ] = None,
+    curve: Annotated[
+        str, typer.Option("--curve", help="Kurva: P-256/P-384/P-521.")
+    ] = "P-256",
+    signature: Annotated[
+        str | None, typer.Option("--sig", help="Base64 signature (utk verify).")
+    ] = None,
+) -> None:
+    """ECC: generate kunci kurva eliptik, ECDSA sign/verify."""
+    from app.utils.cryptotool import ecc_generate, ecc_sign, ecc_verify
+
+    a = action.lower()
+    try:
+        if a == "generate":
+            result = ecc_generate(curve)
+            _crypt_panel(f"ECC GENERATE ({curve})", [
+                ("private_pem", result["private_pem"]),
+                ("public_pem", result["public_pem"]),
+            ], result)
+        elif a == "sign":
+            if not key or data is None:
+                raise typer.BadParameter("ecc sign membutuhkan --key dan data")
+            result = ecc_sign(key, data, curve)
+            _crypt_panel("ECC SIGN (ECDSA)", [("signature", result)], {"signature": result})
+        elif a == "verify":
+            if not key or data is None or not signature:
+                raise typer.BadParameter("ecc verify membutuhkan --key, data, dan --sig")
+            ok = ecc_verify(key, data, signature, curve)
+            _crypt_panel("ECC VERIFY", [("valid", "TRUE" if ok else "FALSE")], {"valid": ok})
+        else:
+            raise typer.BadParameter("action harus generate|sign|verify")
+    except typer.BadParameter:
+        raise
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"ECC {action} gagal: {e}")
+        raise typer.Exit(1) from None
+
+
+@crypt_app.command("kdf")
+def crypt_kdf(
+    password: Annotated[str, typer.Argument(help="Kata sandi untuk derivasi.")],
+    algo: Annotated[str, typer.Option("--algo", "-a", help="pbkdf2 | scrypt.")] = "pbkdf2",
+    salt: Annotated[str, typer.Option("--salt", "-s", help="Salt (opsional).")] = "cyense",
+    length: Annotated[
+        int, typer.Option("--length", "-l", help="Panjang kunci output (byte)."
+        ),
+    ] = 32,
+    iterations: Annotated[
+        int, typer.Option("--iterations", "-i", help="Iterasi PBKDF2.")
+    ] = 200_000,
+) -> None:
+    """Derivasi kunci (PBKDF2-HMAC-SHA256 / scrypt) dari password."""
+    from app.utils.cryptotool import derive_key
+
+    try:
+        dk = derive_key(algo, password, salt, length=length, iterations=iterations)
+    except Exception as e:
+        render_error_panel(_state.console, _state.caps, f"KDF gagal: {e}")
+        raise typer.Exit(1) from None
+    _crypt_panel(f"KDF {algo.upper()}", [
+        ("algo", algo),
+        ("salt", salt),
+        ("iterations", str(iterations)),
+        ("derived_key (hex)", dk),
+    ], {"algo": algo, "salt": salt, "key_hex": dk})
+
+
+@crypt_app.command("random")
+def crypt_random(
+    bytes_n: Annotated[int, typer.Argument(help="Jumlah byte acak.")] = 16,
+) -> None:
+    """Generate bytes acak kriptografis (hex)."""
+    from app.utils.cryptotool import random_bytes
+
+    r = random_bytes(bytes_n)
+    _crypt_panel("RANDOM (CSPRNG)", [
+        ("bytes", str(bytes_n)),
+        ("hex", r),
+    ], {"length": bytes_n, "hex": r})
+
+
+# ---------------------------------------------------------------------------
 # Entrypoint
 
 if __name__ == "__main__":

@@ -486,14 +486,16 @@ cyense/
 | difflib + regex | similarity + PII | deterministic, no LLM / deterministik, tanpa LLM |
 | String-builder HTML | f-string + `html.escape` | **no Jinja**, self-contained / **tanpa Jinja**, self-contained |
 | Docker Compose | `lab` profile | requirement + reproducibility |
-| pytest + ruff | 297 tests, 0 lint errors | measured quality / kualitas terukur |
+| pycryptodome + pure-Python Twofish | `cyense crypt` toolbelt | AES/Blowfish/ChaCha20/Salsa20/RC4/RSA/ECC/KDF + Twofish KAT-verified |
+| pytest + ruff | 359 tests, 0 lint errors | measured quality / kualitas terukur |
 
 ## 12. Status
 
-- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 297/297 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis, 294/294 tests
+- ✅ MVP complete: 6 scan modes (link/program/github/website/domain/api) + fixes/multi, 8 agents (brain, orchestrator, recon, prober, verifier, fetcher, crawler, fixer), 73 static rules (CY001-CY013, XS001-XS011, SQLI001-SQLI006, DES001-RND002) + live rules, 4 analysis levels (low/medium/high/max), 359/359 tests / MVP lengkap: 6 mode scan (link/program/github/website/domain/api) + fixes/multi, 8 agen, 73 aturan statis + rule live, 4 level analisis
 - ✅ Measured evaluation: precision 100% vs baseline 56% (fair comparison) / Eval terukur: precision 100% vs baseline 56%
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
+- ✅ Crypto toolbelt (`cyense crypt`): MD5/SHA-1/SHA-2/SHA-3 hash + identifikasi, HMAC, AES (ECB/CBC/CTR/GCM), Blowfish, Twofish (pure-Python, KAT-verified), ChaCha20/Salsa20, RC4, RSA (OAEP/PSS), ECC (ECDSA), PBKDF2/scrypt, random CSPRNG / Toolbelt kriptografi (`cyense crypt`): hash MD5/SHA-1/SHA-2/SHA-3 + identifikasi, HMAC, AES (ECB/CBC/CTR/GCM), Blowfish, Twofish (pure-Python, terverifikasi KAT), ChaCha20/Salsa20, RC4, RSA (OAEP/PSS), ECC (ECDSA), PBKDF2/scrypt, random CSPRNG
 - 📋 Backlog: GitLab adapter, more CI adapters, interactive web UI (see PRD features) / Backlog: GitLab adapter, CI adapter tambahan, interactive web UI
 
 ---

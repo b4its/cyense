@@ -21,6 +21,8 @@ dependencies = [
     "reportlab>=4.0,<5.0",
     # OpenAPI/Swagger spec parsing (Strix-inspired API scanning)
     "pyyaml>=6.0,<7.0",
+    # Crypto toolbelt (cyense crypt: AES/Blowfish/ChaCha20/Salsa20/RC4/RSA/ECC/KDF)
+    "pycryptodome>=3.20,<4.0",
 ]
 
 [project.scripts]
