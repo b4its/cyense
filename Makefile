@@ -1,11 +1,18 @@
 # Makefile — Cyense API Service (PRD v2.0)
 # Install dependencies first: pip install -r requirements.txt pytest ruff
+#
+# Two ways to run:
+#   * Docker  : make up / make down / make logs / make test / make shell
+#   * Lokal   : make local-install && make local-up   (tanpa Docker)
 # Usage: make up / make down / make logs / make test / make shell
 
-.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run recon
+.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run recon \
+        local-install local-checks api lab local-up local-down local-ps local-health local-logs-api local-logs-lab \
+        local-cli local-cli-shell local-cli-help local-demo local-recon local-clean
 
 SHELL := /bin/bash
 APP_DIR := dev/main
+APP_ABS := $(abspath $(APP_DIR))
 # Prefer the project venv (dev/main/.venv) so dev targets (test/lint/format)
 # use the installed deps instead of failing on a system Python that lacks
 # pytest/ruff. Falls back to the system interpreter when no venv is present
@@ -16,6 +23,19 @@ DOCKER := docker
 COMPOSE := docker compose
 # Compose file lives in $(APP_DIR); all compose commands must run from there.
 COMPOSE_IN_APP := cd $(APP_DIR) && $(COMPOSE)
+
+# ── Local (no-Docker) runtime config ───────────────────────────────────────
+# All local targets run from the project venv (dev/main/.venv) with absolute
+# paths so they work regardless of the current shell cwd.
+LOCAL_HOST ?= 127.0.0.1
+API_PORT ?= 8000
+LAB_PORT ?= 8080            # note: lab_app.py hardcodes 8080 (see lab_Dockerfile)
+LOCAL_WORKSPACE ?= $(APP_ABS)/target
+LOCAL_API_URL := http://$(LOCAL_HOST):$(API_PORT)
+API_PID := $(APP_ABS)/.api.pid
+LAB_PID := $(APP_ABS)/.lab.pid
+LOCAL_API_LOG := $(APP_ABS)/api.log
+LOCAL_LAB_LOG := $(APP_ABS)/lab.log
 
 help: ## Show all available targets
 	@echo "Cyense — Agentic IDOR Vulnerability Scanner"
@@ -47,6 +67,21 @@ help: ## Show all available targets
 	@echo "  make cli-shell                      Open bash shell in container (type CLI commands interactively)"
 	@echo "  make cli-help                       Show full CLI help"
 	@echo "  make demo                           Demo end-to-end: scan a public repo"
+	@echo ""
+	@echo "Local (NO Docker) — run everything from the project venv:"
+	@echo "  make local-install                  Create venv + install runtime/dev/lab deps"
+	@echo "  make local-up                       Start API + Lab in the background"
+	@echo "  make api                            Run API in foreground (Ctrl+C to stop)"
+	@echo "  make lab                            Run Lab app (Flask) in foreground"
+	@echo "  make local-down                     Stop the local API + Lab"
+	@echo "  make local-logs-api | local-logs-lab   Follow local logs"
+	@echo "  make local-ps                       Show local process + health status"
+	@echo "  make local-cli ARGS=\"list\"         Run CLI locally (API must be up)"
+	@echo "  make local-cli-help                 Show full CLI help (local)"
+	@echo "  make local-cli-shell                Interactive CLI shell (local)"
+	@echo "  make local-demo                     Demo scan a public repo (local)"
+	@echo "  make local-recon URL=...            Recon menyeluruh ke URL (local)"
+	@echo "  make local-clean                    Remove local reports/brain/logs/pids"
 	@echo ""
 
 up: build ## Start services (API + lab app profile)
@@ -151,3 +186,123 @@ run: ## Jalankan Cyense — pilih mode Website atau CLI (launcher)
 recon: ## Recon menyeluruh ke URL (adaptasi BBHT: semua tool recon dalam 1 scan)
 	@if [ -z "$(URL)" ]; then echo "Pakai: make recon URL=https://target.example"; exit 1; fi
 	cd $(APP_DIR) && $(PYTHON) -m app.cli.main cve "$(URL)" --i-have-permission
+
+# ---------------------------------------------------------------------------
+# Local / no-Docker workflow (jalankan via venv dev/main/.venv)
+# Pengganti lengkap untuk target Docker (up/down/build/logs/ps/...) kapan pun
+# Docker tidak tersedia:  make local-install && make local-up
+# ---------------------------------------------------------------------------
+
+local-install: ## Buat venv & install semua dependensi (runtime + dev + lab)
+	@mkdir -p $(VENV)
+	$(PYTHON) -m venv $(VENV)
+	$(VENV)/bin/pip install -q -U pip
+	$(VENV)/bin/pip install -q -e "$(APP_DIR)[dev]"
+	@echo "OK — aktivasi venv: source $(VENV)/bin/activate"
+
+local-checks: ## Periksa Python + dependensi lokal
+	@$(MAKE) check-python
+	@$(PYTHON) -c "import fastapi, uvicorn, typer, rich, cvss, reportlab, yaml, flask" 2>/dev/null \
+		&& echo "Dependensi OK" \
+		|| (echo "Dependensi belum lengkap — jalankan: make local-install" && exit 1)
+
+api: ## Jalankan backend FastAPI di foreground (Ctrl+C untuk stop)
+	@$(MAKE) local-checks
+	@mkdir -p $(LOCAL_WORKSPACE)
+	cd $(APP_ABS) && CYENSE_WORKSPACE_DIR=$(LOCAL_WORKSPACE) \
+		$(PYTHON) -m uvicorn app.main:app --host $(LOCAL_HOST) --port $(API_PORT)
+
+lab: ## Jalankan aplikasi lab (Flask) di foreground (Ctrl+C untuk stop)
+	@$(PYTHON) -c "import flask" 2>/dev/null || (echo "Membutuhkan flask — jalankan: make local-install" && exit 1)
+	cd $(APP_ABS)/tests/fixtures/vulnerable_app && $(PYTHON) lab_app.py
+
+local-up: ## Jalankan API + Lab di background (pengganti 'make up', tanpa Docker)
+	@$(MAKE) local-checks
+	@mkdir -p $(LOCAL_WORKSPACE) $(APP_ABS)/reports $(APP_ABS)/brain
+	@if [ -f $(API_PID) ] && kill -0 $$(cat $(API_PID)) 2>/dev/null; then \
+		echo "  API sudah berjalan (pid $$(cat $(API_PID)))"; \
+	else \
+		cd $(APP_ABS); CYENSE_WORKSPACE_DIR=$(LOCAL_WORKSPACE) \
+			nohup $(PYTHON) -m uvicorn app.main:app --host $(LOCAL_HOST) --port $(API_PORT) \
+			>> $(LOCAL_API_LOG) 2>&1 < /dev/null & echo $$! > $(API_PID); \
+		echo "  API  : $(LOCAL_API_URL)/ui  (pid $$(cat $(API_PID)))"; \
+	fi
+	@if [ -f $(LAB_PID) ] && kill -0 $$(cat $(LAB_PID)) 2>/dev/null; then \
+		echo "  Lab  sudah berjalan (pid $$(cat $(LAB_PID)))"; \
+	else \
+		cd $(APP_ABS)/tests/fixtures/vulnerable_app; \
+			nohup $(PYTHON) lab_app.py >> $(LOCAL_LAB_LOG) 2>&1 < /dev/null & echo $$! > $(LAB_PID); \
+		echo "  Lab  : http://$(LOCAL_HOST):$(LAB_PORT)  (pid $$(cat $(LAB_PID)))"; \
+	fi
+	@ok=0; for i in $$(seq 1 40); do \
+		if $(PYTHON) -c "import urllib.request as u; u.urlopen('$(LOCAL_API_URL)/api/v1/health', timeout=1)" 2>/dev/null; then ok=1; break; fi; \
+		sleep 0.5; done; \
+	if [ "$$ok" = "1" ]; then \
+		echo "  ✓ API siap: $(LOCAL_API_URL)/ui  (Lab di http://$(LOCAL_HOST):$(LAB_PORT))"; \
+	else \
+		echo "  ✗ API tidak merespons — cek $(LOCAL_API_LOG)"; \
+	fi
+
+local-down: ## Stop API + Lab lokal (pengganti 'make down', tanpa Docker)
+	@for f in $(API_PID) $(LAB_PID); do \
+		if [ -f $$f ]; then \
+			pid=$$(cat $$f); \
+			if kill -0 $$pid 2>/dev/null; then kill $$pid 2>/dev/null && echo "  stopped (pid $$pid)"; \
+			else echo "  $$f: pid $$pid tidak berjalan"; fi; \
+			rm -f $$f; \
+		fi; \
+	done; true
+	@echo "Selesai."
+
+local-ps: ## Status proses lokal + health API
+	@echo "PID API : $$(cat $(API_PID) 2>/dev/null || echo '-')"
+	@echo "PID Lab : $$(cat $(LAB_PID) 2>/dev/null || echo '-')"
+	@$(MAKE) local-health
+
+local-health: ## Cek health API lokal
+	@$(PYTHON) -c "import urllib.request as u; print('API health:', u.urlopen('$(LOCAL_API_URL)/api/v1/health', timeout=2).status)" 2>/dev/null \
+		|| echo "API offline di $(LOCAL_API_URL)"
+
+local-logs-api: ## Ikuti log API lokal
+	@[ -f $(LOCAL_API_LOG) ] || (echo "Log belum ada — jalankan make local-up" && exit 1)
+	tail -f $(LOCAL_API_LOG)
+
+local-logs-lab: ## Ikuti log lab lokal
+	@[ -f $(LOCAL_LAB_LOG) ] || (echo "Log belum ada — jalankan make local-up" && exit 1)
+	tail -f $(LOCAL_LAB_LOG)
+
+local-cli: ## Jalankan CLI lokal (API harus berjalan). Contoh: make local-cli ARGS="list"
+	cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(PYTHON) -m app.cli.main $(ARGS)
+
+local-cli-help: ## Tampilkan bantuan CLI lengkap (lokal)
+	cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(PYTHON) -m app.cli.main --help
+
+local-cli-shell: ## Shell interaktif CLI (lokal)
+	@echo ""
+	@echo "============================================================"
+	@echo "  Cyense CLI — local shell (no Docker). Ctrl+D / exit untuk keluar"
+	@echo "============================================================"
+	@echo ""
+	@echo "Jalankan perintah seperti:"
+	@echo "  python -m app.cli.main --help     # semua perintah"
+	@echo "  python -m app.cli.main version    # versi CLI + service"
+	@echo "  python -m app.cli.main list       # daftar scan terbaru"
+	@echo "  python -m app.cli.main rules      # rules deteksi aktif"
+	@echo "  python -m app.cli.main scan github URL --i-have-permission"
+	@echo ""
+	@cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(VENV)/bin/bash
+
+local-demo: local-up ## Demo end-to-end lokal: scan repo publik (mulai API bila belum)
+	@echo "=== Cyense CLI Demo (lokal, no Docker) ==="
+	cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(PYTHON) -m app.cli.main scan github \
+		https://github.com/octocat/Hello-World --i-have-permission --lang auto --fail-on none
+
+local-recon: ## Recon menyeluruh ke URL (lokal). Pakai: make local-recon URL=https://target.example
+	@if [ -z "$(URL)" ]; then echo "Pakai: make local-recon URL=https://target.example"; exit 1; fi
+	cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(PYTHON) -m app.cli.main cve "$(URL)" --i-have-permission
+
+local-clean: local-down ## Bersihkan data lokal (reports/brain/target/logs/pids)
+	@rm -rf $(APP_ABS)/reports $(APP_ABS)/brain $(APP_ABS)/target $(LOCAL_API_LOG) $(LOCAL_LAB_LOG)
+	@find $(APP_ABS) -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@rm -rf $(APP_ABS)/.pytest_cache $(APP_ABS)/.ruff_cache $(VENV)
+	@echo "Data lokal dibersihkan (venv ikut dihapus; ulangi make local-install untuk setup)."
