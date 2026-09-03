@@ -20,7 +20,12 @@ import time
 from typing import Any
 
 from app.agents.crawler import CrawlerAgent
-from app.engines.live_owasp import analyze_page_owasp, probe_owasp_endpoints
+from app.engines.live_owasp import (
+    analyze_page_owasp,
+    probe_auth_surfaces,
+    probe_http_methods,
+    probe_owasp_endpoints,
+)
 from app.engines.live_sqli import SQLI_PAYLOADS, detect_sql_errors, is_boolean_differential
 from app.engines.live_xss import analyze_page_xss
 from app.utils.cve_lookup import (
@@ -1815,6 +1820,8 @@ class WebsiteEngine:
                 max_concurrency=int(getattr(self.settings, "max_concurrency", 3)),
             ) as client:
                 findings.extend(await probe_owasp_endpoints(client, origin))
+                findings.extend(await probe_http_methods(client, origin))
+                findings.extend(await probe_auth_surfaces(client, origin))
         except Exception as exc:  # noqa: BLE001 — owasp probe must never fail scan
             log.warning("owasp endpoint probe failed for %s: %s", url, exc)
 

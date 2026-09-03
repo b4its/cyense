@@ -26,6 +26,10 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
+from app.utils.logger import get_logger
+
+log_owasp = get_logger("owasp")
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -576,6 +580,204 @@ async def probe_owasp_endpoints(
                 remediation="Ensure the gateway enforces authentication/authorization.",
                 url=url,
             ))
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Active probe: HTTP-method audit (A05 security misconfiguration)
+# ---------------------------------------------------------------------------
+
+# Mutating / state-changing verbs that should normally be disabled for public
+# web resources. When advertised by OPTIONS they are a misconfiguration (A05).
+_UNAUTHORIZED_METHODS: set[str] = {"PUT", "DELETE", "PATCH", "PROPFIND", "MKCOL"}
+
+# TRACE/TRACK reflect the request back verbatim — the basis of Cross-Site
+# Tracing (XST) and a classic reasons a server should reject them.
+_TRACE_METHODS = ("TRACE", "TRACK")
+
+
+async def probe_http_methods(client: Any, origin: str) -> list[dict[str, Any]]:
+    """Audit the base origin for unsafe / unnecessary HTTP methods (A05).
+
+    Read-only: a single OPTIONS request reads the ``Allow``/``Access-Control-Allow-Methods``
+    header, and a single TRACE request confirms trace reflection. No mutating
+    request (PUT/DELETE/PATCH) is ever sent.
+    """
+    findings: list[dict[str, Any]] = []
+    base = origin.rstrip("/")
+
+    options = None
+    try:
+        options = await client.request("OPTIONS", base + "/")
+    except Exception as exc:  # noqa: BLE001 — best effort, never fail the scan
+        log_owasp.warning("OPTIONS probe failed for %s: %s", origin, exc)
+
+    if options is not None:
+        code = int(getattr(options, "status", 0) or 0)
+        if 200 <= code < 300:
+            allow = (getattr(options, "headers", {}) or {}).get("allow", "")
+            cors = (getattr(options, "headers", {}) or {}).get(
+                "access-control-allow-methods", ""
+            )
+            advertised = {
+                m.strip().upper()
+                for m in (allow + "," + cors).split(",") if m.strip()
+            }
+            forbidden = sorted(advertised & _UNAUTHORIZED_METHODS)
+            if forbidden:
+                findings.append(_finding(
+                    rule="OWASP-CONF-005", severity="medium", confidence=0.7,
+                    title="Unsafe HTTP methods advertised: " + ", ".join(forbidden),
+                    description=(
+                        f"{base}/ advertises state-changing HTTP method(s) "
+                        f"({', '.join(forbidden)}) that should not be exposed "
+                        "to anonymous clients."
+                    ),
+                    evidence={"methods": forbidden, "allow": allow, "status": code},
+                    remediation=(
+                        "Disable PUT/DELETE/PATCH/PROPFIND on public resources; "
+                        "enable only GET/HEAD/POST and restrict state-changing "
+                        "verbs behind authentication."
+                    ),
+                    url=base + "/",
+                ))
+
+    trace = None
+    try:
+        trace = await client.request("TRACE", base + "/")
+    except Exception as exc:  # noqa: BLE001 — best effort
+        log_owasp.warning("TRACE probe failed for %s: %s", origin, exc)
+
+    if trace is not None:
+        code = int(getattr(trace, "status", 0) or 0)
+        reflected = (getattr(trace, "body", "") or "")
+        if 200 <= code < 300 or reflected:
+            findings.append(_finding(
+                rule="OWASP-CONF-006", severity="medium", confidence=0.75,
+                title="HTTP TRACE / TRACK method enabled (XST risk)",
+                description=(
+                    f"{base}/ responds to TRACE (status {code}). Reflecting the "
+                    "request verbatim enables Cross-Site Tracing, letting an "
+                    "attacker read HttpOnly cookies and other headers."
+                ),
+                evidence={"status": code, "reflected": bool(reflected)},
+                remediation=(
+                    "Disable the TRACE/TRACK methods at the web server rewrite "
+                    "layer; they are not needed for production sites."
+                ),
+                url=base + "/",
+            ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Active probe: admin / login auth-surface reachability (A01 / A07)
+# ---------------------------------------------------------------------------
+
+# Management / admin panels that must never be reachable unauthenticated. A 200
+# means the panel is exposed (Broken Access Control / Broken Authentication).
+_ADMIN_PANELS: list[tuple[str, str]] = [
+    ("/admin", "admin panel"),
+    ("/administrator", "admin panel"),
+    ("/wp-admin", "WordPress admin"),
+    ("/console", "application console"),
+    ("/cpanel", "cPanel"),
+    ("/manager/html", "Tomcat manager"),
+    ("/jenkins", "Jenkins CI"),
+    ("/orion", "JBoss admin console"),
+    ("/solr", "Solr admin"),
+    ("/grafana", "Grafana dashboard"),
+]
+
+# Login surfaces we flag as reachable-but-info (they exist; whether weak auth is
+# a flaw is for the caller to judge from the login-page posture).
+_LOGIN_SURFACES: list[tuple[str, str]] = [
+    ("/login", "login page"),
+    ("/signin", "sign-in page"),
+    ("/auth", "auth page"),
+    ("/wp-login.php", "WordPress login"),
+    ("/web-login", "web login page"),
+]
+
+
+async def probe_auth_surfaces(client: Any, origin: str) -> list[dict[str, Any]]:
+    """Probe for reachable admin panels and login surfaces on the base origin.
+
+    A 200 on an admin panel is a serious Broken Access / Authentication signal
+    (high); a 200 on a login surface is informational (low) — the presence of a
+    login is normal. Best-effort: any exception is swallowed so the scan never
+    fails.
+    """
+    findings: list[dict[str, Any]] = []
+    base = origin.rstrip("/")
+
+    for path, label in _ADMIN_PANELS:
+        url = base + path
+        try:
+            resp = await client.get(url)
+        except Exception:  # noqa: BLE001 — best effort
+            continue
+        code = int(getattr(resp, "status", 0) or 0)
+        if code == 200:
+            findings.append(_finding(
+                rule="OWASP-AUTH-004", severity="high", confidence=0.85,
+                title=f"Admin/management panel publicly reachable: {label}",
+                description=(
+                    f"GET {path} returned 200 without authentication — the "
+                    f"{label} is exposed, enabling privilege escalation / "
+                    "configuration takeover by anonymous attackers."
+                ),
+                evidence={"endpoint": path, "status": code, "panel": label},
+                remediation=(
+                    "Restrict admin panels to a network allow-list, enforce "
+                    "strong authentication, remove the panel from the public "
+                    "origin, or disable it in production."
+                ),
+                url=url,
+            ))
+        elif code in (401, 403):
+            findings.append(_finding(
+                rule="OWASP-AUTH-004", severity="info", confidence=0.55,
+                title=f"Admin panel exists but is gated: {label}",
+                description=(
+                    f"GET {path} returned {code} — the panel exists but is "
+                    "behind authentication. Review that the gateway enforces "
+                    "RBAC and MFA."
+                ),
+                evidence={"endpoint": path, "status": code, "panel": label},
+                remediation=(
+                    "Ensure the panel enforces MFA + RBAC and network "
+                    "restrictions; remove it from the public origin if unused."
+                ),
+                url=url,
+            ))
+
+    for path, label in _LOGIN_SURFACES:
+        url = base + path
+        try:
+            resp = await client.get(url)
+        except Exception:  # noqa: BLE001 — best effort
+            continue
+        code = int(getattr(resp, "status", 0) or 0)
+        if code == 200:
+            findings.append(_finding(
+                rule="OWASP-AUTH-005", severity="low", confidence=0.5,
+                title=f"Login surface reachable: {label}",
+                description=(
+                    f"GET {path} returned 200 — a login form is exposed. "
+                    "Verify MFA / lockout / rate limiting and secure session "
+                    "cookies (HttpOnly, Secure, SameSite)."
+                ),
+                evidence={"endpoint": path, "status": code},
+                remediation=(
+                    "Enforce MFA, account lockout and rate limiting on login; "
+                    "set HttpOnly + Secure + SameSite cookies and rotate "
+                    "sessions."
+                ),
+                url=url,
+            ))
+
     return findings
 
 

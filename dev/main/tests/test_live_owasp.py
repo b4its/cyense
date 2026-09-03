@@ -11,7 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.engines.live_owasp import analyze_page_owasp, probe_owasp_endpoints
+from app.engines.live_owasp import (
+    analyze_page_owasp,
+    probe_auth_surfaces,
+    probe_http_methods,
+    probe_owasp_endpoints,
+)
 
 
 def _page(
@@ -216,4 +221,136 @@ async def test_probe_gated_endpoint_is_info() -> None:
 async def test_probe_ignores_connection_errors() -> None:
     client = _Client(exc=True)
     findings = await probe_owasp_endpoints(client, "http://app")
+    assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# HTTP-method audit (A05 security misconfiguration)
+# ---------------------------------------------------------------------------
+
+class _MethodClient:
+    """Stub that returns configurable responses per HTTP method."""
+
+    def __init__(
+        self,
+        options: _Response | None,
+        trace: _Response | None,
+        *,
+        get_status: int = 404,
+        exc: bool = False,
+    ) -> None:
+        self.options = options
+        self.trace = trace
+        self.get_status = get_status
+        self.exc = exc
+        self.method_calls: list[str] = []
+
+    async def request(self, method: str, url: str) -> _Response:
+        self.method_calls.append(method)
+        if self.exc:
+            raise ConnectionError("boom")
+        if method == "OPTIONS":
+            return self.options
+        if method == "TRACE":
+            return self.trace
+        return _Response(405)
+
+    async def get(self, url: str) -> _Response:
+        self.method_calls.append("GET")
+        if self.exc:
+            raise ConnectionError("boom")
+        return _Response(self.get_status)
+
+
+@pytest.mark.asyncio
+async def test_method_audit_flags_unsafe_verbs() -> None:
+    # OPTIONS advertises DELETE/PATCH via Allow.
+    opts = _Response(200)
+    opts.headers = {"allow": "GET, HEAD, POST, PUT, DELETE, OPTIONS"}
+    client = _MethodClient(options=opts, trace=_Response(405))
+    findings = await probe_http_methods(client, "http://app")
+    rules = {f["rule"] for f in findings}
+    assert "OWASP-CONF-005" in rules
+    assert "PUT" in findings[0]["evidence"]["methods"]
+    # No TRACE finding (405).
+    assert "OWASP-CONF-006" not in rules
+
+
+@pytest.mark.asyncio
+async def test_method_audit_flags_trace_enabled() -> None:
+    opts = _Response(200)
+    opts.headers = {"allow": "GET, HEAD, OPTIONS"}
+    # TRACE reflects the request back (status 200) → XST risk.
+    trace = _Response(200)
+    trace.body = "TRACE / HTTP/1.1\r\nHost: app"
+    client = _MethodClient(options=opts, trace=trace)
+    findings = await probe_http_methods(client, "http://app")
+    rules = {f["rule"] for f in findings}
+    assert "OWASP-CONF-006" in rules
+    assert "OWASP-CONF-005" not in rules
+
+
+@pytest.mark.asyncio
+async def test_method_audit_cors_allow_methods_counted() -> None:
+    # Methods advertised via Access-Control-Allow-Methods are also audited.
+    opts = _Response(204)
+    opts.headers = {"access-control-allow-methods": "GET, PATCH, OPTIONS"}
+    client = _MethodClient(options=opts, trace=_Response(405))
+    findings = await probe_http_methods(client, "http://app")
+    assert any("PATCH" in f["evidence"]["methods"] for f in findings)
+
+
+@pytest.mark.asyncio
+async def test_method_audit_resilient_to_errors() -> None:
+    client = _MethodClient(options=_Response(200), trace=_Response(200), exc=True)
+    findings = await probe_http_methods(client, "http://app")
+    assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# Admin / login auth-surface probe (A01 / A07)
+# ---------------------------------------------------------------------------
+
+class _SurfaceClient:
+    def __init__(self, *, admin_status: int, login_status: int, exc: bool = False) -> None:
+        self.admin_status = admin_status
+        self.login_status = login_status
+        self.exc = exc
+        self.calls: list[str] = []
+
+    async def get(self, url: str) -> _Response:
+        self.calls.append(url)
+        if self.exc:
+            raise ConnectionError("boom")
+        if "/login" in url or "/signin" in url or "/auth" in url:
+            return _Response(self.login_status)
+        if "wp-login" in url:
+            return _Response(self.login_status)
+        return _Response(self.admin_status)
+
+
+@pytest.mark.asyncio
+async def test_auth_surface_flags_public_admin_panel() -> None:
+    client = _SurfaceClient(admin_status=200, login_status=200)
+    findings = await probe_auth_surfaces(client, "http://app")
+    assert client.calls
+    auth = [f for f in findings if f["rule"] == "OWASP-AUTH-004"]
+    assert any(f["severity"] == "high" for f in auth)
+    # Login surface flagged as low info.
+    login = [f for f in findings if f["rule"] == "OWASP-AUTH-005"]
+    assert any(f["severity"] == "low" for f in login)
+
+
+@pytest.mark.asyncio
+async def test_auth_surface_gated_admin_is_info() -> None:
+    client = _SurfaceClient(admin_status=403, login_status=404)
+    findings = await probe_auth_surfaces(client, "http://app")
+    auth = [f for f in findings if f["rule"] == "OWASP-AUTH-004"]
+    assert auth and all(f["severity"] == "info" for f in auth)
+
+
+@pytest.mark.asyncio
+async def test_auth_surface_resilient_to_errors() -> None:
+    client = _SurfaceClient(admin_status=200, login_status=200, exc=True)
+    findings = await probe_auth_surfaces(client, "http://app")
     assert findings == []

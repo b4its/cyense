@@ -1,7 +1,10 @@
 """httpx async client with rate limiting and retries (PRD v2.0 §5.2).
 
-Read-only discipline: the client only issues GET/HEAD (PRD §2.2 non-goals:
-no auto-exploit that mutates data).
+Read-only discipline: the client only issues GET/HEAD/OPTIONS/TRACE
+(PRD §2.2 non-goals: no auto-exploit that mutates data). OPTIONS and TRACE are
+non-mutating and are used only for HTTP-method auditing (A05) — e.g. detecting
+TRACE (XST) and unexpected PUT/DELETE/PATCH verbs via the Allow header. POST,
+PUT, PATCH and DELETE remain rejected.
 """
 
 from __future__ import annotations
@@ -73,9 +76,14 @@ class HttpClient:
             self._last_request = time.monotonic()
 
     async def request(self, method: str, url: str) -> Response:
-        """Issue a read-only request. Non GET/HEAD methods are rejected."""
+        """Issue a read-only request. Mutating methods are rejected.
+
+        Allowed: GET, HEAD (standard read-only) plus OPTIONS, TRACE which are
+        non-mutating and used for HTTP-method auditing (A05). POST/PUT/PATCH/
+        DELETE are rejected (PRD §2.2 non-goals).
+        """
         method = method.upper()
-        if method not in ("GET", "HEAD"):
+        if method not in ("GET", "HEAD", "OPTIONS", "TRACE"):
             raise ValueError(f"method {method} not allowed (read-only probing)")
         if self._client is None:
             raise RuntimeError("client not started; use 'async with'")
