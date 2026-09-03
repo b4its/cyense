@@ -6,8 +6,12 @@
 
 SHELL := /bin/bash
 APP_DIR := dev/main
-VENV := .venv
-PYTHON := $(shell which python3 || echo "python")
+# Prefer the project venv (dev/main/.venv) so dev targets (test/lint/format)
+# use the installed deps instead of failing on a system Python that lacks
+# pytest/ruff. Falls back to the system interpreter when no venv is present
+# (e.g. on a fresh clone before 'make install-dev').
+VENV := $(APP_DIR)/.venv
+PYTHON := $(if $(wildcard $(VENV)/bin/python),$(abspath $(VENV)/bin/python),$(shell which python3 || echo "python"))
 DOCKER := docker
 COMPOSE := docker compose
 # Compose file lives in $(APP_DIR); all compose commands must run from there.

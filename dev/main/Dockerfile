@@ -1,5 +1,7 @@
-# syntax=docker/dockerfile:1
 # Cyense API — PRD v2.0 (dev/main)
+# NOTE: custom frontend (syntax=docker/dockerfile:1) intentionally removed for
+# portability — it forces a registry fetch of the dockerfile frontend which
+# fails under restricted/WSL Docker networks (EOF on registry-1.docker.io).
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

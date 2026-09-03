@@ -99,6 +99,22 @@ def _cve_rule(rule: str, title: str) -> dict[str, object]:
     }
 
 
+def _owasp_rule(rule: str, severity: str, title: str, cwe: str) -> dict[str, object]:
+    score = {"critical": 9.8, "high": 7.5, "medium": 5.3, "low": 3.1, "info": 0.0}[severity]
+    vector = "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    if severity == "info":
+        vector = "AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+    return {
+        "rule": rule,
+        "severity": severity,
+        "lang": "all",
+        "cwe": cwe,
+        "cvss_score": score,
+        "cvss_vector": vector,
+        "title": title,
+    }
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -217,6 +233,34 @@ async def rules() -> dict[str, object]:
             _detect_rule("GRAPHQL-INTROSPECTION", "GraphQL introspection enabled"),
             _detect_rule("DISC-ROUTE", "Route/endpoint discovered (routing enumeration)"),
             _detect_rule("API-ROUTE", "Sensitive route discovered"),
+        ],
+        "owasp": [
+            _owasp_rule("OWASP-SENSITIVE-001", "high", "Page served over plaintext HTTP",
+                        "CWE-319"),
+            _owasp_rule("OWASP-AUTH-001", "high", "Session cookie not marked HttpOnly",
+                        "CWE-1004"),
+            _owasp_rule("OWASP-AUTH-002", "high", "Session cookie not marked Secure",
+                        "CWE-614"),
+            _owasp_rule("OWASP-AUTH-003", "low", "Login form exposed", "CWE-307"),
+            _owasp_rule("OWASP-CSRF-001", "medium", "State-changing form without CSRF token",
+                        "CWE-352"),
+            _owasp_rule("OWASP-CSRF-002", "low",
+                        "Form posts data to a cross-origin destination", "CWE-352"),
+            _owasp_rule("OWASP-CSRF-003", "medium",
+                        "Session cookie missing SameSite attribute", "CWE-1275"),
+            _owasp_rule("OWASP-CSRF-004", "high", "SameSite=None cookie without Secure",
+                        "CWE-1275"),
+            _owasp_rule("OWASP-DESER-001", "high",
+                        "Insecure deserialization marker detected", "CWE-502"),
+            _owasp_rule("OWASP-CONF-001", "info", "Server header discloses software",
+                        "CWE-200"),
+            _owasp_rule("OWASP-CONF-002", "info", "X-Powered-By header reveals framework",
+                        "CWE-200"),
+            _owasp_rule("OWASP-CONF-003", "medium",
+                        "Sensitive/debug endpoint publicly exposed", "CWE-200"),
+            _owasp_rule("OWASP-CONF-004", "medium", "Directory listing exposed", "CWE-548"),
+            _owasp_rule("OWASP-MONITOR-001", "medium",
+                        "Verbose internal error disclosed", "CWE-209"),
         ],
         "domain": [
             _detect_rule(

@@ -818,12 +818,19 @@ async def _recon_flow(
 
     render_cve_table(console, caps, cve_findings, summary)
 
+    # 2b. OWASP Top 10 posture table
+    owasp_findings = [f for f in findings if f.get("rule", "").startswith("OWASP")]
+    if owasp_findings:
+        from app.cli.renderer import render_owasp_table
+
+        render_owasp_table(console, caps, owasp_findings)
+
     # 3. Temuan lain (XSS/SQLi/IDOR) ringkas
     other = [f for f in findings
              if f.get("rule") not in ("CVE-MATCH",) and not (
                  f.get("rule", "").startswith(("SECRET", "EXPOSED", "DISC",
                                                "WP-", "SSRF", "GRAPHQL",
-                                               "DETECT", "PORT"))
+                                               "DETECT", "PORT", "OWASP"))
              )]
     if other:
         console.print(f"  [bold {PAL.blue_primary}]TEMUAN LAIN (XSS/SQLi/IDOR)[/]")
