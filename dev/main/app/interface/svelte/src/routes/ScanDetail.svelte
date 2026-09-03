@@ -71,6 +71,24 @@
   $: secrets = discovery.filter((f) => f.rule === 'SECRET-LEAK')
   $: exposedFiles = discovery.filter((f) => f.rule === 'EXPOSED-FILE' || f.rule === 'WP-EXPOSED')
 
+  // OWASP Top 10 posture, grouped per category — mirrors the CLI renderer.
+  const OWASP_LABELS = [
+    ['OWASP-SENSITIVE', 'Sensitive Data (A02)'],
+    ['OWASP-AUTH', 'Authentication (A07)'],
+    ['OWASP-CSRF', 'CSRF (A04)'],
+    ['OWASP-DESER', 'Insecure Deserialization (A08)'],
+    ['OWASP-CONF', 'Security Misconfiguration (A05)'],
+    ['OWASP-MONITOR', 'Logging & Monitoring (A09)'],
+  ]
+  $: owasp = findings.filter((f) => f.rule?.startsWith('OWASP'))
+  $: owaspGroups = OWASP_LABELS
+    .map(([prefix, label]) => ({
+      prefix,
+      label,
+      items: owasp.filter((f) => f.rule?.startsWith(prefix)),
+    }))
+    .filter((g) => g.items.length)
+
   // Sticky TOC + scroll-spy for finding sections.
   let ids = []
   $: ids = findings.map((f, i) => ({ id: `f-${i}`, label: `${f.rule} · ${(f.severity||'info').toUpperCase()}` }))
@@ -262,6 +280,19 @@
             <div style="display:flex;flex-direction:column;gap:12px">
               {#each nuclei as f, i}<div id="f-nuclei-{i}"><FindingCard f={f} /></div>{/each}
             </div>
+          </section>
+        {/if}
+
+        {#if owasp.length}
+          <section class="block" id="owasp">
+            <h2>OWASP Top 10 Postur</h2>
+            <p class="sub">Plaintext HTTP, cookie flags, CSRF, auth-surface reachability, insecure deserialization, logging &amp; monitoring.</p>
+            {#each owaspGroups as g}
+              <h3>{g.label} ({g.items.length})</h3>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                {#each g.items as f, i}<div id="f-owasp-{g.prefix}-{i}"><FindingCard f={f} /></div>{/each}
+              </div>
+            {/each}
           </section>
         {/if}
 
