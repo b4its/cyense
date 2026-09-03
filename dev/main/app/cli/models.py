@@ -142,7 +142,23 @@ def classify_recommendation(
     locations: list[str],
 ) -> Literal["priority", "quick_win", "structural"]:
     """Klasifikasikan rekomendasi (cli-experience.md §3.5 poin 4)."""
-    unique_files = {loc.split(":")[0] for loc in locations if loc}
+    unique_files: set[str] = set()
+    for loc in locations:
+        if not loc:
+            continue
+        # URLs (website recon locations like https://t.com/login?x=1) are the
+        # same target host — key by origin (scheme://host) rather than the
+        # literal "https" that a naive ':' split produced, which would inflate
+        # the count and mis-classify every multi-URL group as structural.
+        if "://" in loc:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(loc)
+                unique_files.add(f"{parsed.scheme}://{parsed.netloc}")
+            except ValueError:
+                unique_files.add(loc)
+        else:
+            unique_files.add(loc.split(":")[0])
     if severity_max == "critical" or len(unique_files) >= 3:
         return "structural"
     if len(unique_files) == 1 and severity_max not in ("critical", "high"):

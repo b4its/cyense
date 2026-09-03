@@ -61,17 +61,26 @@ def redact_cookies(cookies: dict[str, str]) -> dict[str, str]:
 def redact_url_credentials(url: str | None) -> str:
     if not isinstance(url, str):
         return "[REDACTED]"
-    # Case-insensitive, any scheme, optional scheme. The credential span is
-    # anything up to '@' (passwords may contain '/'); over-redaction is
-    # preferred over leaking.
-    result = re.sub(
-        r"([a-zA-Z][a-zA-Z0-9+\-.]*://)([^@\s]+)@",
-        r"\1[REDACTED]@", url, flags=re.I,
-    )
-    if result == url:
-        # Scheme-relative (//user:pass@host) or no-scheme (user:pass@host).
-        # Only run when the scheme-based pass did nothing — running it
-        # unconditionally would strip the scheme from already-redacted URLs.
-        # Try "//" FIRST so it is preserved in the output.
-        result = re.sub(r"((?://)?)([^@\s]+)@", r"\1[REDACTED]@", result)
+    # Redact userinfo in a URL authority — `scheme://user:pass@host`, or
+    # scheme-relative `//user:pass@host`. Credentials can contain '/', so the
+    # userinfo span is everything up to the LAST '@' before the host/path.
+    # ONLY the authority `userinfo@` is redacted: an `@` inside the query
+    # string (e.g. `?email=a@b.c`) or path is data, not credentials, and
+    # must be left intact (previously the no-scheme fallback matched ANY
+    # `[^@\s]+@`, mangling every such URL to `[REDACTED]@b.c` — breaking
+    # finding evidence/locations).
+    scheme_re = re.compile(r"([a-zA-Z][a-zA-Z0-9+\-.]*://)[^/\s?#]*@", re.I)
+    result = scheme_re.sub(r"\1[REDACTED]@", url)
+    # Scheme-relative userinfo: authority starting with `//` and containing
+    # a `@` before the first `/` (host boundary).
+    if result.startswith("//"):
+        m = re.match(r"(//[^/\s?#]*@)", result)
+        if m:
+            result = result[: m.start()] + "//[REDACTED]@" + result[m.end():]
+    else:
+        # Bare `user:pass@host` (no scheme) — only at the very start of the
+        # string, before the first `/`.
+        m = re.match(r"([^/\s?#]+@)", result)
+        if m and "/" not in m.group(1).split("@", 1)[0] and "://" not in result[: m.start()]:
+            result = result[: m.start()] + "[REDACTED]@" + result[m.end():]
     return result

@@ -37,6 +37,38 @@ AUTH_GUARDS = {
     "is_authenticated",
 }
 
+# Guards that are unambiguous auth decorators / auth bare names. `Depends` is
+# deliberately handled separately — in FastAPI `Depends(get_db)` is a common
+# NON-auth dependency, and treating every Depends as an auth guard suppressed
+# CY001/CY002/CY004 on most endpoints (false negatives).
+_DECORATOR_GUARDS = frozenset(
+    {"login_required", "permission_required", "jwt_required",
+     "auth_required", "require_user", "authorize", "admin_required"}
+)
+_NAME_GUARDS = frozenset(
+    {"current_user", "get_current_user", "require_user", "authorize",
+     "is_authenticated", "auth"}
+)
+# Depends(...) arguments that indicate an AUTH dependency (vs. a DB/session/
+# repo/service dependency which carries no user context).
+_AUTH_DEP_INTENTS = ("user", "auth", "token", "principal", "account")
+
+
+def _depends_arg_is_auth(call: ast.Call) -> bool:
+    """True if a `Depends(X)` call's target looks like an auth dependency."""
+    if not call.args:
+        return False
+    target = call.args[0]
+    if isinstance(target, ast.Name):
+        name = target.id
+    elif isinstance(target, ast.Attribute):
+        name = target.attr
+    else:
+        return False
+    low = name.lower()
+    # get_current_user, require_user, authenticate, current_account ...
+    return any(part in low for part in _AUTH_DEP_INTENTS) or "current" in low
+
 
 def _finding(
     scan_id: str,
@@ -101,9 +133,26 @@ class _FunctionCollector(ast.NodeVisitor):
             src = ast.unparse(dec) if hasattr(ast, "unparse") else ""
             if "route" in src or "get(" in src or "post(" in src:
                 self.route_decorated.add(node.lineno)
+        # Collect calls in THIS function body WITHOUT descending into nested
+        # function/class definitions. A child visitor collects those (and
+        # attributes them to the correct inner function) — ast.walk(node)
+        # would otherwise attribute a nested helper's calls to the outer
+        # function too, so the same call could be recorded twice with the
+        # same finding_id (duplicate findings, colliding remediation ids).
         for sub in ast.walk(node):
             if isinstance(sub, ast.Call):
                 self.calls_in_functions.append((node, sub))
+
+        # Remove calls that lie inside a nested function/class: they belong to
+        # the inner function's own _visit_function pass.
+        nested_calls: set[int] = set()
+        for sub in ast.walk(node):
+            if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                ast.ClassDef)) and sub is not node:
+                nested_calls.update(id(c) for c in ast.walk(sub) if isinstance(c, ast.Call))
+        self.calls_in_functions = [
+            (fn, call) for fn, call in self.calls_in_functions if id(call) not in nested_calls
+        ]
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -115,12 +164,13 @@ class _FunctionCollector(ast.NodeVisitor):
 
 
 def _function_has_auth_guard(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    # Decorator-based guards (login_required etc.) are unambiguous.
     for dec in func.decorator_list:
         src = ast.unparse(dec) if hasattr(ast, "unparse") else ""
-        if any(guard in src for guard in AUTH_GUARDS):
+        if any(guard in src for guard in _DECORATOR_GUARDS):
             return True
     for sub in ast.walk(func):
-        if isinstance(sub, ast.Name) and sub.id in AUTH_GUARDS:
+        if isinstance(sub, ast.Name) and sub.id in _NAME_GUARDS:
             return True
         if isinstance(sub, ast.Call):
             name = ""
@@ -128,7 +178,12 @@ def _function_has_auth_guard(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bo
                 name = sub.func.id
             elif isinstance(sub.func, ast.Attribute):
                 name = sub.func.attr
-            if name in AUTH_GUARDS:
+            if name in _NAME_GUARDS:
+                return True
+            # Depends(...) only counts as an auth guard when the dependency
+            # carries a user/auth context (get_current_user) — NOT the common
+            # `Depends(get_db)`/`Depends(get_session)` pattern.
+            if name == "Depends" and _depends_arg_is_auth(sub):
                 return True
     return False
 

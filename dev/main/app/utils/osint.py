@@ -50,6 +50,32 @@ _DNS_TYPES = {
 _DEFAULT_TIMEOUT = 10.0
 
 
+def _vcard_value(ent: dict, field_name: str) -> str | None:
+    """Safe vcard field extraction from an RDAP entity.
+
+    RDAP ``vcardArray`` is ``["vcard", [[<field>, {}, "type", value], ...]]``.
+    Real-world responses can be shallow/malformed (``[["vcard"], [[]]]`` or a
+    field tuple shorter than 4 items) — indexing ``[1][0][3]`` directly crashed
+    the whole OSINT stage. Returns the first value whose field name matches, or
+    None.
+    """
+    vcard_array = ent.get("vcardArray")
+    if not isinstance(vcard_array, (list, tuple)) or len(vcard_array) < 2:
+        return None
+    items = vcard_array[1]
+    if not isinstance(items, (list, tuple)):
+        return None
+    for item in items:
+        if not isinstance(item, (list, tuple)) or len(item) < 4:
+            continue
+        try:
+            if str(item[0]).lower() == field_name:
+                return str(item[3])
+        except Exception:  # noqa: BLE001 — never let a malformed vcard kill OSINT
+            continue
+    return None
+
+
 # ---------------------------------------------------------------------------
 # RDAP / whois-style registration info
 # ---------------------------------------------------------------------------
@@ -120,23 +146,16 @@ async def rdap_lookup_domain(
         if not isinstance(ent, dict):
             continue
         roles = ent.get("roles", [])
-        # Registrar
+        if not isinstance(roles, list):
+            roles = []
+        # Registrar / registrant org — via safe vcard extraction (malformed
+        # vcardArray used to crash the whole OSINT stage).
         if "registrar" in roles:
-            registrar = (
-                (ent.get("vcardArray") or [[], []])[1][0][3]
-                if len(ent.get("vcardArray", [])) > 1 and ent["vcardArray"][1]
-                else ""
-            )
-        # Registrant org
-        vcard = (ent.get("vcardArray") or [[], []])[1] if ent.get("vcardArray") else []
-        for item in vcard:
-            if not isinstance(item, (list, tuple)) or len(item) < 4:
-                continue
-            field = str(item[0]).lower()
-            if field == "org":
-                org = str(item[3])
-            elif field == "email":
-                emails.add(str(item[3]))
+            registrar = _vcard_value(ent, "fn") or registrar
+        org = _vcard_value(ent, "org") or org
+        email = _vcard_value(ent, "email")
+        if email:
+            emails.add(email)
 
     for ns in data.get("nameservers", []) if isinstance(data.get("nameservers"), list) else []:
         if isinstance(ns, dict) and ns.get("ldhName"):
@@ -180,15 +199,10 @@ async def rdap_lookup_ip(
     for ent in data.get("entities", []):
         if not isinstance(ent, dict):
             continue
-        vcard = (ent.get("vcardArray") or [[], []])[1] if ent.get("vcardArray") else []
-        for item in vcard:
-            if not isinstance(item, (list, tuple)) or len(item) < 4:
-                continue
-            field = str(item[0]).lower()
-            if field == "org":
-                org = str(item[3])
-            elif field == "email":
-                emails.add(str(item[3]))
+        org = _vcard_value(ent, "org") or org
+        email = _vcard_value(ent, "email")
+        if email:
+            emails.add(email)
     out["org"] = org or None
     out["emails"] = sorted(emails)
     out["country"] = _vcard_country(data.get("entities", []))

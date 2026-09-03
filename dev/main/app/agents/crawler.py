@@ -235,24 +235,34 @@ def _find_id_endpoints(urls: list[str]) -> list[dict[str, Any]]:
             template_parts.append(part)
 
         # Query-based IDs — keep the ID params in the template with an {ID}
-        # placeholder so active probing can target them too. ONLY the FIRST
-        # ID-like param becomes {ID}; subsequent ones stay literal (the
-        # prober substitutes the SAME id into every placeholder, so multiple
-        # {ID}s would produce semantically wrong probe URLs — mirroring the
-        # path-segment fix above).
-        query_ids: dict[str, str] = {}
-        query_parts: list[str] = []
-        id_placed_q = False
-        for k, v in parse_qs(parsed.query).items():
-            if (not id_placed_q and _ID_QUERY_RE.match(k)
-                    and v and _ID_SEGMENT_RE.match(v[0])):
-                query_ids[k] = v[0]
-                query_parts.append(f"{k}={{ID}}")
-                id_placed_q = True
-            elif v:
-                query_parts.append(f"{k}={v[0]}")
-            else:
-                query_parts.append(k)
+        # placeholder so active probing can target them too. ONLY ONE {ID}
+        # per endpoint across path AND query: the prober substitutes the SAME
+        # id into every placeholder, so a URL with a numeric path segment AND
+        # an id-like query param (e.g. /users/5/invoices?account_id=5) must
+        # become /users/{ID}/invoices?account_id=5 — NOT two live {ID}s that
+        # would change both the user and the account (wrong probe semantics).
+        if id_placed:
+            # A path ID already consumed the single placeholder; keep query
+            # params literal so we don't create a second live {ID}.
+            query_ids: dict[str, str] = {}
+            query_parts = [
+                f"{k}={v[0]}" if v else k
+                for k, v in parse_qs(parsed.query).items()
+            ]
+        else:
+            query_ids: dict[str, str] = {}
+            query_parts: list[str] = []
+            id_placed_q = False
+            for k, v in parse_qs(parsed.query).items():
+                if (not id_placed_q and _ID_QUERY_RE.match(k)
+                        and v and _ID_SEGMENT_RE.match(v[0])):
+                    query_ids[k] = v[0]
+                    query_parts.append(f"{k}={{ID}}")
+                    id_placed_q = True
+                elif v:
+                    query_parts.append(f"{k}={v[0]}")
+                else:
+                    query_parts.append(k)
         query_str = "&".join(query_parts)
 
         if not id_segments and not query_ids:

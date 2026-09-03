@@ -239,7 +239,10 @@ def render_finding_card(
 
     severity = _esc(finding.get("severity", "info")).lower()
     rule     = _esc(finding.get("rule", "—"))
-    conf     = finding.get("confidence", 0.0)
+    try:
+        conf = float(finding.get("confidence") or 0.0)
+    except (TypeError, ValueError):
+        conf = 0.0
     title    = _esc(finding.get("title", "(untitled)"))
     location = _esc(finding.get("location") or "")
     desc     = _esc(finding.get("description") or "")
@@ -316,11 +319,15 @@ def render_findings_table(
         bc  = SEVERITY_BADGE_COLOR.get(sev, p.muted)
         cvss_score = f.get("cvss_score")
         cvss_str = f"{cvss_score:.1f}" if cvss_score is not None else "—"
+        try:
+            conf_str = f"{float(f.get('confidence') or 0.0):.2f}"
+        except (TypeError, ValueError):
+            conf_str = "0.00"
         table.add_row(
             _esc(f.get("rule", "—")),
             f"[{bc}]{sev.upper()}[/]",
             cvss_str,
-            f"{f.get('confidence', 0):.2f}",
+            conf_str,
             _esc(f.get("location") or "—"),
             _esc(f.get("title", "—"))[:30],
         )

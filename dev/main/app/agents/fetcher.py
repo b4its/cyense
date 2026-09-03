@@ -90,10 +90,11 @@ class FetcherAgent(BaseAgent):
             components = parse_github_url(url)
             owner = components["owner"]
             repo = components["repo"]
+            url_ref_hint = components["ref"]
 
             self.trajectory.step(
                 "parse",
-                {"owner": owner, "repo": repo, "ref_hint": components["ref"]},
+                {"owner": owner, "repo": repo, "ref_hint": url_ref_hint},
             )
 
             # Initialize client with token (redacted internally)
@@ -108,8 +109,12 @@ class FetcherAgent(BaseAgent):
                 timeout=settings.github_timeout,
             )
 
-            # Determine ref (user-provided or resolve from API)
-            ref = ctx.get("ref")
+            # Determine ref: explicit --ref wins; otherwise honor the ref
+            # embedded in the URL path (/tree/<ref>); else default branch.
+            # Previously the URL's /tree/<ref> was parsed but ignored, so
+            # https://github.com/o/r/tree/develop scanned `main` — wrong-branch
+            # analysis for a security scanner.
+            ref = ctx.get("ref") or url_ref_hint
             if not ref:
                 self.trajectory.step("api_resolve_ref")
                 default_branch = await client.resolve_default_branch(owner, repo)

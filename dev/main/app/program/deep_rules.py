@@ -233,11 +233,48 @@ def _function_has_auth(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         name = _decorator_name(dec)
         if name and name in _AUTH_DECORATORS:
             return True
-    # FastAPI `Depends(...)` inside a parameter default
+    # FastAPI `Depends(...)` appears as a parameter DEFAULT
+    # (`user = Depends(get_current_user)`), not an annotation — checking only
+    # the annotation missed the idiomatic form and produced CY012 false
+    # positives on protected endpoints. Also check annotations (older style)
+    # and treat a `Depends(...)` default as an auth guard ONLY when the
+    # dependency carries a user/auth context.
     for arg in list(func.args.args) + list(func.args.kwonlyargs):
         if arg.annotation and _has_name(arg.annotation, "Depends"):
             return True
+    defaults = list(func.args.defaults or [])
+    # kwonlyargs have their own defaults list.
+    defaults += list(func.args.kw_defaults or [])
+    for d in defaults:
+        if d is None:
+            continue
+        for sub in ast.walk(d):
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) \
+                    and sub.func.id == "Depends":
+                if _depends_is_auth(sub):
+                    return True
     return False
+
+
+def _depends_is_auth(call: ast.Call) -> bool:
+    """True if a `Depends(X)` call names a user/auth dependency.
+
+    `Depends(get_db)` / `Depends(get_session)` are plain DI (no user context)
+    and must NOT silence auth checks; `Depends(get_current_user)` etc. are
+    genuine auth guards.
+    """
+    if not call.args:
+        return False
+    target = call.args[0]
+    if isinstance(target, ast.Name):
+        name = target.id
+    elif isinstance(target, ast.Attribute):
+        name = target.attr
+    else:
+        return False
+    low = name.lower()
+    _intents = ("user", "auth", "token", "principal", "account")
+    return "current" in low or any(part in low for part in _intents)
 
 
 def _has_name(node: ast.AST, name: str) -> bool:
@@ -477,20 +514,38 @@ def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
             if not isinstance(sub, ast.Call):
                 continue
             callee = None
+            module_qualified = False
             if isinstance(sub.func, ast.Name):
                 callee = sub.func.id
             elif isinstance(sub.func, ast.Attribute):
-                # `module.helper(...)` — the OBJECT (`module`) must be imported
-                # for this to be a call into an imported module. Previously we
-                # used `sub.func.attr` (the method name), which is not in the
-                # `imported` set when the module is imported as `import module`.
+                # Two cross-file styles:
+                #   a) `from app.services import get_invoice; get_invoice(x)`  — direct name
+                #   b) `from app.services import billing; billing.get_invoice(x)` — module
+                #      object (the module `billing` is imported, its attribute is the
+                #      helper). The MOST common style is (b); the old code checked
+                #      `sub.func.attr` against `imported`, which never contained the
+                #      method name for a `from x import module` import, so CY013 never
+                #      fired for the usual delegation pattern.
                 obj = sub.func.value
                 obj_name = obj.id if isinstance(obj, ast.Name) else None
                 if obj_name and obj_name in imported:
                     callee = sub.func.attr
+                    module_qualified = True
+                elif obj_name is None and sub.func.attr in imported:
+                    # e.g. `from x import helper` used as bare `helper(...)` is a Name
+                    # call above; keep attribute fallback for edge shapes.
+                    callee = sub.func.attr
+                    module_qualified = False
                 else:
                     callee = None
-            if not callee or callee not in imported:
+                    module_qualified = False
+            else:
+                module_qualified = False
+            # For a module-qualified call (`module.helper`), `callee` is the
+            # attribute — the module import already matched, so accept it.
+            if (not module_qualified) and (not callee or callee not in imported):
+                continue
+            if module_qualified and not callee:
                 continue
             args_user_input = False
             for arg in sub.args + [kw.value for kw in sub.keywords]:

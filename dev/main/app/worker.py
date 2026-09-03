@@ -104,8 +104,18 @@ class ScanWorker:
             # Restore original request from checkpoint so resume uses the same
             # scan parameters (mode, url, lang, scope, etc.). New-request fields
             # (e.g. a fresh --instruction) override the original.
+            #
+            # A fresh resume request is deserialised through the Pydantic
+            # model, which fills EMPTY defaults for omitted fields
+            # (`repo_url=""`, `url=""`, `domain=""`, …). Overlaying those
+            # as-is wiped the checkpoint's real target, so every resume failed
+            # or rescanned the wrong tree. Only override with values the
+            # caller actually supplied (non-empty / non-None).
             original_request = dict(checkpoint.get("request", {}))
-            original_request.update(request_dict)
+            for key, value in request_dict.items():
+                if value in (None, "", [], {}):
+                    continue
+                original_request[key] = value
             request_dict = original_request
             self._log_event(scan_id, f"restored original request for resume from {resume_from}")
 
@@ -114,21 +124,29 @@ class ScanWorker:
 
         # Helper callback for all modes: update stage, progress, and checkpoint.
         async def on_stage(stage: str) -> None:
-            progress = {
-                "resolve": 25,
-                "fetch": 50,
-                "analyze": 75,
+            stage_name = stage if isinstance(stage, str) else str(stage)
+            # Monotonic stage→progress map so a scan's progress bar never
+            # regresses to 0 midway. Previously only resolve/fetch/analyze/
+            # report/crawl/enumerate/hosts/host were mapped, so website stages
+            # (cve, discovery, harvest, osint, re, nikto, nuclei, sec-live,
+            # sqli) all fell to 0 and the bar visibly dropped from e.g. 75%
+            # back to 0 for most of the scan.
+            progress_map = {
+                # github / link
+                "resolve": 10, "fetch": 25, "analyze": 55,
+                # program
+                "recon": 20, "probe": 50,
+                # website / domain
+                "crawl": 8, "port-scan": 24, "cve": 30,
+                "discovery": 36, "harvest": 42, "osint": 46, "re": 50,
+                "nikto": 56, "nuclei": 62, "sec-live": 68,
+                "sqli": 80, "verify": 70,
+                # domain
+                "enumerate": 15, "hosts": 35, "host": 60,
                 "report": 90,
-                "crawl": 30,
-                # Domain-scan stages
-                "enumerate": 15,
-                "hosts": 35,
-                "host": 60,
-            }.get(
-                stage if isinstance(stage, str) else str(stage),
-                {"recon": 25, "probe": 50, "verify": 75, "report": 90}.get(stage, 0),
-            )
-            await self.store.mark_stage(scan_id, stage, progress)
+            }
+            progress = progress_map.get(stage_name, 0)
+            await self.store.mark_stage(scan_id, stage_name, progress)
             # Strix-style checkpoint at each stage transition. Carry over any
             # findings recovered from the checkpoint being resumed from so a
             # re-failure preserves them (resume merge depends on this).
@@ -322,15 +340,27 @@ class ScanWorker:
     def _reports_dir_for(self, scan_id: str) -> Path | None:
         """Resolve and validate a per-scan reports directory.
 
-        Returns ``None`` if the resolved path escapes reports_dir (defense-in-
-        depth against malicious scan_id values). Scan IDs are normally server-
-        generated, but we validate anyway to prevent any future injection.
+        Returns ``None`` if the resolved path escapes ``reports_dir`` or is
+        the ``reports_dir`` itself (defense-in-depth against malicious
+        scan_id values). Scan IDs are normally server-generated, but ``.``
+        (or ``.``-aliases) previously passed the plain containment check and
+        ``discard`` would recursively delete the WHOLE reports directory
+        (all scans, checkpoints, store.json, fix_sessions.json) — a data-loss
+        hole reachable via ``DELETE /scans/.``.
         """
-        target = (self.settings.reports_dir / scan_id).resolve()
+        base = self.settings.reports_dir.resolve()
         try:
-            target.relative_to(self.settings.reports_dir.resolve())
+            target = (self.settings.reports_dir / scan_id).resolve()
+        except (OSError, RuntimeError):
+            log.warning("scan_id %r cannot be resolved", scan_id)
+            return None
+        try:
+            target.relative_to(base)
         except ValueError:
             log.warning("scan_id %r escapes reports_dir", scan_id)
+            return None
+        if target == base:
+            log.warning("scan_id %r resolves to reports_dir root; rejected", scan_id)
             return None
         return target
 

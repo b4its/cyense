@@ -79,7 +79,13 @@ def generate_ownership_filter(
             if kwarg_names:
                 new_args = ", ".join(new_kwargs + [patch_arg])
 
-        before_src = ast.unparse(node)
+        # Use the ORIGINAL source text of the call (ast.get_source_segment),
+        # not ast.unparse — unparse normalizes string literals to single
+        # quotes, so .replace() silently no-ops on double-quoted sources and
+        # the patch "applies" while leaving the vulnerability in place.
+        before_src = ast.get_source_segment(source, node)
+        if not before_src:
+            before_src = ast.unparse(node)
         # Use ast.unparse on the full call so we don't assume .func is a Name
         func_src = ast.unparse(node.func)
         after_src = f"{func_src}({new_args})"
@@ -89,6 +95,12 @@ def generate_ownership_filter(
         if 0 < line_num <= len(lines):
             before_snippet = lines[line_num - 1].strip()
             after_snippet = before_snippet.replace(before_src, after_src)
+            if after_snippet == before_snippet:
+                # Fallback: replace from the raw unparsed call if the source
+                # segment contains line-wrapped expressions.
+                after_snippet = before_snippet.replace(
+                    ast.unparse(node), after_src
+                )
         else:
             before_snippet = before_src
             after_snippet = after_src

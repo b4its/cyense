@@ -156,6 +156,7 @@ class WebsiteEngine:
         # ------------------------------------------------------------------
         # Stage 2b: Open port scan (nmap-style TCP connect) on the target host
         # ------------------------------------------------------------------
+        await self._notify("port-scan")
         port_findings: list[dict[str, Any]] = []
         open_ports_data: list[dict[str, Any]] = []
         if not skip_port_scan:

@@ -83,6 +83,25 @@ class GithubEngine:
         # Extract sandbox path for analyzer
         tree_root = Path(result.data["tree_root"])
 
+        # The codeload tarball always wraps the repo in a single top-level
+        # directory (`<owner>-<repo>-<sha>/…`). WITHOUT unwrapping it, the
+        # diff-scope include paths (repo-root-relative from the Compare API,
+        # e.g. `vuln/app.py`) never matched the analyzer's
+        # `path.relative_to(source_dir)` → EVERY diff-scoped github scan
+        # analyzed 0 files and reported a false "clean" result (HIGH).
+        # Unwrap a single wrapper dir so relative paths align (harmless when
+        # there is no wrapper, e.g. an already-unwrapped tree).
+        try:
+            top_dirs = [p for p in tree_root.iterdir() if p.is_dir()]
+            if len(top_dirs) == 1:
+                inner = top_dirs[0]
+                # Only unwrap when the wrapper itself holds no loose files
+                # (true codeload layout: everything sits inside the wrapper).
+                if not any(p.is_file() for p in tree_root.iterdir()):
+                    tree_root = inner
+        except OSError:
+            pass
+
         # Stage fetch — dipanggil di sini agar progress 25→50→75 tidak melompat
         # (cli-experience.md §5.2 perbaikan bug R2; worker.py:77 sudah memetakan fetch:50)
         await self._notify("fetch")

@@ -158,12 +158,24 @@ def cy009_strategy(finding, source, tree=None):
     """CY009: PHP where('id', $_GET[id]) unscoped."""
     auth_ctx = find_auth_context_php(source)
 
-    # Pattern: ->where('id', $var)
-    pattern = r"->where\s*\(\s*'id'\s*,\s*([^\)]+)\s*\)"
+    # Pattern: ->where('id', $var) — capture up to the OUTER closing paren so
+    # nested calls like $request->input('id') balance correctly (previously
+    # [^\)]+ stopped at the first ')' and produced a broken unbalanced line).
+    pattern = r"->where\s*\(\s*'id'\s*,\s*((?:[^()\"']|\([^)]*\))*)\s*\)"
     match = re.search(pattern, source)
 
     if match:
         var_name = match.group(1).strip()
+
+        if auth_ctx == "unknown":
+            return {
+                "diff": "manual_required: cannot detect user context",
+                "before_snippet": f"->where('id', {var_name})",
+                "after_snippet": "->where('id', {var_name})->where('user_id', $auth) "
+                                 "/* Manual: ganti $auth dengan variabel user */",
+                "risk": "HIGH",
+                "notes": "Tidak dapat mendeteksi context user untuk filtering",
+            }
 
         # Add user scope
         diff_lines = [
@@ -175,7 +187,7 @@ def cy009_strategy(finding, source, tree=None):
         return {
             "diff": "\n".join(diff_lines),
             "before_snippet": f"->where('id', {var_name})",
-            "after_snippet": "->where('id', {var_name})->where('user_id', {auth_ctx})",
+            "after_snippet": f"->where('id', {var_name})->where('user_id', {auth_ctx})",
             "risk": "LOW",
             "notes": "User ID scoping added to query chain",
         }

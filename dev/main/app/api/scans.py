@@ -80,6 +80,11 @@ async def get_scan(request: Request, scan_id: str) -> dict[str, object]:
 
 @router.delete("/scans/{scan_id}", status_code=204)
 async def delete_scan(request: Request, scan_id: str) -> None:
+    # Defense-in-depth: reject traversal/root scan_ids up-front. The worker
+    # also refuses to resolve "." to the reports root, but failing fast here
+    # keeps a raw path like "."/".." from ever reaching store/worker logic.
+    if ".." in scan_id or "/" in scan_id or scan_id in (".", ""):
+        raise HTTPException(status_code=403, detail="invalid scan_id")
     deleted = request.app.state.store.delete(scan_id)
     # also drop any computed report and its on-disk artifacts
     request.app.state.worker.discard(scan_id)

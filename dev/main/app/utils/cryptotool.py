@@ -178,12 +178,19 @@ def aes_encrypt(key: str | bytes, plaintext: str | bytes, mode: str = "cbc",
     m = (mode or "cbc").lower()
     if len(kb) not in (16, 24, 32):
         raise ValueError("AES key must be 16/24/32 bytes (128/192/256 bit)")
-    nb = to_bytes(nonce) if nonce else None
+    nb_in = to_bytes(nonce) if nonce else None
     if m == "gcm":
-        cipher = AES.new(kb, AES.MODE_GCM, nonce=nb or b"\x00" * 12)
+        # GCM requires a unique nonce per key+message. A HARDCODED zero nonce
+        # (previous behaviour) reuses the keystream and enables forgeries —
+        # always generate a random one unless the caller supplies it. The blob
+        # is length-prefixed so decrypt can round-trip ANY nonce length:
+        #   <1-byte nonce_len> + <nonce> + <tag(16)> + <ciphertext>
+        nb = nb_in or secrets.token_bytes(12)
+        cipher = AES.new(kb, AES.MODE_GCM, nonce=nb)
         ct, tag = cipher.encrypt_and_digest(_pkcs7_pad(pt, 16))
-        return b64encode((cipher.nonce or b"") + tag + ct)
-    cipher = aes_cipher(kb, m, nb)
+        blob = bytes([len(nb)]) + nb + tag + ct
+        return b64encode(blob)
+    cipher = aes_cipher(kb, m, nb_in)
     if m in ("ecb", "cbc"):
         ct = cipher.encrypt(_pkcs7_pad(pt, 16))
     else:
@@ -200,9 +207,18 @@ def aes_decrypt(key: str | bytes, ciphertext: str, mode: str = "cbc",
     if len(kb) not in (16, 24, 32):
         raise ValueError("AES key must be 16/24/32 bytes (128/192/256 bit)")
     if m == "gcm":
-        nb = ct[:12]
-        tag = ct[12:28]
-        body = ct[28:]
+        # Blob layout written by aes_encrypt: <1-byte nonce_len> + nonce +
+        # tag(16) + ciphertext. Decode with the ACTUAL nonce length rather
+        # than assuming 12 bytes (previously a 16-byte nonce → MAC check
+        # failed and the documented feature was unusable).
+        if len(ct) < 18:
+            raise ValueError("ciphertext too short for GCM blob")
+        nonce_len = ct[0]
+        if nonce_len < 1 or nonce_len > 32 or len(ct) < 1 + nonce_len + 16:
+            raise ValueError("invalid GCM blob (bad nonce length)")
+        nb = ct[1 : 1 + nonce_len]
+        tag = ct[1 + nonce_len : 1 + nonce_len + 16]
+        body = ct[1 + nonce_len + 16 :]
         cipher = AES.new(kb, AES.MODE_GCM, nonce=nb)
         data = cipher.decrypt(body)
         cipher.verify(tag)
@@ -219,12 +235,14 @@ def blowfish_encrypt(key: str | bytes, plaintext: str | bytes,
     kb = to_bytes(key)
     pt = to_bytes(plaintext)
     m = (mode or "cbc").lower()
-    nb = to_bytes(nonce) if nonce else (b"\x00" * 8 if m == "cbc" else b"\x00" * 8)
-    if len(nb) != 8 and m != "ecb":
-        raise ValueError("Blowfish IV must be 8 bytes")
+    if m not in ("ecb", "cbc"):
+        raise ValueError(f"unsupported Blowfish mode: {mode} (expected ecb|cbc)")
+    nb = to_bytes(nonce) if nonce else b"\x00" * 8
     if m == "ecb":
         cipher = Blowfish.new(kb, Blowfish.MODE_ECB)
     else:
+        if len(nb) != 8:
+            raise ValueError("Blowfish IV must be 8 bytes")
         cipher = Blowfish.new(kb, Blowfish.MODE_CBC, nb)
     return b64encode(cipher.encrypt(_pkcs7_pad(pt, 8)))
 
@@ -234,10 +252,14 @@ def blowfish_decrypt(key: str | bytes, ciphertext: str,
     kb = to_bytes(key)
     ct = b64decode(ciphertext)
     m = (mode or "cbc").lower()
-    nb = to_bytes(nonce) if nonce else (b"\x00" * 8 if m == "cbc" else b"\x00" * 8)
+    if m not in ("ecb", "cbc"):
+        raise ValueError(f"unsupported Blowfish mode: {mode} (expected ecb|cbc)")
+    nb = to_bytes(nonce) if nonce else b"\x00" * 8
     if m == "ecb":
         cipher = Blowfish.new(kb, Blowfish.MODE_ECB)
     else:
+        if len(nb) != 8:
+            raise ValueError("Blowfish IV must be 8 bytes")
         cipher = Blowfish.new(kb, Blowfish.MODE_CBC, nb)
     return _pkcs7_unpad(cipher.decrypt(ct)).decode("utf-8", errors="replace")
 
@@ -306,6 +328,8 @@ def twofish_encrypt(key: str | bytes, plaintext: str | bytes,
     kb = to_bytes(key)
     pt = to_bytes(plaintext)
     m = (mode or "cbc").lower()
+    if m not in ("ecb", "cbc"):
+        raise ValueError(f"unsupported Twofish mode: {mode} (expected ecb|cbc)")
     nb = to_bytes(nonce) if nonce else None
     if m == "ecb":
         return b64encode(twofish_encrypt_ecb(kb, pt))
@@ -317,6 +341,8 @@ def twofish_decrypt(key: str | bytes, ciphertext: str,
     kb = to_bytes(key)
     ct = b64decode(ciphertext)
     m = (mode or "cbc").lower()
+    if m not in ("ecb", "cbc"):
+        raise ValueError(f"unsupported Twofish mode: {mode} (expected ecb|cbc)")
     nb = to_bytes(nonce) if nonce else None
     if m == "ecb":
         return twofish_decrypt_ecb(kb, ct).decode("utf-8", errors="replace")

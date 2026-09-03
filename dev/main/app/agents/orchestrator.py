@@ -195,11 +195,10 @@ class Orchestrator:
 
         return urlparse(url).path
 
-    @staticmethod
-    def _empty_report(error: str, started: float) -> dict[str, Any]:
+    def _empty_report(self, error: str, started: float) -> dict[str, Any]:
         return {
             "meta": {
-                "scan_id": "",
+                "scan_id": self.scan_id,
                 "mode": "link",
                 "engine": "agentic",
                 "pipeline": ["recon"],
