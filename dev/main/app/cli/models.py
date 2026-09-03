@@ -41,7 +41,7 @@ class RenderContext(BaseModel):
     """State yang dipegang renderer selama polling berlangsung."""
 
     scan_id: str
-    mode: Literal["github", "program", "link", "website", "domain"]
+    mode: Literal["github", "program", "link", "website", "domain", "api"]
     stages: list[str]                             # urutan stage sesuai mode
     stage_info: dict[str, StageInfo] = Field(default_factory=dict)
     current_stage: str | None = None
@@ -121,7 +121,8 @@ MODE_STAGES: dict[str, list[str]] = {
     "program": ["recon", "probe", "report"],
     "link":    ["recon", "probe", "verify", "report"],
     "website": ["crawl", "analyze", "port-scan", "cve", "discovery",
-                 "harvest", "nikto", "nuclei", "probe", "sqli", "report"],
+                 "harvest", "osint", "re", "nikto", "nuclei", "sec-live",
+                 "probe", "sqli", "report"],
     "domain":  ["enumerate", "hosts", "host", "report"],
 }
 

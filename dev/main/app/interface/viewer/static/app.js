@@ -97,11 +97,11 @@ function renderFindingsTable(findings) {
     }
 
     tbody.innerHTML = findings.map(finding => `
-        <tr onclick="showFindingDetail('${finding.finding_id}')">
+        <tr onclick="showFindingDetail('${escapeAttr(finding.finding_id)}')">
             <td>${escapeHtml(finding.finding_id)}</td>
             <td>${escapeHtml(finding.rule)}</td>
             <td><span class="severity-badge ${finding.severity}">${finding.severity.toUpperCase()}</span></td>
-            <td>${finding.cvss_score ? finding.cvss_score.toFixed(1) : '-'}</td>
+            <td>${fmtScore(finding.cvss_score)}</td>
             <td>${escapeHtml(finding.location || '-')}</td>
             <td>${escapeHtml(finding.title || '-')}</td>
         </tr>
@@ -175,7 +175,7 @@ function showFindingDetail(findingId) {
         ${finding.cvss_score ? `
         <div class="detail-row">
             <div class="detail-label">CVSS Score</div>
-            <div class="detail-value">${finding.cvss_score.toFixed(1)}</div>
+            <div class="detail-value">${fmtScore(finding.cvss_score)}</div>
         </div>
         ` : ''}
         
@@ -226,7 +226,7 @@ function showFindingDetail(findingId) {
         ${finding.confidence ? `
         <div class="detail-row">
             <div class="detail-label">Confidence</div>
-            <div class="detail-value">${(finding.confidence * 100).toFixed(0)}%</div>
+            <div class="detail-value">${fmtScore(finding.confidence * 100)}%</div>
         </div>
         ` : ''}
     `;
@@ -250,6 +250,17 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Escape a value for use inside a quoted HTML attribute (JavaScript string).
+function escapeAttr(text) {
+    return escapeHtml(String(text ?? '')).replace(/"/g, '&quot;');
+}
+
+// Safe CVSS score formatting — never assume the value is a number.
+function fmtScore(score) {
+    const n = Number(score);
+    return Number.isFinite(n) ? n.toFixed(1) : '-';
 }
 
 function showError(message) {

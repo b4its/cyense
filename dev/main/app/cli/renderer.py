@@ -623,6 +623,9 @@ def render_discovery_table(
     routes_f = [f for f in findings if f.get("rule") == "DISC-ROUTE"]
     api_routes = [f for f in findings if f.get("rule") == "API-ROUTE"]
     harvest = [f for f in findings if f.get("rule", "").startswith("HARVEST")]
+    osint = [f for f in findings if f.get("rule", "").startswith("OSINT")]
+    re_rules = [f for f in findings if f.get("rule", "").startswith("RE-")]
+    owasp = [f for f in findings if f.get("rule", "").startswith("OWASP")]
     nikto = [f for f in findings if f.get("rule", "").startswith("NIKTO")]
     nuclei = [f for f in findings if f.get("rule", "").startswith("NUCLEUS")]
     xs_live = [f for f in findings if f.get("rule", "").startswith("XS-LIVE")]
@@ -630,7 +633,8 @@ def render_discovery_table(
     total = len(secrets) + len(exposed) + len(wp) + len(ssrf) + len(graphql) \
         + len(subs) + len(api) + len(js) + len(params) + len(wayback) \
         + len(vhosts) + len(dirs) + len(routes_f) + len(api_routes) \
-        + len(harvest) + len(nikto) + len(nuclei) + len(xs_live) + len(sqli_live)
+        + len(harvest) + len(osint) + len(re_rules) + len(owasp) \
+        + len(nikto) + len(nuclei) + len(xs_live) + len(sqli_live)
     if total == 0:
         console.print(f"  [{p.ok}]Tidak ada temuan discovery (recon bersih).[/]")
         console.print()
@@ -767,6 +771,36 @@ def render_discovery_table(
             console.print(
                 f"  [{p.blue_mist}]▸[/] {f.get('title','?')} "
                 f"[{p.muted}]{f.get('severity','?')}[/]"
+            )
+        console.print()
+
+    # OSINT — RDAP/whois + DNS + ASN (registered in scan website discovery).
+    if osint:
+        console.print(f"  [bold {p.blue_primary}]OSINT — RDAP/DNS/ASN ({len(osint)})[/]")
+        for f in osint:
+            console.print(
+                f"  [{p.blue_mist}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('rule','')}[/]"
+            )
+        console.print()
+
+    # Reverse-engineering — source-map exposure + vulnerable JS libraries.
+    if re_rules:
+        console.print(f"  [bold {p.sev_medium}]REVERSE ENGINEERING ({len(re_rules)})[/]")
+        for f in re_rules:
+            console.print(
+                f"  [{p.sev_medium}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')} / {f.get('rule','')}[/]"
+            )
+        console.print()
+
+    # OWASP community-vulnerability live checks.
+    if owasp:
+        console.print(f"  [bold {p.sev_high}]OWASP LIVE CHECKS ({len(owasp)})[/]")
+        for f in owasp:
+            console.print(
+                f"  [{p.sev_high}]▸[/] {f.get('title','?')} "
+                f"[{p.muted}]{f.get('severity','?')} / {f.get('rule','')}[/]"
             )
         console.print()
 

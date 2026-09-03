@@ -17,10 +17,19 @@
     submitting = true; msg = ''
     try {
       const payload = { mode, i_have_permission: true }
-      if (mode === 'website' || mode === 'link') payload.url = url
-      if (mode === 'domain') { payload.domain = url; delete payload.url }
-      if (mode === 'program') payload.source_type = 'sample'
-      if (mode === 'github') payload.repo_url = url
+      if (mode === 'website' || mode === 'link') {
+        if (!url) throw new Error('URL/domain target wajib diisi')
+        payload.url = url
+      }
+      if (mode === 'domain') {
+        if (!url) throw new Error('Domain wajib diisi')
+        payload.domain = url; delete payload.url
+      }
+      if (mode === 'program') { payload.source_type = 'sample'; delete payload.url }
+      if (mode === 'github') {
+        if (!url) throw new Error('Repo URL wajib diisi')
+        payload.repo_url = url
+      }
       const r = await api.submitScan(payload)
       msg = `Scan diajukan: ${r.scan_id}`
       setTimeout(async () => { scans = await api.listScans() || [] }, 1500)
@@ -45,10 +54,7 @@
         <option value="website">website</option>
         <option value="domain">domain</option>
         <option value="link">link</option>
-        <option value="cve">cve</option>
-        <option value="recon">recon</option>
-        <option value="routes">routes</option>
-        <option value="program">program</option>
+        <option value="program">program (sample)</option>
         <option value="github">github</option>
       </select>
       </div>

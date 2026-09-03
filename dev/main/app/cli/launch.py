@@ -173,7 +173,11 @@ def run_cli_mode(host: str, port: int) -> int:
     print()
     print("  Client-side: CLI berbasis command. Contoh:")
     print("    cyense scan website http://example.com --i-have-permission")
-    print("    cyense cve http://example.com --i-have-permission")
+    print("    cyense recon http://example.com --i-have-permission   # + OSINT/RE/OWASP")
+    print("    cyense crypt hash 'hello' --algo sha256               # toolbelt kriptografi")
+    print("    cyense crypt aes encrypt 'rahasia' --key <k> -m gcm")
+    print("    cyense coverage <scan_id>                             # cakupan coverage")
+    print("    cyense export sarif <scan_id> -o out.sarif            # ekspor SARIF")
     print("    cyense list")
     print()
     return 0

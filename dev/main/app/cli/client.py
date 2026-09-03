@@ -4,11 +4,21 @@ Hanya memanggil endpoint yang ada:
   POST   /api/v1/scans
   GET    /api/v1/scans/{id}
   GET    /api/v1/scans/{id}/report
+  GET    /api/v1/scans/{id}/report/sarif
+  GET    /api/v1/scans/{id}/coverage
+  GET    /api/v1/scans/{id}/report/html
+  GET    /api/v1/scans/{id}/export/csv
+  GET    /api/v1/scans/{id}/export/pdf
+  DELETE /api/v1/scans/{id}
   GET    /api/v1/scans
+  GET    /api/v1/scans/resumable
   GET    /api/v1/rules
   GET    /api/v1/health
   POST   /api/v1/scans/{id}/fixes
   GET    /api/v1/fixes/{session_id}
+  GET    /api/v1/fixes/{session_id}/diff
+  POST   /api/v1/fixes/{session_id}/apply
+  POST   /api/v1/fixes/{session_id}/revert
 
 Polling adaptif (cli-experience.md §3.6):
   - 250 ms selama 10 detik pertama
@@ -137,6 +147,70 @@ class CyenseClient:
         r.raise_for_status()
         return r.json()
 
+    async def get_fix_diff(self, session_id: str) -> str:
+        """GET /fixes/{session_id}/diff — unified diff preview (text)."""
+        r = await self._c().get(f"{_API}/fixes/{session_id}/diff")
+        if r.status_code == 404:
+            return ""
+        r.raise_for_status()
+        return r.text
+
+    async def apply_fixes(
+        self, session_id: str, fix_ids: list[str], confirm: bool = False,
+    ) -> dict[str, Any]:
+        """POST /fixes/{session_id}/apply — write patches (require confirm)."""
+        r = await self._c().post(
+            f"{_API}/fixes/{session_id}/apply",
+            json={"fix_ids": fix_ids, "confirm": confirm},
+        )
+        if r.status_code == 422:
+            detail = r.json().get("detail", r.text)
+            raise ValueError(f"422 Unprocessable: {detail}")
+        r.raise_for_status()
+        return r.json()
+
+    async def revert_fixes(
+        self, session_id: str, confirm: bool = False,
+    ) -> dict[str, list[str]]:
+        """POST /fixes/{session_id}/revert — restore from backups (require confirm)."""
+        r = await self._c().post(
+            f"{_API}/fixes/{session_id}/revert",
+            json={"fix_ids": [], "confirm": confirm},
+        )
+        if r.status_code == 422:
+            detail = r.json().get("detail", r.text)
+            raise ValueError(f"422 Unprocessable: {detail}")
+        r.raise_for_status()
+        return r.json()
+
+    async def delete_scan(self, scan_id: str) -> bool:
+        """DELETE /scans/{scan_id} — remove scan + artifacts (204)."""
+        r = await self._c().delete(f"{_API}/scans/{scan_id}")
+        if r.status_code == 404:
+            return False
+        r.raise_for_status()
+        return True
+
+    async def get_sarif(self, scan_id: str) -> dict[str, Any]:
+        """GET /scans/{scan_id}/report/sarif."""
+        r = await self._c().get(f"{_API}/scans/{scan_id}/report/sarif")
+        r.raise_for_status()
+        return r.json()
+
+    async def get_coverage(self, scan_id: str) -> dict[str, Any]:
+        """GET /scans/{scan_id}/coverage."""
+        r = await self._c().get(f"{_API}/scans/{scan_id}/coverage")
+        if r.status_code == 404:
+            return {}
+        r.raise_for_status()
+        return r.json()
+
+    async def get_report_html(self, scan_id: str) -> str:
+        """GET /scans/{scan_id}/report/html — self-contained HTML report."""
+        r = await self._c().get(f"{_API}/scans/{scan_id}/report/html")
+        r.raise_for_status()
+        return r.text
+
     async def list_resumable(self) -> list[dict[str, Any]]:
         """GET /scans/resumable — list scans with checkpoints."""
         r = await self._c().get(f"{_API}/scans/resumable")
@@ -150,8 +224,13 @@ class CyenseClient:
         scan_id: str,
         total_timeout: float = 300.0,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Yield status dict secara berkala sampai status terminal atau timeout."""
-        ...  # diimplementasikan di bawah sebagai generator terpisah
+        """Yield status snapshot sampai status terminal atau timeout.
+
+        Reuses the shared :func:`poll_scan` generator so the CLI progress
+        loop and this method observe identical status output.
+        """
+        async for snap in poll_scan(self, scan_id, total_timeout=total_timeout):
+            yield snap
 
 
 @asynccontextmanager

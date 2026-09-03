@@ -16,9 +16,18 @@
   let activeHeading = ''
   let celebrate = false
   let celebrated = false
+  let coverage = null
+  let coverageErr = ''
 
   const PIPELINE = ['crawl', 'analyze', 'framework', 'port-scan', 'cve', 'discovery',
-                     'harvest', 'nikto', 'nuclei', 'probe', 'sqli', 'report']
+                     'harvest', 'osint', 're', 'nikto', 'nuclei', 'sec-live', 'probe', 'sqli', 'report']
+
+  async function loadCoverage() {
+    coverageErr = ''
+    try {
+      coverage = await api.getCoverage(scanId)
+    } catch (e) { coverageErr = String(e) }
+  }
 
   async function load() {
     loading = true; error = ''
@@ -28,6 +37,9 @@
         try { report = await api.getReport(scanId) } catch { report = null }
       } else {
         report = null
+      }
+      if (job.status === 'completed') {
+        loadCoverage()
       }
       if (job.status === 'completed' && !celebrated) {
         celebrate = true; celebrated = true
@@ -39,14 +51,25 @@
   onMount(load)
 
   // Stage graph status derived from pipeline + summary progress.
-  $: stages = (report?.meta?.pipeline || PIPELINE).map((name, i) => {
+  // Stage graph status derived from server-emitted pipeline + job.stage.
+  // Falls back to the static pipeline when the report has no meta.pipeline.
+  $: pipeline = report?.meta?.pipeline?.length ? report.meta.pipeline : PIPELINE
+  $: activeStage = (report?.meta?.error ? null : job?.stage) || null
+  $: stages = pipeline.map((name, i) => {
     const isCompleted = job?.status === 'completed'
     const isFailed = job?.status === 'failed'
+    const isActive = activeStage === name
+    // Any stage before the currently-active one in a running job is 'done',
+    // the active one is 'active', everything after is 'pending'.
+    const idx = pipeline.indexOf(activeStage)
+    const before = !isCompleted && !isFailed && idx >= 0 && i < idx
     return {
       name,
       status: isCompleted ? 'done'
         : isFailed ? (i === 0 ? 'done' : 'failed')
-        : i === 0 ? 'active' : 'pending',
+        : before ? 'done'
+        : isActive ? 'active'
+        : 'pending',
     }
   })
 
@@ -55,6 +78,9 @@
   $: techs = findings.filter((f) => f.rule?.startsWith('DETECT-'))
   $: ports = findings.filter((f) => f.rule === 'PORT-OPEN' || f.rule === 'PORT-SCAN-SUMMARY')
   $: harvest = findings.filter((f) => f.rule?.startsWith('HARVEST'))
+  $: osintF = findings.filter((f) => f.rule?.startsWith('OSINT'))
+  $: reF = findings.filter((f) => f.rule?.startsWith('RE-'))
+  $: owaspF = findings.filter((f) => f.rule?.startsWith('OWASP'))
   $: nikto = findings.filter((f) => f.rule?.startsWith('NIKTO'))
   $: nuclei = findings.filter((f) => f.rule?.startsWith('NUCLEUS'))
   $: xs = findings.filter((f) => f.rule?.startsWith('XS'))
@@ -155,6 +181,28 @@
     </div>
   </section>
 
+  {#if coverage && !coverageErr}
+    <section class="block">
+      <div class="wrap">
+        <h2>Coverage Cakupan</h2>
+        <p class="sub">File &amp; rule yang dianalisis pada scan ini (getCoverage).</p>
+        <table class="tbl">
+          <thead><tr><th>Metrik</th><th>Nilai</th></tr></thead>
+          <tbody>
+            <tr><td>Total files</td><td class="mono">{coverage.total_files ?? '—'}</td></tr>
+            <tr><td>Files analyzed</td><td class="mono">{coverage.files_analyzed ?? '—'}</td></tr>
+            <tr><td>Complete</td><td class="mono">{coverage.complete ?? '—'}</td></tr>
+            <tr><td>Rules analyzed</td><td class="mono">{(coverage.rules_analyzed || []).length}</td></tr>
+            <tr><td>Rules not analyzed</td><td class="mono">{(coverage.rules_not_analyzed || []).length}</td></tr>
+          </tbody>
+        </table>
+        {#if (coverage.rules_analyzed || []).length}
+          <p class="sub">Rule aktif: {(coverage.rules_analyzed || []).map((r) => r.rule || r).slice(0, 24).join(', ')}{(coverage.rules_analyzed || []).length > 24 ? ' …' : ''}</p>
+        {/if}
+      </div>
+    </section>
+  {/if}
+
   <!-- Findings layout: sticky TOC + content -->
   <section class="block">
     <div class="wrap" style="display:grid;grid-template-columns:240px 1fr;gap:28px;align-items:start">
@@ -241,6 +289,36 @@
             <p class="sub">Subdomain dari crt.sh &amp; Wayback, fingerprint teknologi, email, IP.</p>
             <div style="display:flex;flex-direction:column;gap:12px">
               {#each harvest as f, i}<div id="f-harvest-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if osintF.length}
+          <section class="block" id="osint">
+            <h2>OSINT — RDAP / DNS / ASN</h2>
+            <p class="sub">whois/RDAP, enumerasi record DNS (dnsrecon/dnsx), netblock ASN (asnmap).</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each osintF as f, i}<div id="f-osint-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if reF.length}
+          <section class="block" id="re">
+            <h2>Reverse Engineering — JS</h2>
+            <p class="sub">Source map terekspos &amp; library JS rentan/usang (Retire.js-style).</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each reF as f, i}<div id="f-re-{i}"><FindingCard f={f} /></div>{/each}
+            </div>
+          </section>
+        {/if}
+
+        {#if owaspF.length}
+          <section class="block" id="owasp">
+            <h2>OWASP Live Checks</h2>
+            <p class="sub">Cek kerentanan komunitas OWASP (login GET, mixed content, SRI, deserialization, session entropy).</p>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              {#each owaspF as f, i}<div id="f-owasp-{i}"><FindingCard f={f} /></div>{/each}
             </div>
           </section>
         {/if}

@@ -818,12 +818,14 @@ async def _recon_flow(
 
     render_cve_table(console, caps, cve_findings, summary)
 
-    # 3. Temuan lain (XSS/SQLi/IDOR) ringkas
+    # 3. Temuan lain (XSS/SQLi/IDOR) ringkas — grup besar discovery sudah
+    # ditampilkan render_discovery_table, jangan duplikasi di sini.
+    grouped = ("SECRET", "EXPOSED", "DISC", "WP-", "SSRF", "GRAPHQL", "DETECT",
+               "PORT", "HARVEST", "OSINT", "RE-", "OWASP", "NIKTO", "NUCLEUS",
+               "SQLI-LIVE")
     other = [f for f in findings
              if f.get("rule") not in ("CVE-MATCH",) and not (
-                 f.get("rule", "").startswith(("SECRET", "EXPOSED", "DISC",
-                                               "WP-", "SSRF", "GRAPHQL",
-                                               "DETECT", "PORT"))
+                 f.get("rule", "").startswith(grouped)
              )]
     if other:
         console.print(f"  [bold {PAL.blue_primary}]TEMUAN LAIN (XSS/SQLi/IDOR)[/]")
@@ -1302,12 +1304,13 @@ def scan_api(
     scan_ids: list[tuple[str, str]] = []  # (scan_id, label)
     for ep in endpoints:
         url_template = ep["url_template"]
-        # Replace path params with {ID} placeholder for link scan
-        # Only replace the first ID-like param with {ID}; others stay literal
+        # Replace EVERY ID-like path param with the {ID} placeholder so a
+        # multi-param IDOR endpoint (e.g. /v1/users/{uid}/orders/{oid}) is
+        # probed correctly. Previously only the first param became {ID} and
+        # the rest stayed literal, so the prober fired a semantically wrong URL.
         url_for_scan = url_template
         for param in ep["id_params"]:
-            url_for_scan = url_for_scan.replace(f"{{{param}}}", "{ID}", 1)
-            break  # only replace the first one
+            url_for_scan = url_for_scan.replace(f"{{{param}}}", "{ID}")
 
         label = f"{ep['method']} {ep['path']}"
         payload = {
@@ -1968,11 +1971,9 @@ def list_cmd() -> None:
             return
 
         from rich.table import Table  # type: ignore[import-untyped]
-        p = _state.caps
 
-        table = Table(show_header=True, header_style=f"bold #{p.width}")
-        # reuse theme colors
         from app.cli.theme import PALETTE as PAL
+
         table = Table(
             show_header=True,
             header_style=f"bold {PAL.blue_primary}",
@@ -2104,8 +2105,14 @@ def fix_cmd(
                     )
                 _state.console.print(table)
                 _state.console.print(
-                    f"\n  Jalankan API [bold]POST /api/v1/fixes/{session_id}/apply[/bold] "
-                    "dengan confirm=true untuk menerapkan patch."
+                    f"\n  Lihat diff: [bold]cyense fix-diff {session_id}[/bold]"
+                )
+                _state.console.print(
+                    f"  Terapkan patch: [bold]cyense fix-apply {session_id} "
+                    "FIX_ID... --confirm[/bold]"
+                )
+                _state.console.print(
+                    f"  Batalkan: [bold]cyense fix-revert {session_id} --confirm[/bold]"
                 )
 
     _run(_do())
@@ -2419,6 +2426,230 @@ def export_pdf_cmd(
     _run(_do())
 
 
+@export_app.command("sarif")
+def export_sarif_cmd(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
+    out: Annotated[str | None, typer.Option("--out", "-o", help="Path output .sarif.")] = None,
+) -> None:
+    """Unduh laporan SARIF 2.1.0 (untuk CI / GitHub code scanning)."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=60) as c:
+                sarif = await c.get_sarif(scan_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        dest = Path(out) if out else Path(f"cyense-{scan_id}.sarif")
+        dest.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"  [{PAL.ok}]SARIF tersimpan:[/] [{PAL.blue_mist}]{dest}[/]"
+        )
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# delete / coverage — manajemen scan + metadata (server-side)
+
+@app.command("delete")
+def delete_cmd(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID yang dihapus.")],
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Wajib untuk benar-benar menghapus.")
+    ] = False,
+) -> None:
+    """Hapus scan beserta artefak-nya (DELETE /scans/{id})."""
+
+    if not confirm:
+        render_error_panel(
+            _state.console, _state.caps,
+            "cyense delete butuh --confirm",
+            "Hapusan bersifat permanen (laporan/artefak turut dihapus).",
+        )
+        raise typer.Exit(3)
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=15) as c:
+                removed = await c.delete_scan(scan_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        from app.cli.theme import PALETTE as PAL
+        if not removed:
+            _state.console.print(f"  [{PAL.sev_medium}]Scan tidak ditemukan:[/] {scan_id}")
+            raise typer.Exit(3)
+        _state.console.print(f"  [{PAL.ok}]Scan dihapus:[/] {scan_id}")
+
+    _run(_do())
+
+
+@app.command("coverage")
+def coverage_cmd(
+    scan_id: Annotated[str, typer.Argument(help="Scan ID.")],
+    out: Annotated[str | None, typer.Option("--out", "-o", help="Path output .json.")] = None,
+) -> None:
+    """Tampilkan / simpan dokumen coverage scan (GET /scans/{id}/coverage)."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=30) as c:
+                cov = await c.get_coverage(scan_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if not cov:
+            _state.console.print("  Coverage tidak tersedia untuk scan ini.")
+            raise typer.Exit(3)
+
+        if _state.caps.json_out or out:
+            typer.echo(json.dumps(cov, indent=2))
+        else:
+            from app.cli.theme import PALETTE as PAL
+            _state.console.print(f"  [{PAL.blue_primary}]COVERAGE {scan_id}[/]")
+            _state.console.print(
+                f"  [{PAL.blue_soft}]total files:[/]     {cov.get('total_files', '?')}"
+            )
+            _state.console.print(
+                f"  [{PAL.blue_soft}]files analyzed:[/]  {cov.get('files_analyzed', '?')}"
+            )
+            _state.console.print(
+                f"  [{PAL.blue_soft}]complete:[/]       {cov.get('complete', '?')}"
+            )
+            rules = cov.get("rules_analyzed", [])
+            if rules:
+                _state.console.print(
+                    f"  [{PAL.blue_soft}]rules analyzed:[/] {len(rules)} — "
+                    + ", ".join(x.get('rule', '?') for x in rules[:12])
+                    + ("..." if len(rules) > 12 else "")
+                )
+
+        if out:
+            dest = Path(out)
+            dest.write_text(json.dumps(cov, indent=2), encoding="utf-8")
+            _state.console.print(f"  [green]Coverage tersimpan:[/] {dest}")
+
+    _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# fix-diff / fix-apply / fix-revert — remediasi (proposal → apply → revert)
+
+
+@app.command("fix-diff")
+def fix_diff_cmd(
+    session_id: Annotated[str, typer.Argument(help="Session ID (dari `cyense fix`).")],
+) -> None:
+    """Tampilkan unified diff gabungan dari suatu fix session."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=30) as c:
+                diff = await c.get_fix_diff(session_id)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps({"session_id": session_id, "diff": diff}, indent=2))
+            return
+
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"  [bold {PAL.blue_primary}]DIFF SESSION {session_id}[/]"
+        )
+        _state.console.print(diff if diff else "  (diff kosong)")
+
+    _run(_do())
+
+
+@app.command("fix-apply")
+def fix_apply_cmd(
+    session_id: Annotated[str, typer.Argument(help="Session ID (dari `cyense fix`).")],
+    fix_ids: Annotated[
+        list[str], typer.Argument(help="Satu atau lebih fix_id yang diterapkan.")
+    ],
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Wajib untuk menulis ke file.")
+    ] = False,
+) -> None:
+    """Terapkan patch remediasi (butuh --confirm)."""
+
+    if not confirm:
+        render_error_panel(
+            _state.console, _state.caps,
+            "cyense fix-apply butuh --confirm",
+            "Patch menulis file pada source target; konfirmasi eksplisit wajib.",
+        )
+        raise typer.Exit(3)
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=120) as c:
+                result = await c.apply_fixes(session_id, fix_ids, confirm=True)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"  [{PAL.ok}]Applied:[/]   " + (", ".join(result.get("applied", [])) or "(none)")
+        )
+        _state.console.print(
+            f"  [{PAL.error}]Failed:[/]   " + (", ".join(result.get("failed", [])) or "(none)")
+        )
+        verified = result.get("verified", [])
+        if verified:
+            _state.console.print(
+                f"  [{PAL.blue_soft}]Verified:[/] " + ", ".join(verified)
+            )
+
+    _run(_do())
+
+
+@app.command("fix-revert")
+def fix_revert_cmd(
+    session_id: Annotated[str, typer.Argument(help="Session ID (dari `cyense fix`).")],
+    confirm: Annotated[
+        bool, typer.Option("--confirm", help="Wajib untuk revert (menulis file).")
+    ] = False,
+) -> None:
+    """Batalkan patch yang telah diterapkan (restore dari backup, butuh --confirm)."""
+
+    if not confirm:
+        render_error_panel(
+            _state.console, _state.caps,
+            "cyense fix-revert butuh --confirm",
+            "Revert menulis ulang file dari backup; konfirmasi eksplisit wajib.",
+        )
+        raise typer.Exit(3)
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url, timeout=120) as c:
+                result = await c.revert_fixes(session_id, confirm=True)
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        from app.cli.theme import PALETTE as PAL
+        reverted = result.get("reverted", [])
+        failed = result.get("failed", [])
+        _state.console.print(
+            f"  [{PAL.ok}]Reverted:[/] " + (", ".join(reverted) or "(none)")
+        )
+        _state.console.print(
+            f"  [{PAL.error}]Failed:[/]  " + (", ".join(failed) or "(none)")
+        )
+
+    _run(_do())
+
+
 # ---------------------------------------------------------------------------
 # config — persistensi preferensi (enhanced-reporting-viewer.md §3.6)
 
@@ -2494,9 +2725,8 @@ def config_reset_cmd(
     from app.core.config_store import reset_config
 
     if not confirm:
-        app_name = config_app.info.name if hasattr(config_app, "info") else "config"
         _state.console.print(
-            f"  [{PAL.sev_medium}]{app_name}: reset butuh --confirm[/]"
+            f"  [{PAL.sev_medium}]cyense config reset butuh --confirm[/]"
         )
         raise typer.Exit(3)
     reset_config()
