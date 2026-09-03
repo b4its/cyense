@@ -1434,6 +1434,9 @@ class WebsiteEngine:
                 check_xml_endpoint,
             )
 
+            # OWASP community-vulnerability live checks (passive).
+            from app.utils.owasp_live import run_owasp_passive_checks
+
             for page in pages:
                 header_dict = dict(page.get("headers", {}))
                 body = page.get("body") or ""
@@ -1471,6 +1474,13 @@ class WebsiteEngine:
                     r["location"] = page_url
                     sec_findings.append(r)
                 for r in check_xml_endpoint(header_dict, page_url):
+                    r["location"] = page_url
+                    sec_findings.append(r)
+
+                # OWASP community-vulnerability passive checks (GET-login,
+                # mixed content / third-party SRI, deserialization magic,
+                # session-id entropy).
+                for r in run_owasp_passive_checks(header_dict, body, page_url):
                     r["location"] = page_url
                     sec_findings.append(r)
 
