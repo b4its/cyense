@@ -46,6 +46,41 @@ def test_cookie_flags_good() -> None:
     assert _rules(check_cookie_security({"Set-Cookie": hdr})) == set()
 
 
+def test_cookie_flags_expires_date_commas_no_phantom() -> None:
+    """A Set-Cookie with an Expires date (which contains commas) must not be
+    split into phantom pseudo-cookies nor mask the real cookie's flags."""
+    hdr = (
+        "session=abc123; Path=/; HttpOnly; Secure; SameSite=Lax, "
+        "prefs=dark; Path=/; Expires=Wed, 21 Oct 2026 07:28:00 GMT; SameSite=Lax, "
+        "sid=xyz; Path=/; HttpOnly; Secure"
+    )
+    f = check_cookie_security({"Set-Cookie": hdr})
+    # `session` is fully hardened (HttpOnly+Secure+SameSite) → never reported.
+    # `prefs` is weak (no HttpOnly/Secure) → reported. `sid` has HttpOnly+Secure
+    # but no SameSite → reported only for SameSite. No phantom cookie like
+    # "21 Oct 2026" may appear.
+    names = {x["title"].split("'")[1] if "'" in x["title"] else "" for x in f}
+    assert "session" not in names
+    assert "prefs" in names
+    assert "sid" in names
+    assert not any("Oct" in n or "GMT" in n for n in names), f"phantom cookie: {names}"
+    # The HttpOnly/Secure flags of `sid` must be honoured.
+    assert "COOKIE-NO-HTTPONLY" not in {x["rule"] for x in f if "sid" in x["title"]}
+    assert "COOKIE-NO-SECURE" not in {x["rule"] for x in f if "sid" in x["title"]}
+
+
+def test_verbose_no_false_positive_on_js_debug() -> None:
+    """`const DEBUG = true` in ordinary client-side JS is not an error page."""
+    body = "<script>const DEBUG = true; const os = 'x';</script><h1>Hi</h1>"
+    assert _rules(check_verbose_errors(body, "http://x")) == set()
+
+
+def test_verbose_os_error_requires_code() -> None:
+    """'os error' as prose must not flag; 'OS error 123' (a real code) does."""
+    assert _rules(check_verbose_errors("there was an os error in the build log")) == set()
+    assert "VERBOSE-ERROR" in _rules(check_verbose_errors("OS error 123"))
+
+
 def test_transport_http_and_hsts() -> None:
     assert "INSECURE-TRANSPORT" in _rules(
         check_transport_security("http://example.com", {})

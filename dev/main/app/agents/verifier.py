@@ -208,13 +208,26 @@ class VerifierAgent(BaseAgent):
 
     @staticmethod
     def _render(profile: TargetProfile, value: str) -> str:
-        # Lambda replacement keeps `value` literal: a value containing
-        # backslashes would otherwise be parsed as regex group references
-        # and crash re.sub.
+        """Substitute ``value`` into the active ``{PLACEHOLDER}`` of the template.
+
+        Like ProberAgent._render, only the actively-probed placeholder
+        (``placeholders[0]``) is replaced; any other ``{...}`` token is left
+        literal so a URL with a second, non-target placeholder (e.g. a version
+        segment) is not corrupted by substituting the candidate everywhere.
+
+        Lambda replacement keeps `value` literal: a value containing
+        backslashes would otherwise be parsed as regex group references
+        and crash re.sub.
+        """
         import re
 
+        target = profile.placeholders[0].lower() if profile.placeholders else None
+        if target is None:
+            return profile.url_template
         return re.sub(
-            r"\{[A-Za-z_][A-Za-z0-9_]*\}", lambda _m: value, profile.url_template
+            r"\{([A-Za-z_][A-Za-z0-9_]*)\}",
+            lambda m: value if m.group(1).lower() == target else m.group(0),
+            profile.url_template,
         )
 
 

@@ -413,7 +413,7 @@ async def harvest_subdomains_crtsh(
         async with httpx.AsyncClient(timeout=timeout) as c:
             resp = await c.get(
                 "https://crt.sh/",
-                params={"q": f"%25.{domain}", "output": "json"},
+                params={"q": f"%.{domain}", "output": "json"},
             )
             resp.raise_for_status()
             data = resp.json()
@@ -740,7 +740,11 @@ def _version_in_range(version: str, low: str, high: str) -> bool:
         hi = _parse(high)
         return lo <= v <= hi
     except (ValueError, IndexError):
-        return True
+        # Version could not be parsed (e.g. "8.5p1", "9.6p1", "latest") — we
+        # cannot confirm it is vulnerable, so report NOT in range. Returning
+        # True here previously flagged unparseable versions as vulnerable and
+        # produced false-positive NIKTO-OUTDATED-SOFTWARE findings.
+        return False
 
 
 def nikto_check_outdated_software(
@@ -781,7 +785,12 @@ def nikto_check_outdated_software(
         for product, ranges in _VULNERABLE_VERSIONS.items():
             if product.lower() in value.lower():
                 for low, high in ranges:
-                    if version and not _version_in_range(version, low, high):
+                    # A version-blind match is not reliable evidence of an
+                    # outdated/vulnerable build — every Apache/nginx server
+                    # without a parseable version would otherwise be flagged
+                    # HIGH. Only flag when we actually observe a version that
+                    # falls in a vulnerable range.
+                    if not version or not _version_in_range(version, low, high):
                         continue
                     findings.append({
                         "rule": "NIKTO-OUTDATED-SOFTWARE",

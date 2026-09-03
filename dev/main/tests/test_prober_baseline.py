@@ -63,6 +63,30 @@ def test_verifier_render_treats_value_as_literal() -> None:
     assert out == r"http://x.test/invoice/\g<id>"
 
 
+def test_render_only_replaces_target_placeholder() -> None:
+    """A URL with a second, non-target {placeholder} must keep it literal —
+    previously _render substituted the probe id into every {token}, probing
+    a semantically wrong URL."""
+    from app.agents.verifier import VerifierAgent
+
+    multi = TargetProfile(
+        url_template="http://x.test/v/{version}/invoice/{ID}",
+        host="x.test",
+        placeholders=["id"],
+    )
+    assert ProberAgent._render(multi, "7") == "http://x.test/v/{version}/invoice/7"
+    assert VerifierAgent._render(multi, "7") == "http://x.test/v/{version}/invoice/7"
+
+    # A repeated target placeholder {ID} in two segments: both should be
+    # replaced (they name the same target), while non-targets stay intact.
+    repeated = TargetProfile(
+        url_template="http://x.test/invoice/{ID}/items/{ID}",
+        host="x.test",
+        placeholders=["id"],
+    )
+    assert ProberAgent._render(repeated, "7") == "http://x.test/invoice/7/items/7"
+
+
 def test_run_uses_baseline_id_from_ctx(monkeypatch) -> None:
     """Full prober.run() must probe around ctx['baseline_id'] ('42')."""
     requested_urls: list[str] = []

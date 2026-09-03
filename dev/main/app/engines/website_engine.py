@@ -44,6 +44,21 @@ _MAX_PROBED_ENDPOINTS = 10
 # Safety caps for XSS payload probe requests.
 _MAX_XSS_PROBE_REQUESTS = 100
 
+
+def _evidence_sample(body: str, marker: str, radius: int = 40, limit: int = 200) -> str:
+    """Slice a short evidence window from an HTTP body around `marker`.
+
+    Error-based SQLi responses usually dump a DB error that echoes the query,
+    not the payload itself, so ``body.find(payload)`` returns -1 and the naive
+    ``body[-1+160:...]`` slice capture was actually the page header boilerplate.
+    Prefer the marker; when absent, sample from the start capped at `limit`.
+    """
+    idx = body.find(marker)
+    if idx == -1:
+        return body[:limit]
+    start = max(idx - radius, 0)
+    return body[start : idx + radius + limit][:limit]
+
 # XSS payload vectors for active reflection confirmation.
 # (payload, context_label, severity)
 _XSS_PAYLOADS: list[tuple[str, str, str]] = [
@@ -2063,10 +2078,7 @@ class WebsiteEngine:
                                     "param": name,
                                     "engine": engines,
                                     "probe_url": probe_url,
-                                    "sample": body[
-                                        max(body.find(payload) - 40, 0):
-                                        body.find(payload) + 160
-                                    ][:200],
+                                    "sample": _evidence_sample(body, payload),
                                 },
                                 "remediation": (
                                     "Use parameterized queries / prepared "

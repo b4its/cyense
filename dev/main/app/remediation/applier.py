@@ -47,9 +47,21 @@ def is_same_origin(target_path: str, source_root: Path) -> tuple[bool, str]:
 
 
 def create_backup(file_path: Path, backup_suffix: str = ".bak-cyense") -> Path | None:
-    """Create backup before patching."""
+    """Create backup before patching.
+
+    A backup path is deterministic (``<file>.bak-cyense``). If a backup already
+    exists we must NOT clobber it: overwriting the only copy would make a later
+    revert restore an *intermediate* state instead of the true original. When a
+    fresh patch is applied on top of an already-patched file, the existing
+    backup (the genuine pre-patch content) is preserved and reused.
+    """
     try:
         backup_path = Path(str(file_path) + backup_suffix)
+        if backup_path.exists():
+            # Keep the first backup (the true original). Only create when the
+            # target currently differs from what the backup captured — i.e. the
+            # file was already patched; leave the original untouched.
+            return backup_path
         content = file_path.read_bytes()
         backup_path.write_bytes(content)
         return backup_path
@@ -124,9 +136,21 @@ def apply_patch(
     patched_lines = list(original_lines)
     applied_count = 0
     for old_line, new_block in replacements:
+        # Strategies emit old_line with leading whitespace stripped (e.g. via
+        # .strip() or ast.unparse), so match whitespace-insensitively against
+        # the indented source line — previously an indented statement could
+        # never be matched and every real fix silently failed.
+        old_norm = old_line.strip()
         for idx, file_line in enumerate(patched_lines):
-            if file_line.rstrip() == old_line:
-                patched_lines[idx : idx + 1] = new_block
+            if file_line.strip() == old_norm:
+                # Re-apply the original line's leading indentation so the
+                # inserted block stays inside the enclosing block.
+                indent = file_line[: len(file_line) - len(file_line.lstrip())]
+                block = [
+                    (indent + bl) if bl.strip() else bl
+                    for bl in new_block
+                ]
+                patched_lines[idx : idx + 1] = block
                 applied_count += 1
                 break
         else:

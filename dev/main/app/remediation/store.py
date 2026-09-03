@@ -165,12 +165,31 @@ class FixStore:
     # -- revert ------------------------------------------------------------------
 
     def revert_proposal(self, session_id: str, fix_id: str) -> bool:
+        # NOTE: self._lock is a plain (non-reentrant) threading.Lock, so we
+        # must NOT call get_proposal()/get_all_proposals() here — both would
+        # re-acquire the lock and deadlock the calling thread. Read directly.
         with self._lock:
-            prop = self.get_proposal(session_id, fix_id)
+            session = self._sessions.get(session_id)
+            if not session:
+                return False
+            prop = next(
+                (p for p in session["fixes"] if p.get("fix_id") == fix_id),
+                None,
+            )
             if not prop or not prop.get("backup_path"):
                 return False
             prop["status"] = "reverted"
             prop["notes"] = "reverted via /api/v1/fixes/revert"
+            # Mirror the change into the flat list so the on-disk dump stays
+            # consistent (same identity rule as update_proposal).
+            for flat in self._proposals:
+                if (
+                    flat.get("fix_id") == fix_id
+                    and flat.get("session_id") == session_id
+                ):
+                    flat["status"] = prop["status"]
+                    flat["notes"] = prop["notes"]
+                    break
         self._dump()
         return True
 

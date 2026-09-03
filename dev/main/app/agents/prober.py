@@ -252,7 +252,15 @@ class ProberAgent(BaseAgent):
 
     @staticmethod
     def _render(profile: TargetProfile, probe_id: str) -> str:
-        """Substitute probe_id into the {PLACEHOLDER} template.
+        """Substitute probe_id into the active ``{PLACEHOLDER}`` of the template.
+
+        Only the placeholder being actively probed (``profile.placeholders[0]``,
+        the same one recon fills for the baseline) is replaced. Any *other*
+        ``{...}`` tokens — e.g. ``{version}`` or a second, non-target id — are
+        left literal. Previously *every* ``{...}`` token was substituted with
+        the same candidate, so a URL like ``/v/{version}/invoice/{ID}`` was
+        probed as ``/v/5/invoice/5`` instead of ``/v/{version}/invoice/5``
+        (mirrors the crawler's "only the first ID becomes the placeholder" rule).
 
         The replacement goes through a lambda so the id is treated as a
         literal: a user-supplied probe id containing backslashes (e.g.
@@ -261,8 +269,15 @@ class ProberAgent(BaseAgent):
         """
         import re
 
+        target = profile.placeholders[0].lower() if profile.placeholders else None
+        if target is None:
+            # No placeholders known: leave the URL untouched rather than
+            # corrupting every {token} (defensive; recon rejects these URLs).
+            return profile.url_template
         return re.sub(
-            r"\{[A-Za-z_][A-Za-z0-9_]*\}", lambda _m: probe_id, profile.url_template
+            r"\{([A-Za-z_][A-Za-z0-9_]*)\}",
+            lambda m: probe_id if m.group(1).lower() == target else m.group(0),
+            profile.url_template,
         )
 
 

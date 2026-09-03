@@ -21,12 +21,20 @@ from typing import Any
 from urllib.parse import urlparse
 
 # Regexes that indicate an unhandled / verbose server error message.
+#
+# Careful to avoid client-side false positives on benign HTML/JS:
+#   * `const DEBUG = true` / `.debug = true` in ordinary front-end config is
+#     NOT an error page, so it is not a signal on its own. Genuine verbose
+#     error pages virtually always also carry one of the stronger signals
+#     (traceback, stack trace, fatal error, mysql warning, etc.).
+#   * A bare word "os error" (prose) is not a stack dump; require a code.
 _VERBOSE_ERROR_RE = re.compile(
     r"(?i)traceback \(most recent call last\)|\bstack trace\b|"
     r"(?:^|\s)(?:[a-z0-9_]+\.)+[A-Za-z_]+Exception\b|"
     r"fatal error:|warning:\s*mysql|sqlstate\[|pg_error|"
-    r"\bmicrosoft\.(?:net|windows)[a-z.]*(?:exception|stacktrace)|\bdebug\s*=\s*true\b|"
-    r"`[^`]{0,60}`\s+<[^>]+>|\bos error\b|\bjava\.lang\.\w+Exception\b|\bundefined index:"
+    r"\bmicrosoft\.(?:net|windows)[a-z.]*(?:exception|stacktrace)|"
+    r"`[^`]{0,60}`\s+<[^>]+>|\bos\s+error\s+\d{1,3}\b|"
+    r"\bjava\.lang\.\w+Exception\b|\bundefined index:"
 )
 _UNHANDLED_ERROR_RE = re.compile(
     r"(?i)sql syntax|you have an error in your sql|mysql_fetch|ora-\d{4,5}|"
@@ -115,8 +123,20 @@ def check_cookie_security(headers: dict[str, str]) -> list[dict[str, Any]]:
 
 
 def _split_cookies(set_cookie: str) -> list[str]:
-    """Split a Set-Cookie header value into individual cookie declarations."""
-    return [part.strip() for part in set_cookie.split(",") if "=" in part]
+    """Split a Set-Cookie header value into individual cookie declarations.
+
+    Naive ``.split(",")`` breaks any cookie carrying an ``Expires`` attribute
+    (RFC dates contain commas, e.g. ``Expires=Wed, 21 Oct 2026 ...``), which
+    both fabricated phantom cookies and masked the real flags. Splitting on a
+    comma that is followed by a new ``name=value`` declaration only keeps real
+    cookie boundaries and leaves date commas (no ``=`` immediately after the
+    comma-skipping-whitespace) untouched.
+    """
+    return [
+        part.strip()
+        for part in re.split(r",\s*(?=[^\s;,=]+=)", set_cookie)
+        if "=" in part
+    ]
 
 
 def _cookie_flag(

@@ -416,6 +416,44 @@ def test_harvest_subdomains_crtsh_no_secret() -> None:
         pass  # network unreachable is acceptable
 
 
+def test_crtsh_query_not_double_encoded(monkeypatch) -> None:
+    """The crt.sh 'q' param must be `%.example.com` (single-encoded on the wire
+    as `%25.`), not `%25.example.com` which httpx would send as `%2525.` and
+    which crt.sh rejects — silently yielding no subdomains."""
+    import asyncio
+
+    captured: dict = {}
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> list:
+            return []
+
+    class _FakeClient:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self, *_a):
+            return self
+
+        async def __aexit__(self, *_a):
+            return None
+
+        async def get(self, url, params=None, **kwargs):
+            captured["params"] = params
+            return _Resp()
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeClient)
+
+    from app.utils.discovery import harvest_subdomains_crtsh
+
+    asyncio.run(harvest_subdomains_crtsh("example.com"))
+    assert captured.get("params", {}).get("q") == "%.example.com", captured
+    assert captured.get("params", {}).get("q") != "%25.example.com"
+
+
 # ---------------------------------------------------------------------------
 # Nikto-style web server security checks
 # ---------------------------------------------------------------------------
@@ -504,6 +542,26 @@ def test_nikto_check_outdated_software() -> None:
     findings = nikto_check_outdated_software(techs)
     assert len(findings) > 0
     assert all(f["rule"] == "NIKTO-OUTDATED-SOFTWARE" for f in findings)
+
+
+def test_nikto_version_blind_not_flagged() -> None:
+    """A bare version-less tech header (e.g. 'nginx' with no version) is NOT
+    reliable evidence of an outdated build and must not be flagged HIGH."""
+    from app.utils.discovery import nikto_check_outdated_software
+
+    techs = [{"rule": "SERVER-NGINX", "value": "nginx", "version": None}]
+    assert nikto_check_outdated_software(techs) == []
+
+
+def test_version_in_range_unparseable_is_false() -> None:
+    """An unparseable version (e.g. '8.5p1') must be treated as NOT confirmed
+    vulnerable (False), not vacuously True (which caused false positives)."""
+    from app.utils.discovery import _version_in_range
+
+    assert _version_in_range("1.14.0", "1.0", "1.14.0") is True
+    assert _version_in_range("2.0", "1.0", "1.14.0") is False
+    assert _version_in_range("8.5p1", "1.0", "1.14.0") is False
+    assert _version_in_range("latest", "1.0", "1.14.0") is False
 
 
 # ---------------------------------------------------------------------------

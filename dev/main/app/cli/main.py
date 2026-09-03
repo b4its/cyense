@@ -1236,7 +1236,13 @@ def scan_api(
         )
         raise typer.Exit(3)
 
-    if max_targets > 0:
+    if max_targets > 0 and len(endpoints) > max_targets:
+        if not caps.quiet:
+            console.print(
+                f"  [yellow]Note:[/] {len(endpoints) - max_targets} endpoint(s) "
+                f"truncated by --max-targets={max_targets}; "
+                f"use --max-targets 0 to scan all.[/]"
+            )
         endpoints = endpoints[:max_targets]
 
     # Display endpoints table

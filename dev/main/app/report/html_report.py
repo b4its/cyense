@@ -45,10 +45,11 @@ def _summary_chips(summary: dict[str, Any]) -> str:
             "<div class='chip'>rejected FP "
             f"<strong>{summary['rejected_false_positives']}</strong></div>"
         )
-    if "files_scanned" in summary:
+    files = summary.get("files_scanned", summary.get("files_analyzed"))
+    if files is not None:
         extra.append(
             "<div class='chip'>files scanned "
-            f"<strong>{summary['files_scanned']}</strong></div>"
+            f"<strong>{files}</strong></div>"
         )
     return "".join(chips + extra)
 

@@ -10,7 +10,23 @@ from __future__ import annotations
 import re
 
 SENSITIVE_KEYS = {"authorization", "cookie", "set-cookie", "proxy-authorization", "x-api-key"}
+# Additional header *name* patterns that commonly carry credentials/scanner
+# auth (e.g. X-Api-Token, X-Custom-Auth, api-key, client-secret, x-signature).
+# A user-supplied auth header under any of these would otherwise be stored and
+# rendered unredacted in reports/trajectories (ground rule #8).
+_SENSITIVE_NAME_RE = re.compile(
+    r"(authorization|credential|secret|passwd|password|api[_-]?key|x[_-]?api[_-]?token"
+    r"|(^|[^a-z0-9])(token|auth|signature|session)([^a-z0-9]|$)|bearer)",
+    re.I,
+)
 _REDACTED = "[REDACTED]"
+
+
+def _key_is_sensitive(key: str) -> bool:
+    low = key.lower()
+    if low in SENSITIVE_KEYS:
+        return True
+    return bool(_SENSITIVE_NAME_RE.search(low))
 
 
 def redact_value(value: str) -> str:
@@ -25,10 +41,12 @@ def redact_value(value: str) -> str:
 def redact_headers(headers: dict[str, str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for key, value in headers.items():
-        if key.lower() in SENSITIVE_KEYS:
+        if _key_is_sensitive(key):
             out[key] = redact_value(value) if value else _REDACTED
         else:
-            out[key] = value
+            # Even an innocuously-named header may carry a URL-embedded
+            # credential (e.g. Referer/Origin with userinfo); scrub those.
+            out[key] = redact_url_credentials(value) if isinstance(value, str) else value
     return out
 
 

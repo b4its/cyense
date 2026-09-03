@@ -229,6 +229,104 @@ def test_revert_restores_original(tmp_path: Path) -> None:
     assert test_file.read_bytes() == original
 
 
+def test_revert_proposal_no_deadlock(tmp_path: Path) -> None:
+    """revert_proposal must not deadlock (it once re-acquired a non-reentrant
+    lock via get_proposal()/get_all_proposals())."""
+    import threading
+
+    from app.remediation.store import FixStore
+
+    store = FixStore(tmp_path / "fixes")
+    session = store.create_session("scan_abc")
+
+    # Insert an "applied" proposal directly (as apply would have recorded it).
+    store._sessions[session.session_id]["fixes"].append({
+        "session_id": session.session_id,
+        "fix_id": "fx_revert",
+        "backup_path": str(tmp_path / "x.py.bak-cyense"),
+        "status": "applied",
+    })
+    store._proposals.append({
+        "session_id": session.session_id,
+        "fix_id": "fx_revert",
+        "backup_path": str(tmp_path / "x.py.bak-cyense"),
+        "status": "applied",
+    })
+
+    done: dict = {}
+
+    def _run() -> None:
+        try:
+            done["ok"] = store.revert_proposal(session.session_id, "fx_revert")
+        except Exception as exc:  # noqa: BLE001
+            done["exc"] = exc
+
+    th = threading.Thread(target=_run, daemon=True)
+    th.start()
+    th.join(timeout=3)
+    assert not th.is_alive(), "revert_proposal deadlocked"
+    assert done.get("ok") is True
+    assert done.get("exc") is None
+
+    # Both the nested session copy and the flat mirror must be reverted.
+    sess_fix = store._sessions[session.session_id]["fixes"][0]
+    flat_fix = store._proposals[0]
+    assert sess_fix["status"] == "reverted"
+    assert flat_fix["status"] == "reverted"
+
+
+def test_apply_patch_matches_indented_line(tmp_path: Path) -> None:
+    """A diff whose old_line was stripped of leading indentation (as the fix
+    strategies produce) must still apply to an indented source line, keeping
+    the replacement inside the enclosing block."""
+    from app.remediation.applier import apply_patch
+
+    source_root = tmp_path / "src"
+    source_root.mkdir(parents=True, exist_ok=True)
+    target = source_root / "views.py"
+    target.write_text(
+        "def invoice_detail(request):\n"
+        "    inv = Invoice.objects.get(id=request.GET['id'])\n"
+        "    return render(request, 'inv.html', {'inv': inv})\n"
+    )
+
+    # Simulates python_strategies.generate_ownership_filter output: the '-'
+    # line is .strip()ed (no leading spaces).
+    diff = (
+        "- inv = Invoice.objects.get(id=request.GET['id'])\n"
+        "+ inv = Invoice.objects.get(id=request.GET['id'], user_id=request.user.id)\n"
+    )
+    ok, msg, _backup = apply_patch(target, diff, source_root)
+    assert ok, msg
+    content = target.read_text()
+    assert "    inv = Invoice.objects.get(" in content
+    assert "user_id=request.user.id" in content
+    assert content.startswith("def invoice_detail(request):\n    inv = ")
+
+
+def test_create_backup_preserves_original(tmp_path: Path) -> None:
+    """Re-running create_backup on an already-patched file must NOT overwrite
+    the single backup (revert needs the true pre-patch content)."""
+    from app.remediation.applier import create_backup, revert_patch
+
+    target = tmp_path / "app.py"
+    original = b"ORIGINAL\n"
+    target.write_bytes(original)
+
+    b1 = create_backup(target)
+    assert b1 is not None
+    assert b1.read_bytes() == original
+
+    # Apply a change, then attempt a second backup — the original must be kept.
+    target.write_bytes(b"PATCHED\n")
+    b2 = create_backup(target)
+    assert b2 == b1
+    assert b1.read_bytes() == original
+
+    assert revert_patch(target, b1) is True
+    assert target.read_bytes() == original
+
+
 # =============================================================================
 # Integration: Full Alur
 # =============================================================================
