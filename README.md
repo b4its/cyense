@@ -118,7 +118,7 @@ cyense scan program --level high --i-have-permission --source-type sample
 cyense scan github https://github.com/owner/repo --level max --i-have-permission
 ```
 
-**73 static detection rules / 73 aturan deteksi statis** — 13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`, **43 CWE-broad security** `DES001–RND002` (deserialization, crypto, passwords, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy, least-privilege) — plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`, `OWASP-*`:
+**73 static detection rules / 73 aturan deteksi statis** — 13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`, **43 CWE-broad security** `DES001–RND002` (deserialization, crypto, passwords, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy, least-privilege) — plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`, `OWASP-*`, `OSINT-*`, `RE-*`:
 
 | Rule | Pattern / Pola | Language | Severity |
 |------|----------------|----------|----------|

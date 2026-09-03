@@ -16,6 +16,8 @@ Findings are reported with rule ids:
 
 from __future__ import annotations
 
+import asyncio
+import re
 import time
 from typing import Any
 
@@ -1302,6 +1304,206 @@ class WebsiteEngine:
         except Exception as exc:  # noqa: BLE001
             log.warning("Harvester stage failed: %s", exc)
         findings.extend(harvest_findings)
+
+        # 15f. OSINT recon — RDAP/whois, DNS-over-HTTPS records, ASN netblock.
+        # Famous-tool adaptation: ``whois`/RDAP bootstrap, dnsrecon/dnsx (DoH),
+        # Team-Cymru ASN lookup. Fully best-effort; public datasources only.
+        await self._notify("osint")
+        osint_findings: list[dict[str, Any]] = []
+        try:
+            from app.utils.osint import osint_passive_gather
+
+            # Best-effort IP resolution for the ASN/netblock lookup.
+            resolved_ip: str | None = None
+            if host:
+                try:
+                    resolved_ip = (await asyncio.get_event_loop().getaddrinfo(
+                        host, None,
+                    ))[0][4][0]
+                except Exception:  # noqa: BLE001 — DNS failure just skips ASN
+                    resolved_ip = None
+
+            osint_data = await osint_passive_gather(
+                url,
+                ip=resolved_ip,
+            )
+            rdap = osint_data.get("rdap") or {}
+            dnsm = osint_data.get("dns") or {}
+            asn = osint_data.get("asn") or {}
+
+            if rdap.get("expiry_date") or rdap.get("registrar"):
+                osint_findings.append({
+                    "rule": "OSINT-RDAP",
+                    "severity": "info",
+                    "confidence": 0.8,
+                    "cwe": "CWE-200",
+                    "title": f"Registrasi domain: {osint_data.get('domain', '')}",
+                    "description": (
+                        "Data registrasi RDAP (adaptasi whois). Registrar: "
+                        + str(rdap.get("registrar") or "-")
+                        + "; kedaluwarsa: " + str(rdap.get("expiry_date") or "-")
+                        + "; NS: " + ", ".join((rdap.get("nameservers") or [])[:4] or ["-"])
+                        + ". Domain yang mendekati kedaluwarsa memperbesar "
+                        "risiko take-over (OWASP: allowing domains to expire)."
+                    ),
+                    "evidence": {
+                        "domain": osint_data.get("domain"),
+                        "registrar": rdap.get("registrar"),
+                        "expiry_date": rdap.get("expiry_date"),
+                        "created_date": rdap.get("created_date"),
+                        "nameservers": (rdap.get("nameservers") or [])[:10],
+                        "registrant_org": rdap.get("registrant_org"),
+                        "url": url,
+                    },
+                    "remediation": (
+                        "Pantau tanggal kedaluwarsa domain; pertahankan "
+                        "registrar/kontak yang valid."
+                    ),
+                    "location": url,
+                })
+                if rdap.get("expiry_date"):
+                    try:
+                        rp = rdap.get("created_date") or ""
+                        expiry = str(rdap.get("expiry_date"))
+                        osint_findings.append({
+                            "rule": "OSINT-DOMAIN-EXPIRY",
+                            "severity": "low",
+                            "confidence": 0.6,
+                            "cwe": "CWE-200",
+                            "title": "Domain mendekati/melewati kedaluwarsa",
+                            "description": (
+                                "RDAP melaporkan tanggal kedaluwarsa "
+                                f"{expiry}. Domain yang kedaluwarsa dapat "
+                                "diambil alih oleh pihak lain (OWASP: allowing "
+                                "domains or accounts to expire)."
+                            ),
+                            "evidence": {"expiry_date": expiry, "url": url},
+                            "remediation": (
+                                "Perpanjang registrasi dan set auto-renew."
+                            ),
+                            "location": url,
+                        })
+                        del rp
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            if dnsm:
+                dns_line = ", ".join(
+                    f"{k}={' '.join(v[:3])}" for k, v in dnsm.items() if v
+                )
+                osint_findings.append({
+                    "rule": "OSINT-DNS",
+                    "severity": "info",
+                    "confidence": 0.75,
+                    "cwe": "CWE-200",
+                    "title": f"Record DNS ter-enumerasi: {osint_data.get('domain', '')}",
+                    "description": (
+                        "Record DNS via DNS-over-HTTPS (adaptasi dnsrecon/dnsx): "
+                        + dns_line[:400]
+                        + ". TXT/SPF/DMARC dapat membocorkan string verifikasi "
+                        "kepemilikan/3rd-party yang membantu pemetaan infra."
+                    ),
+                    "evidence": {"records": dnsm, "url": url},
+                    "remediation": (
+                        "Audit catatan DNS publik; jangan taruh rahasia "
+                        "verifikasi yang dapat disalahgunakan di TXT."
+                    ),
+                    "location": url,
+                })
+
+            if asn.get("asn"):
+                osint_findings.append({
+                    "rule": "OSINT-ASN",
+                    "severity": "info",
+                    "confidence": 0.7,
+                    "cwe": "CWE-200",
+                    "title": (
+                        f"Netblock ASN: {asn.get('asn')} / "
+                        f"{asn.get('registrant') or '?'}"
+                    ),
+                    "description": (
+                        "Pemetaan netblock/ASN (adaptasi Team-Cymru asnmap): "
+                        f"AS{asn.get('asn')}, CIDR {asn.get('cidr') or '?'}, "
+                        f"negara {asn.get('country') or '?'}. Memetakan "
+                        "kepemilikan infra target."
+                    ),
+                    "evidence": {"asn": asn, "url": url},
+                    "remediation": (
+                        "Pastikan seluruh CIDR dalam scope audit; awasi "
+                        "shadow-asset di netblock yang sama."
+                    ),
+                    "location": url,
+                })
+        except Exception as exc:  # noqa: BLE001
+            log.warning("OSINT stage failed: %s", exc)
+        findings.extend(osint_findings)
+
+        # 15g. Client-side reverse engineering — exposed source maps + known
+        # vulnerable / obsolete JS libraries (web source-map exposer +
+        # Retire.js adaptation). Bounded: fetch up to 12 same-origin JS assets
+        # referenced from crawled HTML and re-analyse their bodies.
+        await self._notify("re")
+        re_findings: list[dict[str, Any]] = []
+        try:
+            from urllib.parse import urljoin as _urljoin_re
+
+            from app.utils.re_analysis import run_re_passive
+
+            js_candidates: list[str] = []
+            for page in pages:
+                body = page.get("body") or ""
+                for m in re.finditer(
+                    r"<script\b[^>]*\bsrc\s*=\s*[\"']([^\"']+\.js(?:[?\"'#][^\"']*)?)"
+                    r"[\"']", body, re.I,
+                ):
+                    js_candidates.append(_urljoin_re(url, m.group(1)))
+            js_candidates = [
+                u for u in dict.fromkeys(js_candidates)
+                if (_up(u).hostname or "").endswith(host) or _up(u).hostname == host
+            ][:12]
+
+            js_bodies: list[tuple[str, str]] = [
+                (p["url"], p["body"] or "")
+                for p in pages
+                if "javascript" in (p.get("content_type") or "").lower()
+            ]
+            if js_candidates:
+                async with HttpClient(
+                    timeout=self.settings.request_timeout,
+                    headers=headers,
+                    cookies=cookies,
+                    rate_limit=rate,
+                    max_concurrency=int(getattr(self.settings, "max_concurrency", 10)),
+                ) as js_client:
+                    _js_resp = await asyncio.gather(
+                        *[js_client.get(u) for u in js_candidates],
+                        return_exceptions=True,
+                    )
+                    for u, r in zip(js_candidates, _js_resp, strict=False):
+                        if isinstance(r, Exception):
+                            continue
+                        if r.status == 200 and "javascript" in (
+                            r.headers.get("content-type", "")
+                        ).lower():
+                            js_bodies.append((u, r.body or ""))
+
+            # Dedupe by URL, keep first body.
+            seen_js: set[str] = set()
+            js_body_uniq: list[tuple[str, str]] = []
+            for u, b in js_bodies:
+                if u in seen_js:
+                    continue
+                seen_js.add(u)
+                js_body_uniq.append((u, b))
+
+            html_body_uniq = [
+                (p.get("url", ""), p.get("body") or "")
+                for p in pages
+            ]
+            re_findings.extend(run_re_passive(js_body_uniq, html_body_uniq))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("RE stage failed: %s", exc)
+        findings.extend(re_findings)
 
         # 16. Nikto-style web server security checks.
         await self._notify("nikto")
