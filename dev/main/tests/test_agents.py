@@ -162,11 +162,13 @@ def test_link_scan_detects_invoice_idor_and_rejects_generic_200(tmp_path) -> Non
     ]
     assert bob_hits, "expected bob@example.com in PII matches of critical findings"
 
-    # Case 4: /docs/{ID} — generic-200 trap must be rejected (no findings).
+    # Case 4: /docs/{ID} — generic-200 trap must be rejected (no confirmed
+    # IDOR findings; OWASP posture findings such as plaintext-HTTP may exist).
     docs_report = asyncio.run(_scan("http://lab/docs/{ID}", "testscan-docs"))
-    assert docs_report["summary"]["total"] == 0, (
-        "generic-200 trap must produce no confirmed findings, got "
-        f"{docs_report['summary']['total']}"
+    idor_docs = [f for f in docs_report["findings"] if f["rule"] == "IDOR-LINK"]
+    assert idor_docs == [], (
+        "generic-200 trap must produce no confirmed IDOR findings, got "
+        f"{len(idor_docs)}"
     )
     assert docs_report["summary"].get("rejected_false_positives", 0) >= 1, (
         "expected rejected false positives for the /docs generic-200 trap"

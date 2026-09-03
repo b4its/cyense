@@ -26,6 +26,12 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
+from app.engines.live_webapp import (
+    analyze_webapp,
+    probe_webapp_directory_traversal,
+    probe_webapp_tls,
+)
+from app.utils.http_client import HttpClient
 from app.utils.logger import get_logger
 
 log_owasp = get_logger("owasp")
@@ -777,6 +783,54 @@ async def probe_auth_surfaces(client: Any, origin: str) -> list[dict[str, Any]]:
                 ),
                 url=url,
             ))
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Shared OWASP posture stage (website engine + link orchestrator)
+# ---------------------------------------------------------------------------
+
+async def run_owasp_posture(
+    pages: list[dict[str, Any]],
+    *,
+    origin: str,
+    headers: dict[str, str],
+    cookies: dict[str, str],
+    request_timeout: float = 10.0,
+    rate_limit: int = 10,
+    max_concurrency: int = 3,
+) -> list[dict[str, Any]]:
+    """Run the full live OWASP posture stage for a set of crawled pages.
+
+    * Passive: ``analyze_page_owasp`` + ``analyze_webapp`` on every page.
+    * Active:  a single read-only HttpClient drives the admin/endpoint
+      allow-list, HTTP-method audit, auth-surface, directory-traversal and
+      TLS checks against ``origin``.
+
+    Best-effort: active probing is wrapped so a failure never fails the scan.
+    """
+    findings: list[dict[str, Any]] = []
+    for page in pages:
+        findings.extend(analyze_page_owasp(page))
+        findings.extend(analyze_webapp(page))
+
+    base = (origin or "").rstrip("/")
+    try:
+        async with HttpClient(
+            timeout=request_timeout,
+            headers=headers,
+            cookies=cookies,
+            rate_limit=int(rate_limit),
+            max_concurrency=int(max_concurrency),
+        ) as client:
+            findings.extend(await probe_owasp_endpoints(client, base))
+            findings.extend(await probe_http_methods(client, base))
+            findings.extend(await probe_auth_surfaces(client, base))
+            findings.extend(await probe_webapp_directory_traversal(client, base))
+            findings.extend(await probe_webapp_tls(base))
+    except Exception as exc:  # noqa: BLE001 — owasp posture must never fail scan
+        log_owasp.warning("owasp active posture probe failed for %s: %s", base, exc)
 
     return findings
 

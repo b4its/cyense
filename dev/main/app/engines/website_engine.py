@@ -20,12 +20,7 @@ import time
 from typing import Any
 
 from app.agents.crawler import CrawlerAgent
-from app.engines.live_owasp import (
-    analyze_page_owasp,
-    probe_auth_surfaces,
-    probe_http_methods,
-    probe_owasp_endpoints,
-)
+from app.engines.live_owasp import run_owasp_posture
 from app.engines.live_sqli import SQLI_PAYLOADS, detect_sql_errors, is_boolean_differential
 from app.engines.live_xss import analyze_page_xss
 from app.utils.cve_lookup import (
@@ -1801,31 +1796,20 @@ class WebsiteEngine:
     ) -> list[dict[str, Any]]:
         """OWASP Top 10 posture: per-page observational checks + endpoint probe.
 
-        Covers the categories the other stages do not (A02, A04, A05, A07, A08,
-        A09) while A01/A03/A06 stay in the IDOR / XSS+SQLi / CVE stages. All
-        checks are read-only.
+        Covers the OWASP classic web-application categories (A01, A02, A04,
+        A05, A07, A08, A09). All checks are read-only. Delegates to the shared
+        ``run_owasp_posture`` orchestrator (also used by link mode).
         """
-        findings: list[dict[str, Any]] = []
-        for page in pages:
-            findings.extend(analyze_page_owasp(page))
-
-        # Active allow-list probe for debug/admin endpoints on the base origin.
-        try:
-            origin = url.split("?")[0].rstrip("/")
-            async with HttpClient(
-                timeout=self.settings.request_timeout,
-                headers=headers,
-                cookies=cookies,
-                rate_limit=int(getattr(self.settings, "rate_limit", 10)),
-                max_concurrency=int(getattr(self.settings, "max_concurrency", 3)),
-            ) as client:
-                findings.extend(await probe_owasp_endpoints(client, origin))
-                findings.extend(await probe_http_methods(client, origin))
-                findings.extend(await probe_auth_surfaces(client, origin))
-        except Exception as exc:  # noqa: BLE001 — owasp probe must never fail scan
-            log.warning("owasp endpoint probe failed for %s: %s", url, exc)
-
-        return findings
+        origin = url.split("?")[0].rstrip("/")
+        return await run_owasp_posture(
+            pages,
+            origin=origin,
+            headers=headers,
+            cookies=cookies,
+            request_timeout=self.settings.request_timeout,
+            rate_limit=int(getattr(self.settings, "rate_limit", 10)),
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 3)),
+        )
 
     async def _probe_sqli(
         self,
