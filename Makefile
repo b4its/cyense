@@ -7,8 +7,9 @@
 # Usage: make up / make down / make logs / make test / make shell
 
 .PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run recon \
-        local-install local-checks api lab local-up local-down local-ps local-health local-logs-api local-logs-lab \
-        local-cli local-cli-shell local-cli-help local-demo local-recon local-clean
+        local-install local-checks api lab local-up local-restart local-down local-ps local-health local-logs-api local-logs-lab \
+        local-cli local-cli-shell local-cli-help local-demo local-recon local-clean \
+        web-install web-build web open open-web restart local-web-open
 
 SHELL := /bin/bash
 APP_DIR := dev/main
@@ -86,6 +87,15 @@ help: ## Show all available targets
 	@echo "  make local-demo                     Demo scan a public repo (local)"
 	@echo "  make local-recon URL=...            Recon menyeluruh ke URL (local)"
 	@echo "  make local-clean                    Remove local reports/brain/logs/pids"
+	@echo ""
+	@echo "Frontend Web UI (browser):"
+	@echo "  make web-install                    Install frontend deps via npm (NOT pnpm)"
+	@echo "  make web-build                      Rebuild the Svelte Web UI (npm run build)"
+	@echo "  make web                            local-up + open the Web UI in a browser"
+	@echo "  make open                           Open http://$(LOCAL_API_URL)/ui in a browser"
+	@echo "  make restart                        Stop + start the service (down+up)"
+	@echo "  make local-restart                  Stop + start the local (no-Docker) service"
+	@echo "  make local-web-open                 Open Web UI for the local (no-Docker) service"
 	@echo ""
 
 up: build ## Start services (API + lab app profile)
@@ -258,6 +268,17 @@ local-down: ## Stop API + Lab lokal (pengganti 'make down', tanpa Docker)
 	done; true
 	@echo "Selesai."
 
+local-restart: ## Restart API + Lab lokal (pengganti 'make down && make up')
+	@$(MAKE) local-down
+	@$(MAKE) local-up
+
+local-web-open: ## Buka Web UI lokal di browser
+	@$(PYTHON) -c "import urllib.request as u; u.urlopen('$(LOCAL_API_URL)/api/v1/health', timeout=2)" 2>/dev/null \
+		|| (echo "API offline — jalankan: make local-up" && exit 1)
+	@echo "Buka Web UI: $(LOCAL_API_URL)/ui"
+	@command -v xdg-open >/dev/null 2>&1 && xdg-open "$(LOCAL_API_URL)/ui" >/dev/null 2>&1 & \
+	command -v open >/dev/null 2>&1 && open "$(LOCAL_API_URL)/ui" >/dev/null 2>&1 || true
+
 local-ps: ## Status proses lokal + health API
 	@echo "PID API : $$(cat $(API_PID) 2>/dev/null || echo '-')"
 	@echo "PID Lab : $$(cat $(LAB_PID) 2>/dev/null || echo '-')"
@@ -304,6 +325,38 @@ local-demo: local-up ## Demo end-to-end lokal: scan repo publik (mulai API bila 
 local-recon: ## Recon menyeluruh ke URL (lokal). Pakai: make local-recon URL=https://target.example
 	@if [ -z "$(URL)" ]; then echo "Pakai: make local-recon URL=https://target.example"; exit 1; fi
 	cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(PYTHON) -m app.cli.main cve "$(URL)" --i-have-permission
+
+# ---------------------------------------------------------------------------
+# Frontend (Svelte Web UI) — builder + browser launcher
+# Repo memakai npm (package-lock.json di-track). JANGAN pakai pnpm:
+# pnpm memblokir postinstall esbuild (ERR_PNPM_IGNORED_BUILDS), sehingga
+# `vite build` gagal. Selalu gunakan npm di sini.
+# ---------------------------------------------------------------------------
+
+SVELTE_DIR := $(APP_ABS)/app/interface/svelte
+WEB_NPM := npm
+
+web-install: ## Install dependensi frontend (npm; jangan pnpm)
+	cd $(SVELTE_DIR) && $(WEB_NPM) install
+
+web-build: web-install ## Build ulang Web UI (npm ci) — output di $(SVELTE_DIR)/dist
+	cd $(SVELTE_DIR) && $(WEB_NPM) run build
+	@echo "✓ Web UI dibangun — disajikan di :8000/ui oleh API"
+
+web: local-up ## Alias: pastikan service lokal hidup, lalu buka Web UI di browser
+	@$(MAKE) open
+
+open: ## Buka Web UI di browser (pakai service yang sudah berjalan)
+	@$(PYTHON) -c "import urllib.request as u; u.urlopen('$(LOCAL_API_URL)/api/v1/health', timeout=2)" 2>/dev/null \
+		|| (echo "API offline — jalankan: make up (Docker) atau make local-up" && exit 1)
+	@echo "Buka Web UI: $(LOCAL_API_URL)/ui"
+	@if command -v xdg-open >/dev/null 2>&1; then xdg-open "$(LOCAL_API_URL)/ui" >/dev/null 2>&1 & \
+	elif command -v open >/dev/null 2>&1; then open "$(LOCAL_API_URL)/ui" >/dev/null 2>&1 & \
+	else echo "  (browser tidak ditemukan — buka manual: $(LOCAL_API_URL)/ui)"; fi
+
+restart: ## Hentikan lalu nyalakan kembali service (Docker: down+up)
+	@$(MAKE) down
+	@$(MAKE) up
 
 local-clean: local-down ## Bersihkan data lokal (reports/brain/target/logs/pids)
 	@rm -rf $(APP_ABS)/reports $(APP_ABS)/brain $(APP_ABS)/target $(LOCAL_API_LOG) $(LOCAL_LAB_LOG)

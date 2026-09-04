@@ -1,0 +1,13 @@
+# Node / package-manager artifacts
+node_modules/
+.pnpm-store/
+.ignored/
+
+# Lockfile dari package-manager lain — repo ini pakai npm (package-lock.json).
+# pnpm menghasilkan lockfile sendiri yang tidak boleh menggantikan npm.
+pnpm-lock.yaml
+pnpm-workspace.yaml
+yarn.lock
+
+# Cache build
+.rollup.cache/
