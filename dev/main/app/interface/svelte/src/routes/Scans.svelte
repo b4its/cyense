@@ -2,6 +2,8 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import ScanCard from '../components/ScanCard.svelte'
+  import SearchInput from '../components/SearchInput.svelte'
+  import { buildIndex, searchIndex } from '../lib/search.js'
 
   let scans = []
   let loading = true
@@ -10,6 +12,7 @@
   let mode = 'website'
   let submitting = false
   let msg = ''
+  let query = ''
 
   onMount(async () => { try { scans = await api.listScans() || [] } catch (e) { error = String(e) } loading = false })
 
@@ -39,6 +42,13 @@
     } catch (e) { msg = String(e) }
     submitting = false
   }
+
+  // Single-pass search index over the scan library (rebuild only on change).
+  $: index = buildIndex(scans, (s) =>
+    [s.scan_id, s.mode, s.status, s.stage, s.summary?.total,
+     s.summary?.critical, s.summary?.high, s.summary?.medium].join(' ')
+  )
+  $: filtered = searchIndex(index, query)
 </script>
 
 <section class="hero" style="padding-bottom:24px">
@@ -64,6 +74,9 @@
       <button class="btn primary" disabled={submitting}>{submitting ? '…' : 'Scan'}</button>
     </form>
     {#if msg}<p class="mono" style="font-size:13px;color:var(--ink-soft)">{msg}</p>{/if}
+    <div style="max-width:480px;margin-top:8px">
+      <SearchInput bind:value={query} count={filtered.length} placeholder="Cari scan_id / mode / status…" label="Cari scan" />
+    </div>
   </div>
 </section>
 
@@ -71,10 +84,12 @@
   <div class="wrap">
     {#if loading}<div class="skeleton" style="height:240px"></div>
     {:else if error}<p style="color:var(--err)">{error}</p>
-    {:else if scans.length}
+    {:else if filtered.length}
       <div class="grid">
-        {#each scans as s}<ScanCard {s} />{/each}
+        {#each filtered as s}<ScanCard {s} />{/each}
       </div>
+    {:else if scans.length}
+      <p class="muted">Tidak ada scan yang cocok dengan "{query}".</p>
     {:else}<p class="muted">Belum ada scan.</p>{/if}
   </div>
 </section>

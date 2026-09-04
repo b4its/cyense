@@ -7,6 +7,7 @@
   import FindingCard from '../components/FindingCard.svelte'
   import Celebration from '../components/Celebration.svelte'
   import DiffWidget from '../components/DiffWidget.svelte'
+  import SearchInput from '../components/SearchInput.svelte'
 
   export let scanId = ''
   let report = null
@@ -18,6 +19,7 @@
   let celebrated = false
   let coverage = null
   let coverageErr = ''
+  let query = ''
 
   // Realtime progress polling: while the scan is queued/running we poll
   // GET /scans/{id} every ~1.2s so stage/progress/events stay live and the
@@ -97,7 +99,16 @@
     }
   })
 
-  $: findings = (report?.findings || []).slice().sort((a, b) => sevRank(a.severity) - sevRank(b.severity))
+  $: allFindings = (report?.findings || []).slice().sort((a, b) => sevRank(a.severity) - sevRank(b.severity))
+  // Search across findings: single linear pass over the sorted list; every
+  // category below derives from this one filtered array (no N+1 re-walks).
+  $: q = query.trim().toLowerCase()
+  $: findings = !q
+    ? allFindings
+    : allFindings.filter((f) =>
+        [f.rule, f.title, f.description, f.severity, f.cwe, f.location, f.recommendation]
+          .some((v) => v != null && String(v).toLowerCase().includes(q))
+      )
   $: cves = findings.filter((f) => f.rule === 'CVE-MATCH')
   $: techs = findings.filter((f) => f.rule?.startsWith('DETECT-'))
   $: ports = findings.filter((f) => f.rule === 'PORT-OPEN' || f.rule === 'PORT-SCAN-SUMMARY')
@@ -295,6 +306,9 @@
     <div class="wrap layout-split">
       <StickyToc {ids} activeId={activeHeading} />
       <div>
+        <div style="max-width:480px;margin-bottom:20px">
+          <SearchInput bind:value={query} count={findings.length} placeholder="Cari temuan (rule / title / severity)…" label="Cari temuan" />
+        </div>
         {#if cves.length}
           <section class="block" id="cves" style="padding-top:0">
             <h2>CVE — Kerentanan Terkenal</h2>
