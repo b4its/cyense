@@ -137,6 +137,16 @@ section.block .sub { color: var(--ink-soft); margin: 0 0 20px; font-size: 16px; 
   font-family: var(--mono); font-size: 11px; letter-spacing: .05em;
   padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-soft);
 }
+
+/* scan error banner — shows WHY a scan failed/unreachable instead of a bare
+   "Tidak ada temuan" (e.g. target unreachable from the API container). */
+.scan-error {
+  margin: 12px 0 4px; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--err) 45%, transparent);
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+  color: var(--err); font-size: 14px; display: flex; flex-direction: column; gap: 4px;
+}
+.scan-error b { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; }
 .badge.critical { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, transparent); }
 .badge.high { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 .badge.medium { color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }

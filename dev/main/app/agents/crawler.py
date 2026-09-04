@@ -74,6 +74,7 @@ class CrawlerAgent(BaseAgent):
         visited: set[str] = set()
         pages: list[dict[str, Any]] = []
         queue: list[tuple[str, int]] = [(start_url, 0)]
+        ok_responses = 0  # HTTP responses actually received (any status)
 
         # Rate limiter: cap concurrent in-flight requests AND minimum gap
         # between successive request starts.
@@ -117,6 +118,7 @@ class CrawlerAgent(BaseAgent):
                             "fetch_error", {"url": url, "error": str(exc)},
                         )
                         continue
+                    ok_responses += 1
 
                 # Post-redirect domain check: follow_redirects can land on a
                 # third-party host; content from there must not be recorded
@@ -159,6 +161,7 @@ class CrawlerAgent(BaseAgent):
                 "id_endpoints": id_endpoints,
                 "domain": domain,
                 "visited_count": len(visited),
+                "ok_responses": ok_responses,
             },
         )
 

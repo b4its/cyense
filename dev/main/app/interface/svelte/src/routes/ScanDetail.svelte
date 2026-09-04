@@ -152,6 +152,12 @@
         {#if report?.summary?.cves_matched} · <b>{report.summary.cves_matched}</b> CVE{/if}
         {#if report?.summary?.open_ports} · <b>{report.summary.open_ports}</b> port{/if}
       </p>
+      {#if job.status === 'failed' || report?.meta?.error}
+        <div class="scan-error">
+          <b>Scan gagal / tidak terjangkau.</b>
+          <span>{report?.meta?.error || job?.error || 'terjadi kesalahan saat scan.'}</span>
+        </div>
+      {/if}
       <div class="meta">
         {#each ['critical','high','medium','low','info'] as sev}
           {#if report?.summary?.[sev] > 0}<span class="badge {sev}">{sev} {report.summary[sev]}</span>{/if}

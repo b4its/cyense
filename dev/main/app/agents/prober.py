@@ -105,6 +105,7 @@ class ProberAgent(BaseAgent):
 
             probe_ids = list(candidates)
             fired: set[str] = set()
+            unreachable = 0  # probe responses with status 0 (connection failed)
             for _round in range(2):  # round 2 = adaptive expansion
                 fired_before = set(fired)
                 tasks = [self._probe_one(client, method, profile, pid, baseline_body)
@@ -112,6 +113,8 @@ class ProberAgent(BaseAgent):
                 results = await asyncio.gather(*tasks)
                 for hit in results:
                     fired.add(hit.probe_id)
+                    if hit.status == 0:
+                        unreachable += 1
                     if hit.classification in ("same-shape", "different-shape"):
                         valid_ids.append(hit.probe_id)
                     # forward every 200 candidate to the verifier; it decides
@@ -133,6 +136,24 @@ class ProberAgent(BaseAgent):
                     break
                 self.trajectory.step("adaptive_expand", {"seed": seed, "count": len(expansion)})
                 probe_ids = expansion
+
+        # If we fired candidates but every response was a connection error
+        # (status 0), the target is unreachable — surface as a scan FAILURE
+        # instead of silently completing with zero findings (which made the
+        # web UI show "Tidak ada temuan" with no explanation). This happens
+        # e.g. when the URL points at a host the API container cannot reach
+        # (localhost from inside Docker is the API container itself).
+        if fired and unreachable == len(fired) and not hits:
+            return AgentResult(
+                agent=self.name,
+                ok=False,
+                error=(
+                    f"target tidak terjangkau: semua {len(fired)} probe gagal "
+                    "terhubung (connection refused/timeout). Periksa URL dan "
+                    "jaringan — dari container API, 'localhost' adalah container "
+                    "itu sendiri, bukan host/lab."
+                ),
+            )
 
         data = {
             # external-safe view (redacted headers, no body)

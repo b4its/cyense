@@ -141,3 +141,113 @@ def test_vcard_country_malformed_no_crash() -> None:
     assert _vcard_country([{
         "vcardArray": [["vcard"], [["adr", {}, "text", ["", "", "", "US"]]]],
     }]) == "US"
+
+
+# ---------------------------------------------------------------------------
+# unreachable-target handling (link + website) — page must fail loudly
+# ---------------------------------------------------------------------------
+
+def test_link_prober_fails_fast_when_target_unreachable() -> None:
+    """All probes returning status 0 (connection refused) must surface as a
+    scan FAILURE (ok=False) instead of a silent 0-finding completion — this
+    was why the web page showed an unexplained 'Tidak ada temuan'."""
+    import asyncio
+
+    from app.agents.prober import ProberAgent
+    from app.agents.recon import TargetProfile
+
+    class _Err:
+        status = 0
+        headers: dict[str, str] = {}
+        body = ""
+        elapsed_ms = 1
+        url = ""
+
+        @property
+        def blocked(self) -> bool:
+            return False
+
+    class _StubClient:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc) -> None:
+            return None
+
+        async def get(self, url: str):
+            r = _Err()
+            r.url = url
+            return r
+
+        async def request(self, method: str, url: str):
+            return await self.get(url)
+
+    import app.agents.prober as p
+
+    orig_run = p.ProberAgent.run
+    orig_client = p.HttpClient
+
+    async def patched_run(self, ctx):
+        p.HttpClient = _StubClient  # type: ignore[misc]
+        try:
+            return await orig_run(self, ctx)
+        finally:
+            p.HttpClient = orig_client
+
+    p.ProberAgent.run = patched_run  # type: ignore[method-assign]
+
+    try:
+        prober = ProberAgent("t", "/tmp")
+        profile = TargetProfile(
+            url_template="http://10.255.255.1/invoice/{ID}",
+            host="10.255.255.1",
+            placeholders=["id"],
+        )
+        ctx = {
+            "profile": profile.to_dict(),
+            "baseline_body": "",
+            "baseline_id": None,
+            "probe_ids": None,
+            "probe_max": 3,
+            "method": "GET",
+            "timeout": 1,
+            "rate_limit": 50,
+            "max_concurrency": 5,
+        }
+        res = asyncio.run(prober(ctx))
+        assert res.ok is False
+        assert "tidak terjangkau" in (res.error or "").lower()
+    finally:
+        p.ProberAgent.run = orig_run  # type: ignore[method-assign]
+        p.HttpClient = orig_client
+
+
+def test_crawler_counters_ok_responses() -> None:
+    """Crawler must report how many HTTP responses it actually received so the
+    website engine can distinguish 'target unreachable' (0 responses) from a
+    legitimately empty scan."""
+    # No network in tests: with a bad host the crawler gets 0 responses and
+    # must still return ok=True but expose ok_responses == 0.
+    import asyncio
+
+    from app.agents.crawler import CrawlerAgent
+
+    async def _run():
+        crawler = CrawlerAgent("t", "/tmp")
+        ctx = {
+            "url": "http://127.0.0.1:1/nope",
+            "max_depth": 0,
+            "max_pages": 2,
+            "rate_limit": 50,
+            "headers": {},
+            "cookies": {},
+        }
+        return await crawler(ctx)
+
+    res = asyncio.run(_run())
+    assert res.ok is True
+    assert res.data.get("ok_responses", 0) == 0
+    assert res.data.get("pages", []) == []

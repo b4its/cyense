@@ -137,6 +137,22 @@ class WebsiteEngine:
         pages = crawl_result.data.get("pages", [])
         id_endpoints = crawl_result.data.get("id_endpoints", [])
         domain = crawl_result.data.get("domain", "")
+        ok_responses = int(crawl_result.data.get("ok_responses", 0))
+
+        # The crawler returns ok=True even when it could not reach the target
+        # at all (every fetch raises ConnectionError). Surfacing that as a
+        # FAILED scan (instead of a silent 0-finding completion) makes the
+        # failure visible on the website instead of an unexplained
+        # "Tidak ada temuan" — e.g. from the API container `localhost` is the
+        # container itself, not the lab/host.
+        if not pages and ok_responses == 0:
+            return self._empty_report(
+                "target tidak terjangkau: crawler gagal terhubung ke "
+                f"{url!r} (connection refused/timeout). Periksa URL dan "
+                "jaringan — dari container API, 'localhost' adalah container "
+                "itu sendiri, bukan host/lab.",
+                started, url,
+            )
 
         # ------------------------------------------------------------------
         # Stage 2: Technology/Framework Detection
