@@ -265,8 +265,15 @@ def _check_frame_injection(body: str, url: str, headers: dict[str, str]) -> list
                     "high",
                     0.55,
                     "Frame Injection / Clickjacking Vector",
-                    f"Dynamic <iframe src='{src}' found without X-Frame-Options"
-                    " or Content-Security-Policy frame-ancestors.",
+                    f"Dynamic <iframe src='{src}' found."
+                    + (
+                        " No clickjacking protections detected (no X-Frame-Options"
+                        " nor CSP frame-ancestors)."
+                        if clickjacking
+                        else " Site-level X-Frame-Options/CSP protections are"
+                        " in place but the dynamic src is a risk (javascript:/data:"
+                        " URIs or empty) and should be sanitised."
+                    ),
                     {"src": src, "clickjacking": clickjacking},
                     "Add X-Frame-Options: DENY/SAMEORIGIN and a CSP"
                     " frame-ancestors directive; sanitize iframe src values.",
@@ -374,11 +381,12 @@ def _check_session_timeout(headers: dict[str, Any]) -> list[dict[str, Any]]:
         raw = ",".join(str(v) for v in raw)
     raw = str(raw or "")
     for cookie in re.split(r",\s*(?=[^\s;,=]+=)", raw):
-        raw_lower = cookie.lower()
-        _session_names = (
-            "sessionid", "session", "sid", "jsessionid", "phpsessionid"
+        name = cookie.split(";", 1)[0].split("=", 1)[0].strip().lower()
+        _session_name_match = (
+            "sessionid", "session", "sid", "jsessionid", "phpsessid"
         )
-        if any(s in raw_lower for s in _session_names):
+        if any(s == name for s in _session_name_match):
+            raw_lower = cookie.lower()
             has_max_age = "max-age=" in raw_lower or "max-age =" in raw_lower
             has_expires = "expires=" in raw_lower
             if not (has_max_age or has_expires):

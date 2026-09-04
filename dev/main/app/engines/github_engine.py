@@ -232,7 +232,11 @@ class GithubEngine:
 
     @staticmethod
     def _empty_report(error: str, started: float) -> dict[str, Any]:
-        """Return empty report structure for failures."""
+        """Return empty report structure for failures.
+
+        The summary must carry the full zero-count shape (critical/high/…/total)
+        so downstream UI/templates don't KeyError or render "undefined" when a
+        github scan fails early (resolve/diff-scope/invalid-mode)."""
         return {
             "meta": {
                 "scan_id": "",
@@ -240,6 +244,14 @@ class GithubEngine:
                 "engine": "github-static",
                 "error": error,
             },
-            "summary": {},
+            "summary": {
+                "critical": 0,
+                "high": 0,
+                "medium": 0,
+                "low": 0,
+                "info": 0,
+                "total": 0,
+                "duration_ms": int((time.monotonic() - started) * 1000),
+            },
             "findings": [],
         }

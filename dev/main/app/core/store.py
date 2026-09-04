@@ -55,6 +55,25 @@ class JobStore:
                 continue  # tolerate schema drift / partial dumps
             if job.scan_id not in self._jobs:
                 self._jobs[job.scan_id] = job
+        # Non-terminal jobs (QUEUED/RUNNING) cannot be re-enqueued after a
+        # restart — the worker's asyncio queue is empty and the checkpoint
+        # (if any) is gone. Mark them FAILED so the scan library shows an
+        # accurate terminal state rather than perpetual "queued"/"running".
+        stale = [
+            sid
+            for sid, j in self._jobs.items()
+            if j.status in (ScanStatus.QUEUED, ScanStatus.RUNNING)
+        ]
+        stale_now = _now()
+        for sid in stale:
+            j = self._jobs[sid]
+            j.status = ScanStatus.FAILED
+            j.stage = None
+            j.error = "scan lost during service restart — resubmit if needed"
+            j.finished_at = stale_now
+            self._events.setdefault(sid, []).append(
+                f"{stale_now} status: failed — lost during restart"
+            )
         events = data.get("events")
         if isinstance(events, dict):
             for scan_id, evs in events.items():

@@ -309,7 +309,11 @@ def _cookie_attribute_findings(
     """Emit findings for session cookies lacking HttpOnly / Secure / SameSite.
 
     ``set-cookie`` may be a single combined header; we only flag when an
-    attribute is entirely absent (conservative — avoids flagging a mix).
+    attribute is entirely absent (conservative — avoids flagging a mix). AUTH-001
+    (HttpOnly) and AUTH-002 (Secure) only fire when a SESSION-like cookie is
+    actually present — flagging arbitrary analytics/tracking cookies (e.g.
+    ``theme=dark``) as "session cookies without HttpOnly" produced noisy HIGHs on
+    every site.
     """
     findings: list[dict[str, Any]] = []
     set_cookie = headers_lc.get("set-cookie", "")
@@ -317,8 +321,9 @@ def _cookie_attribute_findings(
         return findings
 
     is_https = url.lower().startswith("https://")
+    has_session = _has_session_like_cookie(set_cookie)
 
-    if not _HTTPONLY_RE.search(set_cookie):
+    if has_session and not _HTTPONLY_RE.search(set_cookie):
         findings.append(_finding(
             rule="OWASP-AUTH-001", severity="high", confidence=0.75,
             title="Session cookie not marked HttpOnly",
@@ -331,7 +336,7 @@ def _cookie_attribute_findings(
             url=url,
         ))
 
-    if is_https and not _SECURE_RE.search(set_cookie):
+    if has_session and is_https and not _SECURE_RE.search(set_cookie):
         findings.append(_finding(
             rule="OWASP-AUTH-002", severity="high", confidence=0.75,
             title="Session cookie not marked Secure",

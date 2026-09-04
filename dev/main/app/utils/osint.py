@@ -243,6 +243,7 @@ async def _doh_query(
             async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as c:
                 resp = await c.get(
                     endpoint,
+                    headers={"Accept": "application/dns-json"},
                     params={"name": domain, "type": type_code},
                 )
                 resp.raise_for_status()
@@ -309,18 +310,22 @@ async def asn_lookup(
                     if len(data) > 4096:
                         break
             text = data.decode(errors="replace")
-            # Async response: one data row per queried IP.
+            # Team Cymru 'verbose' single-IP response columns are:
+            #   ASN | IP | BGP Prefix | CC | Registry | Allocated | AS Name
+            # e.g. "15169 | 8.8.8.8 | 8.8.8.0/24 | US | arin | 1992-12-01 | GOOGLE, US".
+            # The query result has one data row; a header row (no leading digit
+            # in column 0) must be skipped. Earlier code indexed one column too
+            # far ("cidr"=IP, "country"=CIDR, "registrant"=CC, "ip"=registry).
             for line in text.splitlines():
-                parts = line.split("|")
-                if len(parts) >= 5:
-                    asn = parts[0].strip()
-                    if asn.isdigit():
-                        got["asn"] = asn
-                        got["cidr"] = parts[1].strip()
-                        got["country"] = parts[2].strip()
-                        got["registrant"] = parts[3].strip() or None
-                        got["ip"] = parts[4].strip() or ip
-                        break
+                parts = [p.strip() for p in line.split("|")]
+                if len(parts) >= 5 and parts[0].isdigit():
+                    got["asn"] = parts[0]
+                    got["ip"] = parts[1] or ip
+                    got["cidr"] = parts[2] or None
+                    got["country"] = parts[3] or None
+                    # registrant = AS Name (org), the 7th column
+                    got["registrant"] = parts[6] if len(parts) > 6 and parts[6] else None
+                    break
         except (OSError, TimeoutError):
             return {}
         return got

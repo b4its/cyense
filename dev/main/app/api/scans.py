@@ -79,6 +79,12 @@ async def get_scan(request: Request, scan_id: str) -> dict[str, object]:
     }
     if job.status == ScanStatus.COMPLETED:
         report = request.app.state.worker.result(scan_id)
+        if report is None:
+            # Disk fallback so a completed scan's summary survives a restart,
+            # consistent with list_scans (which loads from disk).
+            report = load_disk_report_or_none(
+                request.app.state.settings.reports_dir, scan_id,
+            )
         if report is not None:
             payload["summary"] = report.get("summary", {})
     return payload

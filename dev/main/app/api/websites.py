@@ -23,6 +23,12 @@ from app.core.models import ScanStatus
 
 router = APIRouter(tags=["websites"])
 
+# The "daftar website" page lists websites/domains that were actively scanned
+# over the network. Source-analysis modes (program/github) don't target a
+# website, so they are excluded here — otherwise every program scan collapsed
+# under the literal host "program" and every GitHub repo under "github.com".
+_WEBSITE_MODES = frozenset({"website", "link", "domain"})
+
 
 def _target_of(job) -> str:
     """Best displayable target for a job (url, domain or repo_url)."""
@@ -40,9 +46,14 @@ def _host_of(target: str) -> str:
     if not target:
         return ""
     parsed = urlparse(target if "://" in target else f"http://{target}")
-    host = (parsed.netloc or parsed.path or target).split("@")[-1]
-    # strip userinfo, port and trailing slash
-    host = host.split(":")[0].rstrip("/")
+    if parsed.netloc:
+        netloc = (parsed.netloc or "").split("@")[-1]
+        # IPv6 literal like [::1]:port must not be chopped by split(":")[0].
+        if netloc.startswith("["):
+            return netloc.split("]")[0] + "]"  # keep "[::1]"
+        return netloc.split(":")[0].rstrip("/") or target
+    # No host (e.g. bare repo_url well-formed normally, but be safe).
+    host = (parsed.path or target).rstrip("/")
     return host or target
 
 
@@ -54,6 +65,8 @@ async def list_websites(request: Request) -> list[dict[str, object]]:
 
     by_host: dict[str, dict[str, object]] = {}
     for job in store.list():
+        if job.request.mode not in _WEBSITE_MODES:
+            continue
         target = _target_of(job)
         host = _host_of(target) or job.scan_id
         summary: dict[str, object] = {}

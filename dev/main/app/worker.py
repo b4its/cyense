@@ -270,7 +270,18 @@ class ScanWorker:
             if checkpoint:
                 prev_findings = checkpoint.get("findings", [])
                 if prev_findings:
+                    # The engine re-ran from scratch, producing the same
+                    # findings again — without deduplication every finding
+                    # appears twice (and the summary double-counts).
                     report.setdefault("findings", []).extend(prev_findings)
+                    unique: list[dict[str, Any]] = []
+                    seen: set[str] = set()
+                    for f in report["findings"]:
+                        key = (f.get("rule", ""), f.get("location", ""))
+                        if key not in seen:
+                            seen.add(key)
+                            unique.append(f)
+                    report["findings"] = unique
                     report["summary"] = self._recalc_summary(
                         report.get("findings", []),
                         report.get("summary", {}),
@@ -325,6 +336,14 @@ class ScanWorker:
                 if resume_from:
                     remove_checkpoint(self.settings.reports_dir, resume_from)
         except Exception as exc:
+            # If the scan was deleted (DELETE /scans/{id}) while running, do
+            # NOT resurrect its artifacts: the success path checks
+            # ``self.store.get(scan_id) is None`` but the user's delete already
+            # removed the reports dir — writing a checkpoint here would recreate
+            # it and make the scan appear resumable. Guard for it.
+            if self.store.get(scan_id) is None:
+                self._log_event(scan_id, "scan deleted while running; skipping checkpoint")
+                return
             await self.store.mark_failed(scan_id, str(exc))
             # Save failed checkpoint so user can resume after fixing cause.
             # Persist any findings the engine produced before crashing so a
@@ -426,6 +445,8 @@ class ScanWorker:
             meta["scan_types"] = result["scan_types"]
         if "lang" in result:
             meta["lang"] = result["lang"]
+        if result.get("files_read_errors", 0) > 0:
+            meta["budget_exceeded"] = True
         return {
             "meta": meta,
             "summary": summary,
