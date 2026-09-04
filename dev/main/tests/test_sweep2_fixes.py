@@ -251,3 +251,64 @@ def test_crawler_counters_ok_responses() -> None:
     assert res.ok is True
     assert res.data.get("ok_responses", 0) == 0
     assert res.data.get("pages", []) == []
+
+
+# ---------------------------------------------------------------------------
+# realtime step-by-step events (web UI live feed)
+# ---------------------------------------------------------------------------
+
+async def _make_running_job(store) -> str:
+    """Create a scan job in a terminal state and return its scan_id."""
+    from app.core.models import LinkScanRequest
+
+    req = LinkScanRequest(
+        mode="link",
+        url="http://lab/invoice/{ID}",
+        i_have_permission=True,
+    )
+    job = store.create(req)
+    return job.scan_id
+
+
+def test_store_records_realtime_stage_events(tmp_path) -> None:
+    """mark_stage/mark_completed must append step-by-step events so the web UI
+    can render a LIVE feed — previously the stage history was never recorded
+    and the page showed nothing while the scan ran."""
+    import asyncio
+
+    from app.core.store import JobStore
+
+    store = JobStore(tmp_path / "reports")
+    scan_id = asyncio.run(_make_running_job(store))
+
+    # Simulate a website scan walking through stages as the worker would.
+    asyncio.run(store.mark_running(scan_id, stage="recon"))
+    for stage, prog in (("crawl", 8), ("analyze", 18), ("cve", 30),
+                        ("discovery", 36), ("report", 90)):
+        asyncio.run(store.mark_stage(scan_id, stage, prog))
+    asyncio.run(store.mark_completed(scan_id))
+
+    events = store.events(scan_id)
+    assert events, "expected step-by-step events after stage transitions"
+    joined = "\n".join(events)
+    assert "stage: recon → crawl" in joined
+    assert "stage: crawl → analyze" in joined
+    assert "stage: discovery → report" in joined
+    assert "status: completed" in joined
+    # The progress is monotonic (max kept) — final snapshot reports 100%.
+    assert "100%" in joined
+
+
+def test_store_records_failed_event(tmp_path) -> None:
+    """mark_failed must append an event carrying the error message."""
+    import asyncio
+
+    from app.core.store import JobStore
+
+    store = JobStore(tmp_path / "reports")
+    scan_id = asyncio.run(_make_running_job(store))
+    asyncio.run(store.mark_running(scan_id, stage="recon"))
+    asyncio.run(store.mark_failed(scan_id, "target tidak terjangkau"))
+
+    events = store.events(scan_id)
+    assert any("failed" in e and "tidak terjangkau" in e for e in events)

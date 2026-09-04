@@ -74,6 +74,18 @@ class JobStore:
             job = self._jobs.get(scan_id)
             if job is None:
                 return
+            # Persist previous stage transitions as events so the web UI can
+            # render a LIVE step-by-step feed (previously mark_stage silently
+            # updated state but recorded nothing, so no per-stage history was
+            # ever visible to the reviewer).
+            if job.stage and job.stage != stage:
+                self._events.setdefault(scan_id, []).append(
+                    f"{_now()} stage: {job.stage} → {stage} ({job.progress}%)"
+                )
+            elif not job.stage:
+                self._events.setdefault(scan_id, []).append(
+                    f"{_now()} stage: {stage} ({progress}%)"
+                )
             job.stage = stage
             job.progress = max(job.progress, progress)
         self._dump()
@@ -87,6 +99,9 @@ class JobStore:
             job.stage = None
             job.progress = 100
             job.finished_at = _now()
+            self._events.setdefault(scan_id, []).append(
+                f"{_now()} status: completed (100%)"
+            )
         self._dump()
 
     async def mark_failed(self, scan_id: str, error: str) -> None:
@@ -98,6 +113,9 @@ class JobStore:
             job.stage = None
             job.error = error
             job.finished_at = _now()
+            self._events.setdefault(scan_id, []).append(
+                f"{_now()} status: failed — {error}"
+            )
         self._dump()
 
     # -- log events (shown via GET /scans/{id}) -----------------------------

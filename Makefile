@@ -117,7 +117,18 @@ logs-api: ## Follow API logs only
 logs-lab: ## Follow lab app logs only
 	$(COMPOSE_IN_APP) --profile lab logs -f --tail=100 vulnerable-app
 
-shell: ## Interactive shell in API container
+# Ensure the api service is running before any `exec api` target.
+# `docker compose exec` fails with 'service "api" is not running' when the
+# container is down — this starts it automatically so `make cli ...` works
+# even on a fresh `make up`-less shell.
+.PHONY: ensure-api
+ensure-api:
+	@if ! ( cd $(APP_DIR) && $(COMPOSE) ps --status running --services 2>/dev/null | grep -qx 'api' ); then \
+		echo ">>> Service 'api' belum berjalan — menyalakan otomatis..."; \
+		$(COMPOSE_IN_APP) up -d --wait api; \
+	fi
+
+shell: ensure-api ## Interactive shell in API container
 	$(COMPOSE_IN_APP) exec api /bin/bash
 
 ps: ## Container status
@@ -160,10 +171,10 @@ start-venv: ## Activate virtualenv
 # All CLI targets run INSIDE the API container — no local Python deps
 # needed. Requires 'make up' to have been run first.
 
-cli: ## Run cyense CLI inside API container (e.g. make cli ARGS="list")
+cli: ensure-api ## Run cyense CLI inside API container (e.g. make cli ARGS="list")
 	$(COMPOSE_IN_APP) exec api python -m app.cli.main $(ARGS)
 
-cli-shell: ## Open interactive bash shell inside API container for CLI work
+cli-shell: ensure-api ## Open interactive bash shell inside API container for CLI work
 	@echo ""
 	@echo "============================================================"
 	@echo "  Cyense CLI — interactive shell (inside API container)"
@@ -180,10 +191,10 @@ cli-shell: ## Open interactive bash shell inside API container for CLI work
 	@echo ""
 	$(COMPOSE_IN_APP) exec api /bin/bash
 
-cli-help: ## Show cyense CLI help
+cli-help: ensure-api ## Show cyense CLI help
 	$(COMPOSE_IN_APP) exec api python -m app.cli.main --help
 
-demo: ## Demo end-to-end: scan a public repo (requires internet + service up)
+demo: ensure-api ## Demo end-to-end: scan a public repo (requires internet + service up)
 	@echo "=== Cyense CLI Demo ==="
 	@echo "Memastikan service berjalan..."
 	@$(COMPOSE_IN_APP) exec -T api python -m app.cli.main version \

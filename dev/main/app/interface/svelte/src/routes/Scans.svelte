@@ -32,6 +32,9 @@
       }
       const r = await api.submitScan(payload)
       msg = `Scan diajukan: ${r.scan_id}`
+      // Auto-navigate to the realtime detail view so the user sees the
+      // step-by-step progress (and the results) as they happen.
+      setTimeout(() => { location.hash = `#/scan/${r.scan_id}` }, 600)
       setTimeout(async () => { scans = await api.listScans() || [] }, 1500)
     } catch (e) { msg = String(e) }
     submitting = false

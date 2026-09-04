@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { api, sevRank, fmtDuration } from '../lib/api.js'
   import StageGraph from '../components/StageGraph.svelte'
   import StickyToc from '../components/StickyToc.svelte'
@@ -19,6 +19,14 @@
   let coverage = null
   let coverageErr = ''
 
+  // Realtime progress polling: while the scan is queued/running we poll
+  // GET /scans/{id} every ~1.2s so stage/progress/events stay live and the
+  // findings appear as soon as the scan finishes (previously the page loaded
+  // ONCE and never updated — a running scan showed nothing until a manual
+  // refresh, which is why 'hasil tidak muncul setelah di scan').
+  let pollTimer = null
+  let events = []
+
   const PIPELINE = ['crawl', 'analyze', 'framework', 'port-scan', 'cve', 'discovery',
                      'harvest', 'osint', 're', 'nikto', 'nuclei', 'sec-live', 'probe', 'sqli', 'report']
 
@@ -29,26 +37,42 @@
     } catch (e) { coverageErr = String(e) }
   }
 
-  async function load() {
-    loading = true; error = ''
+  async function fetchJobAndReport() {
     try {
       job = await api.getScan(scanId)
-      if (job.status === 'completed' || job.status === 'failed') {
-        try { report = await api.getReport(scanId) } catch { report = null }
-      } else {
-        report = null
-      }
-      if (job.status === 'completed') {
-        loadCoverage()
-      }
-      if (job.status === 'completed' && !celebrated) {
-        celebrate = true; celebrated = true
-      }
+      events = job.events || []
     } catch (e) { error = String(e) }
+    if (job && (job.status === 'completed' || job.status === 'failed')) {
+      try { report = await api.getReport(scanId) } catch { report = null }
+      // Side-effects that must only run once the scan actually completes.
+      if (job.status === 'completed') {
+        if (coverage === null && coverageErr === '') loadCoverage()
+        if (!celebrated) { celebrate = true; celebrated = true }
+      }
+      return true // terminal → stop polling
+    }
+    return false // still queued/running → keep polling
+  }
+
+  async function load() {
+    loading = true; error = ''
+    const terminal = await fetchJobAndReport()
     loading = false
+    // Poll while running; stop when terminal.
+    if (pollTimer) clearInterval(pollTimer)
+    if (!terminal) {
+      pollTimer = setInterval(async () => {
+        const done = await fetchJobAndReport()
+        if (done && pollTimer) { clearInterval(pollTimer); pollTimer = null }
+      }, 1200)
+    }
   }
 
   onMount(load)
+
+  // Svelte 5 legacy onDestroy-style cleanup: clear poll on unmount to avoid
+  // leaking timers across route changes.
+  onDestroy(() => { if (pollTimer) clearInterval(pollTimer) })
 
   // Stage graph status derived from pipeline + summary progress.
   // Stage graph status derived from server-emitted pipeline + job.stage.
@@ -173,6 +197,36 @@
       <h2>Pipeline</h2>
       <p class="sub">Stage scan sebagai peta prasyarat.</p>
       <StageGraph {stages} />
+    </div>
+  </section>
+
+  <!-- Live step-by-step process feed -->
+  <section class="block">
+    <div class="wrap">
+      <h2>Proses Realtime</h2>
+      <p class="sub">
+        Langkah demi langkah scan — diperbarui setiap ~1,2 detik.
+        {job && job.status !== 'completed' && job.status !== 'failed'
+          ? `Saat ini: ${job.stage || '…'} · ${job.progress ?? 0}%`
+          : 'Scan selesai.'}
+      </p>
+
+      <div class="progress" style="margin:8px 0 18px">
+        <div class="bar" style="width:{Math.min(job?.progress ?? 0, 100)}%"></div>
+      </div>
+
+      {#if events && events.length}
+        <div class="event-feed">
+          {#each events as ev}
+            <div class="event-item"><span class="event-dot"></span>{ev}</div>
+          {/each}
+          {#if job?.status !== 'completed' && job?.status !== 'failed'}
+            <div class="event-item live"><span class="event-dot pulse"></span>menunggu langkah berikutnya…</div>
+          {/if}
+        </div>
+      {:else}
+        <p class="muted">Menunggu proses scan…</p>
+      {/if}
     </div>
   </section>
 
