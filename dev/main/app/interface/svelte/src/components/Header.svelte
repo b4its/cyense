@@ -10,7 +10,9 @@
   })
 
   $: href = (p) => `#${p}`
-  $: active = (p) => route.startsWith(p)
+  // Root "/" must be an exact match — startsWith("/") would mark Dashboard
+  // active on every page (/websites, /scans, …).
+  $: active = (p) => (p === '/' ? route === '/' : route.startsWith(p))
 </script>
 
 <header class="site">
@@ -18,6 +20,7 @@
     <a class="brand" href="#/">cyense<span class="dot">.</span>insight</a>
     <nav class="site">
       <a href="#/" class:active={active('/')}>Dashboard</a>
+      <a href="#/websites" class:active={active('/websites')}>Websites</a>
       <a href="#/scans" class:active={active('/scans')}>Scan Library</a>
       <a href="#/rules" class:active={active('/rules')}>Rules</a>
     </nav>

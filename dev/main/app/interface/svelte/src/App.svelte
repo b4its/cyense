@@ -3,6 +3,7 @@
   import Dashboard from './routes/Dashboard.svelte'
   import Scans from './routes/Scans.svelte'
   import ScanDetail from './routes/ScanDetail.svelte'
+  import Websites from './routes/Websites.svelte'
   import Rules from './routes/Rules.svelte'
   import { onMount } from 'svelte'
 
@@ -24,6 +25,8 @@
 <main>
   {#if scanId}
     <ScanDetail scanId={scanId} />
+  {:else if route.startsWith('/websites')}
+    <Websites />
   {:else if route.startsWith('/scans')}
     <Scans />
   {:else if route.startsWith('/rules')}

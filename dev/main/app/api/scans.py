@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.api._disk_utils import load_disk_report_or_none
 from app.core.models import ScanRequest, ScanStatus
 from app.services.scan_resume import list_resumable_scans
 
@@ -33,6 +34,7 @@ async def list_resumable(request: Request) -> list[dict[str, object]]:
 async def list_scans(request: Request) -> list[dict[str, object]]:
     store = request.app.state.store
     worker = request.app.state.worker
+    reports_dir = request.app.state.settings.reports_dir
     out: list[dict[str, object]] = []
     for job in store.list():
         item: dict[str, object] = {
@@ -46,8 +48,12 @@ async def list_scans(request: Request) -> list[dict[str, object]]:
         }
         # Include summary for completed scans so the web UI / dashboard can
         # show severity counts, CVE matched, and open ports per scan card.
+        # After a restart the in-memory cache is empty — fall back to the
+        # persisted report.json so saved results remain visible.
         if job.status == ScanStatus.COMPLETED:
             report = worker.result(job.scan_id)
+            if report is None:
+                report = load_disk_report_or_none(reports_dir, job.scan_id)
             if report is not None:
                 item["summary"] = report.get("summary", {})
         out.append(item)

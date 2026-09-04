@@ -19,6 +19,7 @@ export const api = {
   health: () => req('/health'),
   rules: () => req('/rules'),
   listScans: () => req('/scans'),
+  websites: () => req('/websites'),
   getScan: (id) => req(`/scans/${id}`),
   getReport: (id) => req(`/scans/${id}/report`),
   submitScan: (payload) => req('/scans', { method: 'POST', body: JSON.stringify(payload) }),

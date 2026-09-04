@@ -26,8 +26,40 @@ class JobStore:
         self._reports_dir.mkdir(parents=True, exist_ok=True)
         self._events: dict[str, list[str]] = {}
         self._lock = threading.Lock()  # single lock for all access
+        self._load()
 
     # -- lifecycle ----------------------------------------------------------
+
+    def _load(self) -> None:
+        """Restore persisted jobs/events from ``store.json`` on startup.
+
+        Without this the dump in :meth:`_dump` was write-only: after a
+        service restart the scan library (and the saved scanned-websites
+        list) came back empty even though ``reports/<id>/report.json`` files
+        still existed. Best-effort — a missing/corrupt dump yields an empty
+        store instead of crashing startup.
+        """
+        path = self._reports_dir / "store.json"
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(data, dict):
+            return
+        for raw in data.get("jobs") or []:
+            try:
+                job = ScanJob.model_validate(raw)
+            except Exception:
+                continue  # tolerate schema drift / partial dumps
+            if job.scan_id not in self._jobs:
+                self._jobs[job.scan_id] = job
+        events = data.get("events")
+        if isinstance(events, dict):
+            for scan_id, evs in events.items():
+                if isinstance(evs, list):
+                    self._events[scan_id] = [str(e) for e in evs]
 
     def create(self, request: ScanRequest) -> ScanJob:
         scan_id = uuid.uuid4().hex[:12]
