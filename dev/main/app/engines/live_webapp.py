@@ -42,6 +42,24 @@ from app.utils.logger import get_logger
 
 log = get_logger("webapp")
 
+
+def _h(headers: dict[str, Any], name: str) -> Any:
+    """Case-insensitive header lookup.
+
+    The crawler stores page headers with LOWERCASE keys (crawler.py builds
+    ``{k.lower(): v}``), but passive checks historically read title-case keys
+    (``X-Frame-Options``, ``Cache-Control``, ``Set-Cookie`` …) — which never
+    matched, silently disabling those checks. Look up by lowercasing both
+    sides so header-based findings actually fire.
+    """
+    if not headers:
+        return None
+    low = name.lower()
+    for key, value in headers.items():
+        if str(key).lower() == low:
+            return value
+    return None
+
 REDIRECT_PARAMS = frozenset(
     {
         "redirect",
@@ -227,9 +245,9 @@ def _check_sensitive_url_params(url: str) -> list[dict[str, Any]]:
 
 def _check_frame_injection(body: str, url: str, headers: dict[str, str]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    xfo = (headers.get("X-Frame-Options") or "").strip()
+    xfo = (_h(headers, "X-Frame-Options") or "").strip()
     has_csp_fa = bool(
-        re.search(r"frame-ancestors", headers.get("Content-Security-Policy") or "", re.IGNORECASE)
+        re.search(r"frame-ancestors", _h(headers, "Content-Security-Policy") or "", re.IGNORECASE)
     )
     clickjacking = not (xfo or has_csp_fa)
     for m in re.finditer(r"<iframe[^>]*>", body, re.IGNORECASE):
@@ -295,10 +313,12 @@ def _check_sensitive_cached(body: str, headers: dict[str, str], url: str) -> lis
     has_sensitive_form = bool(_PASSWORD_INPUT.search(body))
     if not has_sensitive_form:
         return findings
-    cache_control = (headers.get("Cache-Control") or "").lower()
-    pragma = (headers.get("Pragma") or "").lower()
+    cache_control = (_h(headers, "Cache-Control") or "").lower()
+    pragma = (_h(headers, "Pragma") or "").lower()
     nocache = ("no-cache" in cache_control) or ("no-cache" in pragma)
     nostore = "no-store" in cache_control
+    cc_raw = _h(headers, "Cache-Control") or ""
+    pragma_raw = _h(headers, "Pragma") or ""
     if not (nocache and nostore):
         findings.append(
             _finding(
@@ -306,13 +326,10 @@ def _check_sensitive_cached(body: str, headers: dict[str, str], url: str) -> lis
                 "medium",
                 0.50,
                 "Sensitive Information Cached by Browser",
-                "Page contains a password form but lacks Cache-Control:"
-                " no-store/no-cache (Cache-Control='{}', Pragma='{}').".format(
-                    headers.get("Cache-Control", ""),
-                    headers.get("Pragma", ""),
-                ),
-                {"cache_control": headers.get("Cache-Control", ""),
-                 "pragma": headers.get("Pragma", "")},
+                f"Page contains a password form but lacks Cache-Control:"
+                f" no-store/no-cache (Cache-Control='{cc_raw}', Pragma='{pragma_raw}').",
+                {"cache_control": cc_raw,
+                 "pragma": pragma_raw},
                 "Set Cache-Control: no-store, no-cache, must-revalidate and"
                 " Pragma: no-cache on pages with sensitive inputs.",
                 url,
@@ -349,8 +366,15 @@ def _check_session_fixation(url: str) -> list[dict[str, Any]]:
 
 def _check_session_timeout(headers: dict[str, Any]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    for raw in headers.get("Set-Cookie", []):
-        raw_lower = raw.lower()
+    # Set-Cookie can arrive as a comma-joined string (crawler stores lowercase,
+    # httpx merges multiple headers) OR as a raw list (unit tests / other
+    # callers). Accept both.
+    raw = _h(headers, "Set-Cookie")
+    if isinstance(raw, (list, tuple)):
+        raw = ",".join(str(v) for v in raw)
+    raw = str(raw or "")
+    for cookie in re.split(r",\s*(?=[^\s;,=]+=)", raw):
+        raw_lower = cookie.lower()
         _session_names = (
             "sessionid", "session", "sid", "jsessionid", "phpsessionid"
         )
@@ -358,17 +382,16 @@ def _check_session_timeout(headers: dict[str, Any]) -> list[dict[str, Any]]:
             has_max_age = "max-age=" in raw_lower or "max-age =" in raw_lower
             has_expires = "expires=" in raw_lower
             if not (has_max_age or has_expires):
+                name = cookie.split(";", 1)[0].split("=", 1)[0].strip()
                 findings.append(
                     _finding(
                         "OWASP-AUTH-006",
                         "low",
                         0.40,
                         "Session Cookie Lacks Explicit Timeout",
-                        "Session cookie '{}' has no Max-Age or Expires."
-                        " Browsers may keep it indefinitely.".format(
-                            raw.split(";", 1)[0].split("=", 1)[0].strip()
-                        ),
-                        {"cookie": raw.split(";", 1)[0].split("=", 1)[0].strip()},
+                        f"Session cookie '{name}' has no Max-Age or Expires."
+                        " Browsers may keep it indefinitely.",
+                        {"cookie": name},
                         "Set a short Max-Age / Expires on session cookies"
                         " and rotate them after inactivity.",
                         "",

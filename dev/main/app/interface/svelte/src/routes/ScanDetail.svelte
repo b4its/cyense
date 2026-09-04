@@ -127,7 +127,12 @@
     }
     activeHeading = cur
   }
-  onMount(() => window.addEventListener('scroll', onScroll, { passive: true }))
+  onMount(() => {
+    window.addEventListener('scroll', onScroll, { passive: true })
+    // Cleanup: without removing the listener, navigating away from a scan
+    // detail leaks a handler that keeps `ids`/`activeHeading` alive.
+    return () => window.removeEventListener('scroll', onScroll)
+  })
 
   // Remediation diff preview for the first critical/high finding.
   $: diffFinding = findings.find((f) => f.remediation) || null

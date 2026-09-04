@@ -102,20 +102,20 @@ class ScanWorker:
                 )
                 return
             # Restore original request from checkpoint so resume uses the same
-            # scan parameters (mode, url, lang, scope, etc.). New-request fields
-            # (e.g. a fresh --instruction) override the original.
+            # scan parameters (mode, url, lang, scope, level, …).
             #
-            # A fresh resume request is deserialised through the Pydantic
-            # model, which fills EMPTY defaults for omitted fields
-            # (`repo_url=""`, `url=""`, `domain=""`, …). Overlaying those
-            # as-is wiped the checkpoint's real target, so every resume failed
-            # or rescanned the wrong tree. Only override with values the
-            # caller actually supplied (non-empty / non-None).
+            # A fresh resume request is deserialised through the Pydantic model,
+            # which fills DEFAULTS for omitted fields (`level="medium"`,
+            # `scan_mode="standard"`, `lang="auto"`, `url=""`, …). Overlaying
+            # those wipes the checkpoint's real parameters — every resume
+            # degraded `level=max` → `medium`, `lang=python` → `auto`, or blank
+            # repo/url/domain. Only overlay fields the caller EXPLICITLY
+            # supplied (exclude_defaults), so original scan parameters survive.
             original_request = dict(checkpoint.get("request", {}))
-            for key, value in request_dict.items():
-                if value in (None, "", [], {}):
-                    continue
-                original_request[key] = value
+            fresh_explicit = request.model_dump(mode="json", exclude_defaults=True)
+            for key, value in fresh_explicit.items():
+                if value is not None:
+                    original_request[key] = value
             request_dict = original_request
             self._log_event(scan_id, f"restored original request for resume from {resume_from}")
 
@@ -298,6 +298,15 @@ class ScanWorker:
             if len(self._results) > _MAX_CACHED_RESULTS:
                 oldest = next(iter(self._results))
                 self._results.pop(oldest, None)
+
+            # Record the scan's real status in report.meta so report.json and
+            # compliance artifacts (coverage.json) don't always read "completed"
+            # for a failed/capped scan. Engines never set meta.status themselves.
+            report.setdefault("meta", {})
+            report["meta"]["status"] = (
+                "failed" if report.get("meta", {}).get("error") else "completed"
+            )
+
             self._dump_report(scan_id, report)
 
             # Write SARIF and coverage reports (ci-compliance-reporting.md §3.2, §3.5)

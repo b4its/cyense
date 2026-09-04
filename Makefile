@@ -6,10 +6,10 @@
 #   * Lokal   : make local-install && make local-up   (tanpa Docker)
 # Usage: make up / make down / make logs / make test / make shell
 
-.PHONY: up down logs shell build clean ps help test lint ruff format fix docker-volumes cli cli-shell cli-help demo run recon \
+.PHONY: up down logs shell build clean ps help test lint ruff ruff-fix format fix docker-volumes cli cli-shell cli-help demo run recon \
         local-install local-checks api lab local-up local-restart local-down local-ps local-health local-logs-api local-logs-lab \
         local-cli local-cli-shell local-cli-help local-demo local-recon local-clean \
-        web-install web-build web open open-web restart local-web-open
+        web-install web-build web open restart local-web-open
 
 SHELL := /bin/bash
 APP_DIR := dev/main
@@ -139,6 +139,8 @@ format: ## Auto-format code with ruff
 
 fix: ## Fix fixable issues with ruff
 	cd $(APP_DIR) && $(PYTHON) -m ruff check --fix app baseline tests
+
+ruff-fix: fix ## Alias untuk 'make fix' (nama yang diiklankan di help)
 
 docker-volumes: ## List Docker volumes used by Cyense
 	$(DOCKER) volume ls | grep cyense
@@ -315,7 +317,8 @@ local-cli-shell: ## Shell interaktif CLI (lokal)
 	@echo "  python -m app.cli.main rules      # rules deteksi aktif"
 	@echo "  python -m app.cli.main scan github URL --i-have-permission"
 	@echo ""
-	@cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) $(VENV)/bin/bash
+	@cd $(APP_ABS) && CYENSE_API_URL=$(LOCAL_API_URL) \
+		PATH="$(abspath $(VENV))/bin:$$PATH" /bin/bash -i
 
 local-demo: local-up ## Demo end-to-end lokal: scan repo publik (mulai API bila belum)
 	@echo "=== Cyense CLI Demo (lokal, no Docker) ==="

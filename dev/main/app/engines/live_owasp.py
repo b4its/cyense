@@ -44,7 +44,6 @@ log_owasp = get_logger("owasp")
 _HTTPONLY_RE = re.compile(r"\bhttponly\b", re.I)
 _SECURE_RE = re.compile(r"\bsecure\b", re.I)
 _SAMESITE_NONE_RE = re.compile(r"\bsamesite\s*=\s*none\b", re.I)
-_SAMESITE_NONE_INSECURE_RE = re.compile(r"\bsamesite\s*=\s*none\b[^;]*;\s*secure", re.I)
 _SET_COOKIE_ATTRS = {
     "httponly": _HTTPONLY_RE,
     "secure": _SECURE_RE,
@@ -345,7 +344,12 @@ def _cookie_attribute_findings(
             url=url,
         ))
 
-    if _SAMESITE_NONE_RE.search(set_cookie) and not _SAMESITE_NONE_INSECURE_RE.search(set_cookie):
+    # SameSite=None WITHOUT a Secure attribute is rejected by browsers and
+    # effectively disables same-site protection (OWASP-CSRF-004). The Secure
+    # attribute may appear before or after SameSite in the cookie string, so a
+    # positional regex (`samesite=none ... ; secure`) produced false positives
+    # on the correctly-configured `Secure; SameSite=None` form.
+    if _SAMESITE_NONE_RE.search(set_cookie) and not _SECURE_RE.search(set_cookie):
         findings.append(_finding(
             rule="OWASP-CSRF-004", severity="high", confidence=0.8,
             title="SameSite=None cookie without Secure",

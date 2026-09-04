@@ -214,7 +214,10 @@ def _vcard_country(entities: list[Any]) -> str | None:
     for e in entities:
         if not isinstance(e, dict):
             continue
-        for item in (e.get("vcardArray") or [[], []])[1]:
+        vcard_array = e.get("vcardArray") or []
+        if not isinstance(vcard_array, (list, tuple)) or len(vcard_array) < 2:
+            continue
+        for item in vcard_array[1]:
             if not isinstance(item, (list, tuple)) or len(item) < 4:
                 continue
             if str(item[0]).lower() != "adr":

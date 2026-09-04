@@ -329,6 +329,14 @@ def check_session_id_entropy(headers: dict[str, str], url: str = "") -> list[dic
                      "httponly", "max-age")
         if any(tok in name.lower() for tok in skip_toks):
             continue
+        # Only treat PLAUSIBLY-SESSION cookies (session/sid/token-like names)
+        # as session ids — flagging every short cookie (`lang=en`,
+        # `theme=dark`) drowned real session findings in false positives.
+        _session_like = re.compile(
+            r"(?i)session|sess|sid(?![a-z])|token|auth|jsessionid|phpsessid",
+        )
+        if not _session_like.search(name):
+            continue
         low = re.fullmatch(r"[0-9a-f]{1,16}", value, re.I)  # hex shorter than 16 => <64 bits
         numeric = re.fullmatch(r"\d{1,18}", value)
         bits = _entropy_bits(value)
