@@ -114,12 +114,26 @@ def _sec_rule(
     }
 
 
+def _owasp_rule(rule: str, severity: str, title: str, cwe: str) -> dict[str, object]:
+    score = {"critical": 9.8, "high": 7.5, "medium": 5.3, "low": 3.1, "info": 0.0}[severity]
+    vector = "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    if severity == "info":
+        vector = "AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+    return {
+        "rule": rule,
+        "severity": severity,
+        "lang": "all",
+        "cwe": cwe,
+        "cvss_score": score,
+        "cvss_vector": vector,
+        "title": title,
+    }
+
+
 def _security_catalog() -> list[dict[str, object]]:
     """Lazy CWE security rule list, sourced from the static rule module."""
     from app.program import security_rules
     return security_rules.security_rule_catalog()
-
-
 @router.get("/health")
 async def health(request: Request) -> dict[str, str]:
     # Version comes from the FastAPI app instance (app/main.py create_app),
@@ -327,6 +341,66 @@ async def rules() -> dict[str, object]:
             _detect_rule("HARVEST-EMAIL", "Email address di content (Harvester)"),
             _detect_rule("HARVEST-IP", "IP address di content (Harvester)"),
         ],
+        "owasp": [
+            _owasp_rule("OWASP-SENSITIVE-001", "high", "Page served over plaintext HTTP",
+                        "CWE-319"),
+            _owasp_rule("OWASP-AUTH-001", "high", "Session cookie not marked HttpOnly",
+                        "CWE-1004"),
+            _owasp_rule("OWASP-AUTH-002", "high", "Session cookie not marked Secure",
+                        "CWE-614"),
+            _owasp_rule("OWASP-AUTH-003", "low", "Login form exposed", "CWE-307"),
+            _owasp_rule("OWASP-AUTH-004", "high",
+                        "Admin/management panel publicly reachable", "CWE-284"),
+            _owasp_rule("OWASP-AUTH-005", "low", "Login surface reachable", "CWE-287"),
+            _owasp_rule("OWASP-CSRF-001", "medium", "State-changing form without CSRF token",
+                        "CWE-352"),
+            _owasp_rule("OWASP-CSRF-002", "low",
+                        "Form posts data to a cross-origin destination", "CWE-352"),
+            _owasp_rule("OWASP-CSRF-003", "medium",
+                        "Session cookie missing SameSite attribute", "CWE-1275"),
+            _owasp_rule("OWASP-CSRF-004", "high", "SameSite=None cookie without Secure",
+                        "CWE-1275"),
+            _owasp_rule("OWASP-DESER-001", "high",
+                        "Insecure deserialization marker detected", "CWE-502"),
+            _owasp_rule("OWASP-CONF-001", "info", "Server header discloses software",
+                        "CWE-200"),
+            _owasp_rule("OWASP-CONF-002", "info", "X-Powered-By header reveals framework",
+                        "CWE-200"),
+            _owasp_rule("OWASP-CONF-003", "medium",
+                        "Sensitive/debug endpoint publicly exposed", "CWE-200"),
+            _owasp_rule("OWASP-CONF-004", "medium", "Directory listing exposed", "CWE-548"),
+            _owasp_rule("OWASP-CONF-005", "medium",
+                        "Unsafe HTTP methods advertised (Allow header)", "CWE-749"),
+            _owasp_rule("OWASP-CONF-006", "medium",
+                        "HTTP TRACE/TRACK method enabled (XST risk)", "CWE-200"),
+             _owasp_rule("OWASP-MONITOR-001", "medium",
+                         "Verbose internal error disclosed", "CWE-209"),
+             _owasp_rule("OWASP-CONF-007", "medium",
+                         "Open redirect parameter present in URL", "CWE-601"),
+             _owasp_rule("OWASP-CONF-008", "high",
+                         "Dynamic iframe src without X-Frame-Options/CSP",
+                         "CWE-1021"),
+             _owasp_rule("OWASP-CONF-009", "high",
+                         "Directory traversal / path disclosure", "CWE-22"),
+             _owasp_rule("OWASP-AUTH-006", "low",
+                         "Session cookie lacks explicit Max-Age/Expires",
+                         "CWE-613"),
+             _owasp_rule("OWASP-AUTH-007", "medium",
+                         "Session identifier transmitted in the URL",
+                         "CWE-384"),
+             _owasp_rule("OWASP-SENSITIVE-002", "medium",
+                         "Sensitive data exposed in GET parameter",
+                         "CWE-319"),
+             _owasp_rule("OWASP-SENSITIVE-003", "high",
+                         "Sensitive data exposed in clear text (HTML)",
+                         "CWE-201"),
+             _owasp_rule("OWASP-SENSITIVE-004", "medium",
+                         "Sensitive data may be cached by the browser",
+                         "CWE-200"),
+             _owasp_rule("OWASP-SENSITIVE-005", "high",
+                         "Inadequate encryption strength (TLS)",
+                         "CWE-326"),
+         ],
         "domain": [
             _detect_rule(
                 "DOMAIN-HOST",

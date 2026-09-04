@@ -119,7 +119,7 @@ SEVERITY_WEIGHT: dict[str, int] = {
 MODE_STAGES: dict[str, list[str]] = {
     "github":  ["resolve", "fetch", "analyze", "report"],
     "program": ["recon", "probe", "report"],
-    "link":    ["recon", "probe", "verify", "report"],
+    "link":    ["recon", "probe", "verify", "owasp", "report"],
     "website": ["crawl", "analyze", "port-scan", "cve", "discovery",
                  "harvest", "osint", "re", "nikto", "nuclei", "sec-live",
                  "probe", "sqli", "report"],

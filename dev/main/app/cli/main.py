@@ -57,6 +57,7 @@ from app.cli.renderer import (
     render_finding_card,
     render_findings_table,
     render_footer,
+    render_owasp_table,
     render_recommendations,
     render_stage_section,
     render_target_panel,
@@ -817,6 +818,22 @@ async def _recon_flow(
     from app.cli.renderer import render_cve_table
 
     render_cve_table(console, caps, cve_findings, summary)
+
+# 2b. OWASP Top 10 posture table (posture rules matching the OWASP category
+    # prefixes; the OWASP community live rules — OWASP-LOGIN-GET etc. — render
+    # inside render_discovery_table instead).
+    _owasp_posture_prefixes = (
+        "OWASP-SENSITIVE", "OWASP-AUTH", "OWASP-CSRF",
+        "OWASP-DESER", "OWASP-CONF", "OWASP-MONITOR",
+    )
+    owasp_findings = [
+        f for f in findings
+        if f.get("rule", "").startswith(_owasp_posture_prefixes)
+    ]
+    if owasp_findings:
+        from app.cli.renderer import render_owasp_table
+
+        render_owasp_table(console, caps, owasp_findings)
 
     # 3. Temuan lain (XSS/SQLi/IDOR) ringkas — grup besar discovery sudah
     # ditampilkan render_discovery_table, jangan duplikasi di sini.
@@ -1822,13 +1839,23 @@ async def _run_scan(
 
     # -- Blok 3: streaming kartu (sudah di scroll, tapi cetak rekap)
     if not caps.quiet:
-        for f in findings_display:
+        owasp_findings = [
+            f for f in findings_display if f.get("rule", "").startswith("OWASP")
+        ]
+        other_findings = [
+            f for f in findings_display if not f.get("rule", "").startswith("OWASP")
+        ]
+        for f in other_findings:
             fid = f.get("finding_id", "")
             if fid not in ctx.rendered_findings:
                 render_finding_card(console, caps, f)
                 ctx.rendered_findings.add(fid)
 
-        render_findings_table(console, caps, findings_display, report.get("summary", {}))
+        # OWASP Top 10 posture table (grouped per category, seperti recon)
+        if owasp_findings:
+            render_owasp_table(console, caps, owasp_findings)
+
+        render_findings_table(console, caps, other_findings, report.get("summary", {}))
 
     # -- Blok 4: saran perbaikan
     recs = build_recommendations(findings_all)
@@ -1933,9 +1960,17 @@ def report_cmd(
         recs = build_recommendations(findings)
 
         render_banner(_state.console, _state.caps, _VERSION)
-        for f in findings:
+
+        # OWASP Top 10 posture grouping (seperti recon), sisanya kartu + tabel.
+        owasp_findings = [f for f in findings if f.get("rule", "").startswith("OWASP")]
+        other_findings = [f for f in findings if not f.get("rule", "").startswith("OWASP")]
+        for f in other_findings:
             render_finding_card(_state.console, _state.caps, f)
-        render_findings_table(_state.console, _state.caps, findings, report.get("summary", {}))
+        if owasp_findings:
+            render_owasp_table(_state.console, _state.caps, owasp_findings)
+        render_findings_table(
+            _state.console, _state.caps, other_findings, report.get("summary", {})
+        )
         render_recommendations(_state.console, _state.caps, recs, scan_id)
 
         if not no_md:

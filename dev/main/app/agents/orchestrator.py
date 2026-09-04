@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from app.agents.brain import Brain
 from app.agents.prober import ProberAgent
 from app.agents.recon import ReconAgent
 from app.agents.verifier import VerifierAgent
 from app.core.models import Finding, Severity, VerificationEvidence
+from app.engines.live_owasp import run_owasp_posture
+from app.utils.http_client import HttpClient
+from app.utils.logger import get_logger
 from app.utils.redact import redact_cookies, redact_headers
+
+log = get_logger("orchestrator")
 
 SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -116,9 +122,19 @@ class Orchestrator:
         verify_ctx["hits_internal"] = probe_result.data.get("hits_internal", [])
         verify_result = await verifier(verify_ctx)
 
-        # stage 4 — report
+        # stage 4 — OWASP Top 10 posture (link target site)
+        await self._notify_stage("owasp")
+        owasp_findings = await self._link_owasp_posture(
+            recon_result.data.get("profile", {}),
+            headers,
+            cookies,
+            base_ctx.get("baseline_id"),
+        )
+
+        # stage 5 — report
         await self._notify_stage("report")
         findings = self._build_findings(verify_result.data, headers, cookies)
+        findings.extend(owasp_findings)
 
         # brain memory: only verified findings are worth remembering
         # (probe-level 200s include generic-200 noise)
@@ -135,6 +151,7 @@ class Orchestrator:
             "low": sum(1 for f in findings if f.severity == Severity.LOW),
             "info": sum(1 for f in findings if f.severity == Severity.INFO),
             "total": len(findings),
+            "owasp_findings": len(owasp_findings),
             "rejected_false_positives": len(verify_result.data.get("rejected", [])),
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
@@ -143,7 +160,7 @@ class Orchestrator:
                 "scan_id": self.scan_id,
                 "mode": "link",
                 "engine": "agentic",
-                "pipeline": ["recon", "probe", "verify", "report"],
+                "pipeline": ["recon", "probe", "verify", "owasp", "report"],
             },
             "summary": summary,
             "findings": [f.model_dump(mode="json") for f in findings],
@@ -189,10 +206,78 @@ class Orchestrator:
             findings.append(finding)
         return findings
 
+    async def _link_owasp_posture(
+        self,
+        profile: dict[str, Any],
+        headers: dict[str, str],
+        cookies: dict[str, str],
+        baseline_id: str | None,
+    ) -> list[Finding]:
+        """Run the OWASP Top 10 posture stage on the link target site.
+
+        Fetches the target URL (with its first ``{placeholder}`` filled by the
+        baseline id / a benign default), runs ``run_owasp_posture`` (passive +
+        active, read-only), and converts the dict findings into ``Finding``
+        models. Best-effort — a fetch/probe failure yields no OWASP findings
+        rather than failing the IDOR scan.
+        """
+        url_template = profile.get("url_template", "")
+        placeholders = profile.get("placeholders") or []
+        if not url_template or not placeholders:
+            return []
+        baseline_id = baseline_id or "1"
+        fetch_url = ReconAgent._fill(url_template, placeholders[0], baseline_id)
+        parsed = urlparse(fetch_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+
+        page: dict[str, Any] | None = None
+        try:
+            async with HttpClient(
+                timeout=self.settings.request_timeout,
+                headers=headers,
+                cookies=cookies,
+                rate_limit=self.settings.rate_limit,
+                max_concurrency=self.settings.max_concurrency,
+            ) as client:
+                resp = await client.get(fetch_url)
+            page = {
+                "url": str(resp.url),
+                "status": resp.status,
+                "body": resp.body,
+                "content_type": resp.headers.get("content-type", ""),
+                "headers": resp.headers,
+            }
+        except Exception as exc:  # noqa: BLE001 — OWASP posture is best-effort
+            log.warning("owasp link posture fetch failed: %s", exc)
+            return []
+
+        dict_findings = await run_owasp_posture(
+            [page],
+            origin=origin,
+            headers=headers,
+            cookies=cookies,
+            request_timeout=self.settings.request_timeout,
+            rate_limit=self.settings.rate_limit,
+            max_concurrency=self.settings.max_concurrency,
+        )
+        return [
+            Finding(
+                finding_id=f"{self.scan_id}-OW{i:03d}",
+                rule=f["rule"],
+                severity=Severity(f["severity"]),
+                confidence=f["confidence"],
+                title=f["title"],
+                description=f.get("description", ""),
+                evidence=f.get("evidence", {}),
+                verification=VerificationEvidence(),
+                remediation=f.get("remediation", ""),
+                location=f.get("location"),
+            )
+            for i, f in enumerate(dict_findings, start=1)
+        ]
+
     @staticmethod
     def _path_of(url: str) -> str:
-        from urllib.parse import urlparse
-
         return urlparse(url).path
 
     def _empty_report(self, error: str, started: float) -> dict[str, Any]:

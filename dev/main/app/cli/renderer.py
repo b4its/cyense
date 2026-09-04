@@ -598,6 +598,65 @@ def render_error_panel(
 
 
 # ---------------------------------------------------------------------------
+# OWASP Top 10 renderer — grouped display of live posture findings
+
+_OWASP_LABELS = {
+    "OWASP-SENSITIVE": ("SENSITIVE DATA (A02)", "error"),
+    "OWASP-AUTH": ("AUTHENTICATION (A07)", "sev_high"),
+    "OWASP-CSRF": ("CSRF (A04)", "sev_high"),
+    "OWASP-DESER": ("INSECURE DESERIALIZATION (A08)", "sev_high"),
+    "OWASP-CONF": ("SECURITY MISCONFIGURATION (A05)", "sev_high"),
+    "OWASP-MONITOR": ("LOGGING & MONITORING (A09)", "sev_high"),
+}
+
+
+def render_owasp_table(
+    console: Console,
+    caps: TermCaps,
+    findings: list[dict[str, Any]],
+) -> None:
+    """Render OWASP Top 10 posture findings grouped by category."""
+    p = PALETTE
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    if not findings:
+        console.print(f"  [{p.ok}]Tidak ada temuan OWASP Top 10.[/]")
+        console.print()
+        return
+
+    console.print(f"  [bold {p.blue_primary}]OWASP TOP 10 POSTUR[/]")
+    console.print(sep)
+
+    for prefix, (label, color_attr) in _OWASP_LABELS.items():
+        group = [f for f in findings if f.get("rule", "").startswith(prefix)]
+        if not group:
+            continue
+        console.print(f"  [bold {getattr(p, color_attr, p.sev_high)}]{label} ({len(group)})[/]")
+        from app.cli.theme import SEVERITY_BADGE_COLOR
+        for f in sorted(group, key=lambda x: _sev_order(x.get("severity", "info"))):
+            ev = f.get("evidence", {})
+            detail = (
+                ev.get("endpoint") or ev.get("set_cookie") or ev.get("action")
+                or ev.get("markers") or ev.get("server") or ev.get("x_powered_by")
+                or ev.get("url") or ""
+            )
+            sev = f.get("severity", "info")
+            bc = SEVERITY_BADGE_COLOR.get(sev.lower(), p.muted)
+            console.print(
+                f"  [{bc}]▸[/] {f.get('rule')} — {f.get('title','?')}"
+                f"  [{p.muted}]{_esc(str(detail)[:60])}[/]"
+            )
+        console.print()
+
+    console.print()
+
+
+def _sev_order(sev: str) -> int:
+    return {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(sev, 9)
+
+
+# ---------------------------------------------------------------------------
 # Discovery renderer — grouped display of HackerOne-tools findings
 
 def render_discovery_table(

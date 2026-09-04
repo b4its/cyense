@@ -22,6 +22,7 @@ import time
 from typing import Any
 
 from app.agents.crawler import CrawlerAgent
+from app.engines.live_owasp import run_owasp_posture
 from app.engines.live_sqli import SQLI_PAYLOADS, detect_sql_errors, is_boolean_differential
 from app.engines.live_xss import analyze_page_xss
 from app.utils.cve_lookup import (
@@ -308,13 +309,24 @@ class WebsiteEngine:
             f["finding_id"] = f"{self.scan_id}-WSQLI{k:03d}"
 
         # ------------------------------------------------------------------
+        # Stage 5b: OWASP Top 10 posture (CSRF, auth, deserialization,
+        # misconfiguration, sensitive exposure, logging/monitoring)
+        # ------------------------------------------------------------------
+        await self._notify("owasp")
+        owasp_findings = await self._owasp_stage(
+            pages, url, headers=headers, cookies=cookies,
+        )
+        for k, f in enumerate(owasp_findings, start=1):
+            f["finding_id"] = f"{self.scan_id}-WOWASP{k:03d}"
+
+        # ------------------------------------------------------------------
         # Stage 6: Report
         # ------------------------------------------------------------------
         await self._notify("report")
         all_findings = (
             idor_findings + tech_findings + port_findings
             + cve_findings + discovery_findings + xss_findings
-            + sqli_findings
+            + sqli_findings + owasp_findings
         )
         all_findings.sort(
             key=lambda f: (
@@ -335,6 +347,7 @@ class WebsiteEngine:
             "id_endpoints_probed": len(probed),
             "open_ports": len(open_ports_data),
             "cves_matched": len(cve_findings),
+            "owasp_findings": len(owasp_findings),
             "secrets_found": sum(
                 1 for f in discovery_findings if f.get("rule") == "SECRET-LEAK"
             ),
@@ -358,7 +371,7 @@ class WebsiteEngine:
                 "engine": "website-crawler",
                 "pipeline": [
                     "crawl", "analyze", "framework", "port-scan",
-                    "cve", "discovery", "probe", "sqli", "report",
+                    "cve", "discovery", "probe", "sqli", "owasp", "report",
                 ],
                 "url": url,
             },
@@ -2181,6 +2194,31 @@ class WebsiteEngine:
             },
             "findings": [],
         }
+
+    async def _owasp_stage(
+        self,
+        pages: list[dict[str, Any]],
+        url: str,
+        *,
+        headers: dict[str, str],
+        cookies: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """OWASP Top 10 posture: per-page observational checks + endpoint probe.
+
+        Covers the OWASP classic web-application categories (A01, A02, A04,
+        A05, A07, A08, A09). All checks are read-only. Delegates to the shared
+        ``run_owasp_posture`` orchestrator (also used by link mode).
+        """
+        origin = url.split("?")[0].rstrip("/")
+        return await run_owasp_posture(
+            pages,
+            origin=origin,
+            headers=headers,
+            cookies=cookies,
+            request_timeout=self.settings.request_timeout,
+            rate_limit=int(getattr(self.settings, "rate_limit", 10)),
+            max_concurrency=int(getattr(self.settings, "max_concurrency", 3)),
+        )
 
     async def _probe_sqli(
         self,

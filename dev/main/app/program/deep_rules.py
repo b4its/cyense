@@ -414,8 +414,6 @@ def _check_xs010(tree: ast.AST, path: Path, scan_id: str) -> list[dict[str, Any]
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         tracked = set(_request_vars_in_function(node))
-        if not tracked:
-            continue
         for sub in ast.walk(node):
             if not isinstance(sub, ast.Call):
                 continue
@@ -475,28 +473,76 @@ def _check_xs010(tree: ast.AST, path: Path, scan_id: str) -> list[dict[str, Any]
 # delegates to a service function" pattern without the cost of building
 # a whole-program graph.
 
+# Single-line import matcher. ``[^\n]`` (never ``\\s``) is critical: the name
+# list MUST stay within one line. The previous ``[\\w\\s,]+`` swallowed every
+# newline after ``import``, so ``"from x import name\\nfrom y import z"`` was
+# parsed as a single import and the imported-name set was corrupted — which is
+# why the cross-file rules silently never fired on ordinary multi-import files.
 _IMPORT_RE = re.compile(
-    r"^\s*(?:from\s+[\w.]+\s+import\s+"
-    r"\(?\s*([\w\s,]+)\s*\)?"  # handle parens: from x import (a, b)
-    r"|import\s+([\w.]+(?:\s+as\s+\w+)?))",
+    r"^\s*from\s+[\w.]+\s+import\s+([^\n]+?)\s*$"
+    r"|^\s*import\s+([^\n]+?)\s*$",
     re.M,
 )
+
+
+def _imported_names(source: str) -> set[str]:
+    """Return the local names bound by import statements in ``source``.
+
+    Handles ``from mod import a, b as c``, ``from mod import (a, b)``,
+    ``import mod``, ``import mod as m`` and ``import mod.sub`` (binds ``mod``).
+    """
+    imported: set[str] = set()
+    for match in _IMPORT_RE.finditer(source):
+        names_part = match.group(1) or ""
+        # Strip wrapping parens: from x import (a, b)
+        for chunk in names_part.replace("(", " ").replace(")", " ").split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            # Bound local name is after any "as" alias.
+            parts = [p.strip() for p in chunk.split(" as ")]
+            imported.add(parts[-1])
+        module_part = match.group(2) or ""
+        if module_part:
+            parts = [p.strip() for p in module_part.split(" as ")]
+            # `import mod.sub` binds `mod`; `import mod as m` binds `m`.
+            base = parts[0].split(".")[0].strip()
+            imported.add(parts[-1] if len(parts) > 1 else base)
+    return imported
+
+
+def _cy013_call_target(sub: ast.Call, imported: set[str]) -> str | None:
+    """Return a label for a call that targets an imported symbol, else ``None``.
+
+    Handles both shapes:
+      * ``helper(...)`` — ``helper`` bound via ``from mod import helper``
+      * ``module.helper(...)`` — ``module`` bound via ``import module``
+
+    Previously the ``module.attr`` branch set the label to the *attribute* name
+    and then required that label to be in ``imported`` — which is never true for
+    a module imported as ``import module`` — so cross-file calls on imported
+    modules were silently never flagged. The object (module) is what is
+    imported, so the label is built from ``<module>.<attr>``.
+    """
+    if isinstance(sub.func, ast.Name):
+        if sub.func.id in imported:
+            return sub.func.id
+        return None
+    if isinstance(sub.func, ast.Attribute):
+        obj = sub.func.value
+        obj_name = obj.id if isinstance(obj, ast.Name) else None
+        if obj_name and obj_name in imported:
+            return f"{obj_name}.{sub.func.attr}"
+        if sub.func.attr in imported:
+            return sub.func.attr
+    return None
 
 
 def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[dict[str, Any]]:
     """Thin-view IDOR: route forwards request input into an imported helper."""
     findings: list[dict[str, Any]] = []
     # Collect imported names
-    imported: set[str] = set()
-    for match in _IMPORT_RE.finditer(source):
-        names_part = match.group(1) or ""
-        for chunk in names_part.split(","):
-            name = chunk.strip().split(" as ")[0].strip()
-            if name:
-                imported.add(name)
-        module_part = match.group(2) or ""
-        if module_part:
-            imported.add(module_part.split(".")[-1])
+    imported = _imported_names(source)
     if not imported:
         return findings
 
@@ -513,39 +559,8 @@ def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
         for sub in ast.walk(node):
             if not isinstance(sub, ast.Call):
                 continue
-            callee = None
-            module_qualified = False
-            if isinstance(sub.func, ast.Name):
-                callee = sub.func.id
-            elif isinstance(sub.func, ast.Attribute):
-                # Two cross-file styles:
-                #   a) `from app.services import get_invoice; get_invoice(x)`  — direct name
-                #   b) `from app.services import billing; billing.get_invoice(x)` — module
-                #      object (the module `billing` is imported, its attribute is the
-                #      helper). The MOST common style is (b); the old code checked
-                #      `sub.func.attr` against `imported`, which never contained the
-                #      method name for a `from x import module` import, so CY013 never
-                #      fired for the usual delegation pattern.
-                obj = sub.func.value
-                obj_name = obj.id if isinstance(obj, ast.Name) else None
-                if obj_name and obj_name in imported:
-                    callee = sub.func.attr
-                    module_qualified = True
-                elif obj_name is None and sub.func.attr in imported:
-                    # e.g. `from x import helper` used as bare `helper(...)` is a Name
-                    # call above; keep attribute fallback for edge shapes.
-                    callee = sub.func.attr
-                    module_qualified = False
-                else:
-                    callee = None
-                    module_qualified = False
-            else:
-                module_qualified = False
-            # For a module-qualified call (`module.helper`), `callee` is the
-            # attribute — the module import already matched, so accept it.
-            if (not module_qualified) and (not callee or callee not in imported):
-                continue
-            if module_qualified and not callee:
+            callee = _cy013_call_target(sub, imported)
+            if not callee:
                 continue
             args_user_input = False
             for arg in sub.args + [kw.value for kw in sub.keywords]:
@@ -563,7 +578,7 @@ def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
                 title=f"Cross-file IDOR risk: route forwards request input to imported `{callee}`",
                 description=(
                     f"Route `{node.name}` passes user input into imported helper "
-                    f"`{callee}()`. Without seeing the helper, we cannot confirm "
+                    f"`{callee}`. Without seeing the helper, we cannot confirm "
                     f"whether it enforces an ownership filter."
                 ),
                 remediation=(
@@ -587,13 +602,7 @@ def _check_cy013(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[d
 def _check_xs011(tree: ast.AST, source: str, path: Path, scan_id: str) -> list[dict[str, Any]]:
     """Cross-file XSS: route renders a template using an imported helper with user input."""
     findings: list[dict[str, Any]] = []
-    imported: set[str] = set()
-    for match in _IMPORT_RE.finditer(source):
-        names_part = match.group(1) or ""
-        for chunk in names_part.split(","):
-            name = chunk.strip().split(" as ")[0].strip()
-            if name:
-                imported.add(name)
+    imported = _imported_names(source)
     if not imported:
         return findings
 
