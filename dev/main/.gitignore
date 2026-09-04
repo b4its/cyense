@@ -1,2 +1,6 @@
 node_modules/
 backend.log
+api.log
+lab.log
+.api.pid
+.lab.pid

@@ -171,6 +171,7 @@
       <div class="wrap">
         <h2>Host yang Di-scan ({report.hosts.length})</h2>
         <p class="sub">Hasil per subdomain — temuan diagregasi lintas host.</p>
+        <div class="table-scroll">
         <table class="tbl">
           <thead><tr><th>Host</th><th>Status</th><th>Temuan</th></tr></thead>
           <tbody>
@@ -183,6 +184,7 @@
           {/each}
           </tbody>
         </table>
+        </div>
       </div>
     </section>
   {/if}
@@ -204,6 +206,7 @@
       <div class="wrap">
         <h2>Coverage Cakupan</h2>
         <p class="sub">File &amp; rule yang dianalisis pada scan ini (getCoverage).</p>
+        <div class="table-scroll">
         <table class="tbl">
           <thead><tr><th>Metrik</th><th>Nilai</th></tr></thead>
           <tbody>
@@ -214,6 +217,7 @@
             <tr><td>Rules not analyzed</td><td class="mono">{(coverage.rules_not_analyzed || []).length}</td></tr>
           </tbody>
         </table>
+        </div>
         {#if (coverage.rules_analyzed || []).length}
           <p class="sub">Rule aktif: {(coverage.rules_analyzed || []).map((r) => r.rule || r).slice(0, 24).join(', ')}{(coverage.rules_analyzed || []).length > 24 ? ' …' : ''}</p>
         {/if}
@@ -223,7 +227,7 @@
 
   <!-- Findings layout: sticky TOC + content -->
   <section class="block">
-    <div class="wrap" style="display:grid;grid-template-columns:240px 1fr;gap:28px;align-items:start">
+    <div class="wrap layout-split">
       <StickyToc {ids} activeId={activeHeading} />
       <div>
         {#if cves.length}
@@ -253,6 +257,7 @@
         {#if ports.length}
           <section class="block" id="ports">
             <h2>Port Terbuka</h2>
+            <div class="table-scroll">
             <table class="tbl">
               <thead><tr><th>Port</th><th>Service</th><th>Versi</th><th>Banner</th></tr></thead>
               <tbody>
@@ -266,6 +271,7 @@
               {/each}
               </tbody>
             </table>
+            </div>
           </section>
         {/if}
 
@@ -411,6 +417,7 @@
             {#if routesF.length}
               {#each routesF as rf}
                 {#if rf.evidence?.routes?.length}
+                  <div class="table-scroll">
                   <table class="tbl">
                     <thead><tr><th>Path</th><th>Sumber</th><th>Klasifikasi</th></tr></thead>
                     <tbody>
@@ -423,6 +430,7 @@
                     {/each}
                     </tbody>
                   </table>
+                  </div>
                 {/if}
               {/each}
             {/if}

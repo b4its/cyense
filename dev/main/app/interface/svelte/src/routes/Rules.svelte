@@ -35,6 +35,7 @@
         <section class="block">
           <h2>{group.replace(/_/g, ' ')}</h2>
           <p class="sub">{list?.length || 0} rule</p>
+          <div class="table-scroll">
           <table class="tbl">
             <thead><tr><th>Rule</th><th>Severity</th><th>Lang</th><th>CWE</th><th>CVSS</th><th>Title</th></tr></thead>
             <tbody>
@@ -50,6 +51,7 @@
             {/each}
             </tbody>
           </table>
+          </div>
         </section>
       {/each}
     {/if}

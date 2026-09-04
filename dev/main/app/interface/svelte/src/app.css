@@ -244,9 +244,64 @@ code.inline { background: var(--bg-soft); padding: 1px 6px; border-radius: 6px; 
 /* footer */
 footer.site { margin-top: 60px; border-top: 1px solid var(--line); padding: 22px 0; color: var(--ink-faint); font-family: var(--mono); font-size: 12px; }
 
+/* ---------- responsive helpers ---------- */
+/* Horizontal-scroll wrapper for wide tables so they never blow out the
+   viewport on phones/tablets (overflow handled inside the wrapper). */
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll table.tbl { min-width: 100%; }
+
+/* Two-column split (sticky TOC + content) on ScanDetail — stacks on mobile. */
+.layout-split { display: grid; grid-template-columns: 240px 1fr; gap: 28px; align-items: start; }
+
+/* body lock to avoid any horizontal scroll from overflowing children */
+main { overflow-x: clip; }
+
 /* responsive */
+@media (max-width: 900px) {
+  .layout-split { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 720px) {
-  .hero h1 { font-size: 32px; }
-  nav.site { display: none; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-size: 16px; }
+  .wrap { padding: 0 16px; }
+  header.site .wrap { gap: 10px; }
+  .brand { font-size: 14px; }
+  /* keep the nav reachable — scroll horizontally instead of hiding it */
+  nav.site { margin-left: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; flex: 1 1 auto; scrollbar-width: none; }
+  nav.site::-webkit-scrollbar { display: none; }
+  .theme-toggle { padding: 5px 10px; }
+  .hero { padding: 36px 0 28px; }
+  .hero h1 { font-size: 30px; }
+  .hero p.lead { font-size: 17px; }
+  .hero .meta { gap: 12px 18px; }
   .toc { position: static; }
+  section.block h2 { font-size: 22px; }
+  section.block { padding: 26px 0 6px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .stage-node { min-width: 78px; }
+  .stage-link { width: 16px; }
+  pre.code { font-size: 12px; padding: 12px 14px; }
+  .field input, .field select { font-size: 16px; }
+  table.tbl { font-size: 13px; }
+  table.tbl th, table.tbl td { padding: 8px 10px; }
+  .card { padding: 14px; }
+  footer.site { margin-top: 40px; font-size: 11px; }
+}
+
+@media (max-width: 480px) {
+  .wrap { padding: 0 12px; }
+  .hero h1 { font-size: 25px; }
+  .hero p.lead { font-size: 15.5px; }
+  .grid { grid-template-columns: 1fr; }
+  .brand .dot { display: none; }
+  .stage-node { min-width: 64px; font-size: 10px; }
+  .stage-node .dot { width: 26px; height: 26px; font-size: 12px; }
+  .btn { width: 100%; text-align: center; }
+  .card .card-title { font-size: 16px; }
+}
+
+/* Small phones: stack form row into a column */
+@media (max-width: 520px) {
+  .field { width: 100% !important; }
 }
