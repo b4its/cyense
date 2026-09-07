@@ -5,13 +5,18 @@ grouped by the same categories used by the Kali Tools / Pentest-Tools
 references. Each tool carries: name, url, description, category, platforms
 (OS badge keys), and optional tags.
 
-The tool data comes from two sources, merged at import time:
+The tool data comes from three sources, merged at import time:
 
   * ``pentest_tools.md`` — the full Kali-style Pentest Tools reference
     (every ``* [name](url) - description`` row, with ``![](svg/*.svg)``
     platform badges mapped to stable keys).
   * ``_OSINT_TOOLS`` — the awesome-osint additions (DataSploit, Depix,
     Skiptracer, wayparam, ...) that are not part of the Kali-style list.
+  * ``osintradar_tools`` — a full mirror of the OSINT Radar tool library
+    (osintradar.com, 346 curated OSINT tools with their original
+    how-it-works mechanism + pivot model). Records that match a tool
+    already in the catalog enrich it in place; the rest are appended
+    under the ``osint-*`` categories from the site's own taxonomy.
 
 This module powers:
   * the CLI ``cyense tools`` command (browse / search the catalog),
@@ -471,11 +476,18 @@ CATEGORIES: list[dict[str, object]] = [
     {"id": "collections", "label": "Collections & Resources", "emoji": "📦"},
 ]
 
+# OSINT Radar taxonomy (osintradar.com): each site category becomes its own
+# catalog category so the 346 mirrored tools keep their original grouping.
+from app.program.osintradar_tools import OSR_CATEGORIES as _OSR_CATEGORIES  # noqa: E402
+
+CATEGORIES += _OSR_CATEGORIES
+
 _CATEGORY_IDS = {c["id"] for c in CATEGORIES}
 
 
 def _all_tools() -> list[dict[str, object]]:
-    """Merge markdown tools + curated OSINT additions, validate + dedupe."""
+    """Merge markdown tools + curated OSINT + OSINT Radar mirror; validate + dedupe."""
+    from app.program.osintradar_tools import osr_index
     from app.program.tool_features import TOOL_FEATURES
     from app.program.tool_usage import (
         curated_bookmarks,
@@ -487,7 +499,12 @@ def _all_tools() -> list[dict[str, object]]:
     merged: list[dict[str, object]] = []
     seen: set[str] = set()
 
-    for t in _parse_pentest_markdown() + _OSINT_TOOLS:  # type: ignore[operator]
+    base_tools = _parse_pentest_markdown() + _OSINT_TOOLS  # type: ignore[operator]
+    # OSR records that match a base tool (by upstream host or name) enrich it
+    # in place; the remainder are appended as catalog additions.
+    osr_enrichments, osr_additions = osr_index(base_tools)
+
+    for t in base_tools + osr_additions:
         cat = t.get("category")
         if cat not in _CATEGORY_IDS:
             raise ValueError(f"tools_catalog: unknown category {cat!r} for {t.get('name')!r}")
@@ -501,21 +518,27 @@ def _all_tools() -> list[dict[str, object]]:
         rec = dict(t)
         rec["platforms"] = platforms
         rec["tags"] = list(dict.fromkeys(str(x) for x in (t.get("tags") or [])))
-        rec["features"] = list(dict.fromkeys(TOOL_FEATURES.get(name, [])))
-        # Enrich with usage examples (curated else category fallback) + bookmarks
-        usage = curated_usage(name) or default_usage(str(cat))
-        bookmarks = curated_bookmarks(name) or [str(t.get("url") or "")]
+        # OSR additions ship curated features/usage inline; Kali rows fall back
+        # to the curated maps, then the per-category defaults.
+        rec["features"] = list(dict.fromkeys(t.get("features") or TOOL_FEATURES.get(name, [])))
+        # Enrich with usage examples (curated → record's own → category fallback)
+        # + bookmarks
+        usage = curated_usage(name) or list(t.get("usage") or []) or default_usage(str(cat))
+        bookmarks = curated_bookmarks(name) or list(t.get("bookmarks") or []) or [str(t.get("url") or "")]
         rec["usage"] = usage
         rec["bookmarks"] = bookmarks
+        rec.update(osr_enrichments.get(name.lower()) or {})
         merged.append(rec)
 
-    # Second pass: related tools = curated cross-family relations (filtered to
-    # existing names) + same-category siblings for a useful "similar tools" list.
+    # Second pass: related tools = curated cross-family relations (or the
+    # OSR record's own related list) filtered to existing names + same-category
+    # siblings for a useful "similar tools" list.
     names_lower = {str(t["name"]).lower() for t in merged}
     for rec in merged:
         name = str(rec["name"])
+        source = curated_related(name) or [str(r) for r in (rec.get("related") or [])]
         related: list[str] = [
-            r for r in curated_related(name)
+            r for r in source
             if r.lower() in names_lower and r.lower() != name.lower()
         ]
         related_lower = {r.lower() for r in related}

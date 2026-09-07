@@ -186,6 +186,41 @@ def test_tools_have_usage_bookmarks_related(client) -> None:
             assert b.startswith("http")
 
 
+def test_osintradar_mirror_is_integrated(client) -> None:
+    """osintradar.com library fully merged: additions + in-place enrichment."""
+    data = _tools_json(client)
+    assert data["total"] >= 600, "OSR additions should grow the catalog past 600"
+
+    cats = {c["id"]: c for c in data["categories"]}
+    for cid in ("osint-social", "osint-darkweb", "osint-breach", "osint-username",
+                "osint-training", "osint-transport"):
+        assert cid in cats, f"OSINT Radar category {cid} missing"
+        assert cats[cid]["count"] > 0
+
+    by_name = {str(t["name"]).lower(): t for t in data["tools"]}
+
+    # An OSR addition carries the tool's original operating model verbatim.
+    add = by_name["osint framework"]
+    assert add["category"] == "osint-training"
+    assert add["how_it_works"], "OSR tool should keep its mechanism write-up"
+    assert add["source_page"].startswith("https://osintradar.com/tools/")
+    assert isinstance(add["you_have"], list) and isinstance(add["you_get"], list)
+    assert add["tool_status"], "published operational status should be kept"
+
+    # A tool that already existed is enriched in place, not duplicated.
+    assert sum(1 for t in data["tools"] if "ghunt" in str(t["name"]).lower()) == 1
+    ghunt = by_name["ghunt"]
+    assert ghunt["category"] == "osint"  # original category preserved
+    assert ghunt.get("how_it_works"), "existing tool should gain OSR mechanism data"
+
+    # Every osint-* category tool exposes the OSR fields + valid source link.
+    for t in data["tools"]:
+        if str(t["category"]).startswith("osint-"):
+            assert t.get("how_it_works"), t["name"]
+            assert t.get("source_page", "").startswith("https://osintradar.com")
+            assert t.get("features") and t.get("usage") and t.get("bookmarks")
+
+
 def test_cli_registers_tools_group() -> None:
     from app.cli.main import app
 
