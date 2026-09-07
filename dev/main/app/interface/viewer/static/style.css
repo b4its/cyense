@@ -177,6 +177,93 @@ body {
     font-size: 0.9rem;
 }
 
+/* Searchable severity select (combobox) */
+.ssel-wrap {
+    position: relative;
+    display: inline-block;
+}
+.ssel-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+    min-width: 170px;
+    background: var(--navy);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.5rem 0.8rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.2s;
+}
+.ssel-trigger:hover, .ssel-trigger:focus-visible {
+    outline: none;
+    border-color: var(--blue-accent);
+}
+.ssel-arrow { color: var(--text-muted); transition: transform 0.2s; }
+.ssel-wrap.open .ssel-arrow { transform: rotate(180deg); }
+.ssel-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 200px;
+    z-index: 80;
+    background: var(--navy-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+}
+.ssel-menu.open { display: block; }
+.ssel-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+}
+.ssel-search .ssel-search-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+.ssel-options {
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+}
+.ssel-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    padding: 0.45rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+.ssel-opt:hover, .ssel-opt:focus-visible { background: var(--navy-light); outline: none; }
+.ssel-opt.active { color: var(--blue-accent); font-weight: 600; }
+.ssel-opt-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ssel-check { color: var(--blue-accent); font-weight: 700; }
+.ssel-empty { padding: 0.5rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+.ssel-count { padding: 0.4rem 0.6rem; text-align: right; color: var(--text-muted); font-size: 0.75rem; font-family: monospace; border-top: 1px solid var(--border); }
+
 .filter-select:focus,
 .search-input:focus {
     outline: none;

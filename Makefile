@@ -60,7 +60,7 @@ help: ## Show all available targets
 	@echo "  make cli ARGS=\"list\"              List recent scans"
 	@echo "  make cli ARGS=\"version\"           Show CLI + service version"
 	@echo "  make cli ARGS=\"rules\"             List active detection rules"
-	@echo "  make cli ARGS=\"tools list\"        Browse pentest tools catalog (332 tools)"
+	@echo "  make cli ARGS=\"tools list\"        Browse pentest tools catalog (343 tools)"
 	@echo "  make cli ARGS=\"tools list --category osint --feature subdomain\""
 	@echo "  make cli ARGS=\"tools categories\"  List tool categories"
 	@echo "  make cli ARGS=\"history\"           Scan history with filters"

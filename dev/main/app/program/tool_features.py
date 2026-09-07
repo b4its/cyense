@@ -70,6 +70,11 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "Reveals hidden subdomains from a wordlist",
         "Wordlist generation for later brute forcing",
     ],
+    "domains": [
+        "Online subdomain + wordlist generator",
+        "Generate domain mutations and targeted wordlists",
+        "Useful companion for subdomain brute forcing",
+    ],
     "MassDNS": [
         "High-performance DNS stub resolver (millions of records)",
         "Resolves massive host lists extremely fast over UDP/TCP",
@@ -179,6 +184,11 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "Attack-surface mapping / red-team asset discovery",
         "NAGBI-style topology mapping and visual analysis",
         "Predefined security scan flows",
+    ],
+    "Gobyu-POC": [
+        "Community POC collection for Goby",
+        "Download/import POCs for Goby scan flows",
+        "Extend Goby coverage with community templates",
     ],
     "Goscan": [
         "Interactive network scanner (Go)",
@@ -302,6 +312,11 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "Recon on repositories, orgs, users, and commits",
         "Great for tracking developers and code exposure",
     ],
+    "octosuite (bellingcat)": [
+        "Bellingcat fork of the Octosuite GitHub OSINT framework",
+        "GitHub OSINT on users, repos and organizations",
+        "Companion advanced GitHub research toolkit",
+    ],
     "Kunyu": [
         "Corporate asset collection (ZoomEye-based)",
         "Efficient discovery of an organization's public assets",
@@ -408,6 +423,11 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "Advanced open-source vulnerability scanner + manager",
         "Network vulnerability tests with plugin feeds (NVT)",
         "Scheduling, reports, and remediation tracking",
+    ],
+    "Openvas Docker": [
+        "Containerised OpenVAS vulnerability scanner",
+        "Runs the full Greenbone stack in Docker",
+        "Reports + scheduling via the GVM web interface",
     ],
     "Archery": [
         "Open-source vulnerability assessment and management",
@@ -534,6 +554,31 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "Identify the CMS of a target URL",
         "Check exploit-db for known CMS vulnerabilities",
     ],
+    "WhatCMS online": [
+        "Online CMS detection (Whatcms.org)",
+        "Identify CMS via URL in the browser",
+        "Free public fingerprint lookup",
+    ],
+    "Yunsee": [
+        "Online CMS footprint finder",
+        "Identify the CMS/tech stack of a URL in the browser",
+        "Supplementary online fingerprinting source",
+    ],
+    "Bugscaner": [
+        "Online web fingerprint identification service",
+        "Recognizes hundreds of CMS source codes",
+        "Quick browser-based tech-stack lookup",
+    ],
+    "TideFinger": [
+        "TideSec online fingerprint identification",
+        "Web-based tech/CMS fingerprint lookup",
+        "Community fingerprint database",
+    ],
+    "360finger-p": [
+        "360 Team online fingerprint identification",
+        "Web-based technology fingerprint lookup",
+        "Fast, browser-friendly tech-stack checks",
+    ],
     "CMSeeK": [
         "CMS detection and exploitation suite",
         "Detect WordPress, Joomla, Drupal and 180+ other CMS",
@@ -548,6 +593,11 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "Cross-platform community web fingerprinting",
         "Fingerprint detection with a shared FingerprintHub database",
         "Identify web technologies with a single command",
+    ],
+    "FingerprintHub": [
+        "Database powering ObserverWard fingerprints",
+        "Community-maintained fingerprint signatures",
+        "Plan/propose new fingerprints for the hub",
     ],
     # ------------------------------------------------------------------
     # webapp-proxy
@@ -1020,6 +1070,11 @@ TOOL_FEATURES: dict[str, list[str]] = {
         "GUI tool for scanning OA vulnerabilities",
         "Automate detection against office-automation apps",
         "CVE-oriented scanning with GUI",
+    ],
+    "MSFvenom-gui": [
+        "GUI wrapper to create payloads with msfvenom",
+        "Point-and-click payload generation",
+        "Simplify common msfvenom commands",
     ],
     "ronin-exploits": [
         "Ruby micro-framework for writing and running exploits",

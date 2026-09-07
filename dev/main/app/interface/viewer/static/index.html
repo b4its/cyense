@@ -45,14 +45,25 @@
         <section class="findings-section">
             <h2>Findings</h2>
             <div class="filters">
-                <select id="severityFilter" class="filter-select">
-                    <option value="all">All Severities</option>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                    <option value="info">Info</option>
-                </select>
+                <div class="ssel-wrap" id="severityWrap">
+                    <div class="ssel-trigger" id="severityTrigger" role="button" tabindex="0" aria-label="Filter severity">
+                        <span id="severityCurrent">All Severities</span>
+                        <svg class="ssel-arrow" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div class="ssel-menu" id="severityMenu" role="listbox" aria-label="Filter severity">
+                        <div class="ssel-search">
+                            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                                <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                                <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                            <input type="search" id="severitySearch" class="ssel-search-input" placeholder="Cari severity...">
+                        </div>
+                        <div class="ssel-options" id="severityOptions"></div>
+                        <div class="ssel-count" id="severityCount"></div>
+                    </div>
+                </div>
                 <input type="text" id="searchInput" class="search-input" placeholder="Search findings...">
             </div>
 

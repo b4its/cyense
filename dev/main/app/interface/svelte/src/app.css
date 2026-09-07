@@ -359,7 +359,7 @@ code.inline { background: var(--bg-soft); padding: 1px 6px; border-radius: 6px; 
 /* form */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .field label { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
-.field input, .field select {
+.field input, .field select, .field .ssel .ssel-trigger, .field .ssel .ssel-native {
   font-family: var(--mono); font-size: 14px; padding: 10px 12px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg-elev); color: var(--ink);
 }
@@ -417,7 +417,7 @@ main { overflow-x: clip; }
   .stage-node { min-width: 78px; }
   .stage-link { width: 16px; }
   pre.code { font-size: 12px; padding: 12px 14px; }
-  .field input, .field select { font-size: 16px; }
+  .field input, .field select, .field .ssel .ssel-trigger, .field .ssel .ssel-native { font-size: 16px; }
   table.tbl { font-size: 13px; }
   table.tbl th, table.tbl td { padding: 8px 10px; }
   .card { padding: 14px; }

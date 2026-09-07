@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import SearchInput from '../components/SearchInput.svelte'
+  import SearchableSelect from '../components/SearchableSelect.svelte'
 
   let catalog = null
   let loading = true
@@ -78,12 +79,14 @@
       <div style="flex:1;min-width:240px;max-width:480px">
         <SearchInput bind:value={query} count={filtered.length} placeholder="Cari tool / fitur / usage / platform..." label="Cari tools" />
       </div>
-      <select class="select" bind:value={activeCat} aria-label="Filter kategori">
-        <option value="">Semua kategori</option>
-        {#each catalog?.categories || [] as c}
-          <option value={c.id}>{c.emoji} {c.label} ({c.count})</option>
-        {/each}
-      </select>
+      <SearchableSelect bind:value={activeCat}
+        items={[
+          { value: '', label: 'Semua kategori' },
+          ...(catalog?.categories || []).map((c) => ({ value: c.id, label: `${c.emoji} ${c.label} (${c.count})` })),
+        ]}
+        placeholder="Semua kategori"
+        label="Filter kategori"
+      />
     </div>
   </div>
 </section>

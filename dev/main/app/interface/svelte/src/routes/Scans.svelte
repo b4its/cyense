@@ -3,6 +3,7 @@
   import { api } from '../lib/api.js'
   import ScanCard from '../components/ScanCard.svelte'
   import SearchInput from '../components/SearchInput.svelte'
+  import SearchableSelect from '../components/SearchableSelect.svelte'
   import { buildIndex, searchIndex } from '../lib/search.js'
 
   let scans = []
@@ -62,14 +63,16 @@
         <input id="target-url" bind:value={url} placeholder="http://example.com" />
       </div>
       <div class="field">
-        <label for="scan-mode">Mode</label>
-      <select id="scan-mode" bind:value={mode}>
-        <option value="website">website</option>
-        <option value="domain">domain</option>
-        <option value="link">link</option>
-        <option value="program">program (sample)</option>
-        <option value="github">github</option>
-      </select>
+        <SearchableSelect bind:value={mode}
+          items={[
+            { value: 'website', label: 'website' },
+            { value: 'domain', label: 'domain' },
+            { value: 'link', label: 'link' },
+            { value: 'program', label: 'program (sample)' },
+            { value: 'github', label: 'github' },
+          ]}
+          label="Mode scan"
+        />
       </div>
       <button class="btn primary" disabled={submitting}>{submitting ? '…' : 'Scan'}</button>
     </form>

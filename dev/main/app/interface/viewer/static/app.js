@@ -3,6 +3,17 @@
 let scanData = null;
 let filteredFindings = [];
 
+// Searchable severity filter state (replaces the native <select>).
+const SEVERITIES = [
+    { value: 'all', label: 'All Severities' },
+    { value: 'critical', label: 'Critical' },
+    { value: 'high', label: 'High' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'low', label: 'Low' },
+    { value: 'info', label: 'Info' },
+];
+let severityValue = 'all';
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
     const scanId = getScanIdFromUrl();
@@ -13,9 +24,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Set up event listeners
-    document.getElementById('severityFilter').addEventListener('change', applyFilters);
     document.getElementById('searchInput').addEventListener('input', applyFilters);
-    
+
+    // Searchable severity combobox
+    initSeveritySelect();
+
     // Modal close handlers
     const modal = document.getElementById('findingModal');
     const closeBtn = document.getElementsByClassName('close')[0];
@@ -30,6 +43,94 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 });
+
+// ---------------------------------------------------------------------------
+// Searchable severity select (combobox with type-to-filter)
+// ---------------------------------------------------------------------------
+function initSeveritySelect() {
+    const trigger = document.getElementById('severityTrigger');
+    const menu = document.getElementById('severityMenu');
+    const search = document.getElementById('severitySearch');
+    const current = document.getElementById('severityCurrent');
+    const options = document.getElementById('severityOptions');
+    const count = document.getElementById('severityCount');
+
+    function renderOptions(query) {
+        const q = (query || '').trim().toLowerCase();
+        const list = !q
+            ? SEVERITIES
+            : SEVERITIES.filter((s) => s.label.toLowerCase().includes(q));
+        options.innerHTML = list.map((s) => `
+            <button type="button" class="ssel-opt ${s.value === severityValue ? 'active' : ''}"
+                    role="option" aria-selected="${s.value === severityValue}"
+                    data-value="${s.value}">
+                <span class="ssel-opt-label">${s.label}</span>
+                ${s.value === severityValue ? '<span class="ssel-check">✓</span>' : ''}
+            </button>
+        `).join('')
+        || '<div class="ssel-empty">Tidak ada hasil</div>';
+        count.textContent = `${list.length} opsi`;
+    }
+
+    function openMenu() {
+        menu.classList.add('open');
+        scrollIntoViewIfNeeded(trigger);
+        search.value = '';
+        renderOptions('');
+        search.focus();
+    }
+    function closeMenu() { menu.classList.remove('open'); }
+
+    function choose(value) {
+        severityValue = value;
+        const s = SEVERITIES.find((x) => x.value === value) || SEVERITIES[0];
+        current.textContent = s.label;
+        closeMenu();
+        applyFilters();
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (menu.classList.contains('open')) closeMenu();
+        else openMenu();
+    });
+    menu.addEventListener('click', (e) => {
+        const opt = e.target.closest('.ssel-opt');
+        if (opt) { choose(opt.dataset.value); e.stopPropagation(); }
+    });
+    search.addEventListener('input', () => renderOptions(search.value));
+    search.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeMenu();
+        if (e.key === 'Enter') e.preventDefault();
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const opts = options.querySelectorAll('.ssel-opt');
+            if (opts[0]) { opts[0].focus(); }
+        }
+    });
+    options.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { search.focus(); closeMenu(); }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const opts = Array.from(options.querySelectorAll('.ssel-opt'));
+            const idx = opts.indexOf(document.activeElement);
+            const next = opts[(idx + (e.key === 'ArrowDown' ? 1 : opts.length - 1)) % opts.length];
+            if (next) next.focus();
+        }
+        if (e.key === 'Enter' && document.activeElement.dataset?.value) {
+            choose(document.activeElement.dataset.value);
+        }
+    });
+    document.addEventListener('click', (e) => {
+        if (!document.getElementById('severityWrap').contains(e.target)) closeMenu();
+    });
+}
+
+// The viewer sticky header is sticky but not fixed; keep the menu inside viewport.
+function scrollIntoViewIfNeeded(el) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - 80) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
 
 // Extract scan ID: server injects a meta tag; URL query param is a fallback
 function getScanIdFromUrl() {
@@ -112,12 +213,11 @@ function renderFindingsTable(findings) {
 function applyFilters() {
     if (!scanData || !scanData.findings) return;
 
-    const severityFilter = document.getElementById('severityFilter').value;
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
 
     filteredFindings = scanData.findings.filter(finding => {
         // Severity filter
-        if (severityFilter !== 'all' && finding.severity !== severityFilter) {
+        if (severityValue !== 'all' && finding.severity !== severityValue) {
             return false;
         }
 

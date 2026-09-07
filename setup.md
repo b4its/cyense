@@ -343,7 +343,7 @@ cyense crypt random 16
 ### 7.5 Katalog tools pentest (browse/search/detail)
 
 ```bash
-cyense tools list                            # semua tool per kategori (332 tool, 35 kategori)
+cyense tools list                            # semua tool per kategori (343 tool, 35 kategori)
 cyense tools list --category osint           # hanya kategori OSINT
 cyense tools list --category recon --query dns   # filter nama/deskripsi/tag
 cyense tools list --feature subdomain        # cari tool berdasarkan fitur/kapabilitas
