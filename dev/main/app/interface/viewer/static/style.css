@@ -650,3 +650,86 @@ body {
     text-align: center;
     padding: 2rem;
 }
+
+/* ---------------------------------------------------------------------------
+   Pagination — findings table + trajectory timeline (pagerHtml in app.js)
+--------------------------------------------------------------------------- */
+.pager {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    padding: 0.85rem 0 0.25rem;
+}
+
+.pager:empty {
+    display: none;
+}
+
+.pager-info {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.pager-btns {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.pager-btn {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    background: var(--navy);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.pager-btn:hover:not(:disabled) {
+    background: var(--navy-light);
+    border-color: var(--blue-accent);
+}
+
+.pager-btn.active {
+    background: var(--blue-primary);
+    border-color: var(--blue-primary);
+    color: #fff;
+}
+
+.pager-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pager-ellipsis {
+    color: var(--text-muted);
+    padding: 0 0.15rem;
+}
+
+.pager-size {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.pager-select {
+    background: var(--navy);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.82rem;
+}
+
+.pager-select:focus {
+    outline: none;
+    border-color: var(--blue-accent);
+}

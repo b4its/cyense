@@ -183,21 +183,84 @@ function renderScanData() {
 
     // Initialize filtered findings
     filteredFindings = scanData.findings || [];
-    
+    findingsPage = 1;
+
     // Render findings table
     renderFindingsTable(filteredFindings);
 }
 
-// Render findings table
+// ---------------------------------------------------------------------------
+// Pagination (findings table + trajectory timeline)
+// Keeps the DOM light on scans with hundreds/thousands of findings: only the
+// current page's rows are rendered. Mirrors the Svelte UI's Pagination.svelte:
+// windowed page numbers with ellipses, prev/next, rows-per-page selector.
+// ---------------------------------------------------------------------------
+let findingsPage = 1;
+let findingsPageSize = 25;
+const FINDINGS_SIZE_OPTIONS = [10, 25, 50, 100];
+
+// Windowed page list with ellipses, e.g. [1,'…',4,5,6,'…',12].
+function pageWindow(page, pages, span = 2) {
+    const out = [];
+    const lo = Math.max(1, page - span);
+    const hi = Math.min(pages, page + span);
+    if (lo > 1) { out.push(1); if (lo > 2) out.push('…'); }
+    for (let i = lo; i <= hi; i++) out.push(i);
+    if (hi < pages) { if (hi < pages - 1) out.push('…'); out.push(pages); }
+    return out;
+}
+
+function pagerHtml(page, pageSize, total, sizes, navFn, sizeFn, unitLabel) {
+    const pages = Math.max(1, Math.ceil((total || 0) / pageSize));
+    if (pages <= 1) return '';
+    const start = total ? (page - 1) * pageSize + 1 : 0;
+    const end = Math.min(page * pageSize, total || 0);
+    let html = `<div class="pager-info" aria-live="polite">Showing ${start}–${end} of ${total} ${unitLabel}</div>`;
+    html += '<div class="pager-btns" role="group" aria-label="Page controls">';
+    html += `<button type="button" class="pager-btn" ${page <= 1 ? 'disabled' : ''} aria-label="Previous page" onclick="${navFn}(${page - 1})">‹</button>`;
+    for (const n of pageWindow(page, pages)) {
+        if (n === '…') html += '<span class="pager-ellipsis" aria-hidden="true">…</span>';
+        else html += `<button type="button" class="pager-btn ${n === page ? 'active' : ''}" ${n === page ? 'aria-current="page"' : ''} onclick="${navFn}(${n})">${n}</button>`;
+    }
+    html += `<button type="button" class="pager-btn" ${page >= pages ? 'disabled' : ''} aria-label="Next page" onclick="${navFn}(${page + 1})">›</button>`;
+    html += '</div>';
+    html += `<label class="pager-size">Per page <select class="pager-select" onchange="${sizeFn}(this.value)">`;
+    for (const s of sizes) html += `<option value="${s}" ${s === pageSize ? 'selected' : ''}>${s}</option>`;
+    html += '</select></label>';
+    return html;
+}
+
+function gotoFindingsPage(p) {
+    findingsPage = p;
+    renderFindingsTable(filteredFindings);
+    document.querySelector('.findings-table-container')
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function setFindingsPageSize(v) {
+    findingsPageSize = Number(v) || findingsPageSize;
+    findingsPage = 1;
+    renderFindingsTable(filteredFindings);
+}
+
+// Render findings table (current page only)
 function renderFindingsTable(findings) {
+    filteredFindings = findings || [];
     const tbody = document.getElementById('findingsTableBody');
-    
-    if (!findings || findings.length === 0) {
+    const pager = document.getElementById('findingsPager');
+
+    if (filteredFindings.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="loading">No findings found</td></tr>';
+        if (pager) pager.innerHTML = '';
         return;
     }
 
-    tbody.innerHTML = findings.map(finding => `
+    const pages = Math.max(1, Math.ceil(filteredFindings.length / findingsPageSize));
+    if (findingsPage > pages) findingsPage = pages;
+    const slice = filteredFindings.slice(
+        (findingsPage - 1) * findingsPageSize, findingsPage * findingsPageSize);
+
+    tbody.innerHTML = slice.map(finding => `
         <tr onclick="showFindingDetail('${escapeAttr(finding.finding_id)}')">
             <td>${escapeHtml(finding.finding_id)}</td>
             <td>${escapeHtml(finding.rule)}</td>
@@ -207,6 +270,12 @@ function renderFindingsTable(findings) {
             <td>${escapeHtml(finding.title || '-')}</td>
         </tr>
     `).join('');
+
+    if (pager) {
+        pager.innerHTML = pagerHtml(findingsPage, findingsPageSize,
+            filteredFindings.length, FINDINGS_SIZE_OPTIONS,
+            'gotoFindingsPage', 'setFindingsPageSize', 'findings');
+    }
 }
 
 // Apply filters (severity + search)
@@ -240,6 +309,8 @@ function applyFilters() {
         return true;
     });
 
+    // New filter result set starts from page 1.
+    findingsPage = 1;
     renderFindingsTable(filteredFindings);
 }
 
@@ -366,6 +437,8 @@ function fmtScore(score) {
 function showError(message) {
     const tbody = document.getElementById('findingsTableBody');
     tbody.innerHTML = `<tr><td colspan="6" class="loading" style="color: var(--critical);">${escapeHtml(message)}</td></tr>`;
+    const pager = document.getElementById('findingsPager');
+    if (pager) pager.innerHTML = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +493,16 @@ async function loadTrajectories(scanId) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Trajectory timeline state — the step list can hold thousands of entries,
+// so the timeline is paginated like the findings table.
+// ---------------------------------------------------------------------------
+let trajSteps = [];
+let trajMinTime = 0;
+let trajPage = 1;
+let trajPageSize = 100;
+const TRAJ_SIZE_OPTIONS = [50, 100, 250, 500];
+
 function renderTrajectories(agents) {
     const container = document.getElementById('trajectoriesContainer');
 
@@ -439,18 +522,22 @@ function renderTrajectories(agents) {
     allSteps.sort((a, b) => (a.t || 0) - (b.t || 0));
 
     if (allSteps.length === 0) {
+        trajSteps = [];
         container.innerHTML = '<div class="no-data">No steps recorded in trajectories</div>';
+        const pager = document.getElementById('trajPager');
+        if (pager) pager.innerHTML = '';
         return;
     }
 
-    const minTime = allSteps[0].t || 0;
+    trajSteps = allSteps;
+    trajMinTime = allSteps[0].t || 0;
+    trajPage = 1;
     const maxTime = allSteps[allSteps.length - 1].t || 0;
-    const duration = maxTime - minTime;
+    const duration = maxTime - trajMinTime;
 
-    // Build HTML
+    // Build HTML: agent summary bar + duration header stay above the pager.
     let html = '';
 
-    // Agent summary bar
     html += '<div class="agent-summary">';
     const agentNames = Object.keys(agents);
     for (const name of agentNames) {
@@ -465,22 +552,34 @@ function renderTrajectories(agents) {
     }
     html += '</div>';
 
-    // Duration info
     html += `<div class="trajectory-duration">`;
     html += `Duration: <strong>${duration.toFixed(2)}s</strong> · ${allSteps.length} steps · ${agentNames.length} agents`;
     html += '</div>';
 
-    // Timeline
-    html += '<div class="timeline">';
-    for (const step of allSteps) {
+    html += '<div class="timeline" id="trajTimeline"></div>';
+
+    container.innerHTML = html;
+    renderTrajectoryPage();
+}
+
+function renderTrajectoryPage() {
+    const timeline = document.getElementById('trajTimeline');
+    const pager = document.getElementById('trajPager');
+    if (!timeline) return;
+
+    const pages = Math.max(1, Math.ceil(trajSteps.length / trajPageSize));
+    if (trajPage > pages) trajPage = pages;
+    const slice = trajSteps.slice((trajPage - 1) * trajPageSize, trajPage * trajPageSize);
+
+    timeline.innerHTML = slice.map((step) => {
         const icon = AGENT_ICONS[step.agent] || '🤖';
         const color = AGENT_COLORS[step.agent] || '#888';
-        const elapsed = ((step.t || 0) - minTime).toFixed(2);
+        const elapsed = ((step.t || 0) - trajMinTime).toFixed(2);
         const action = step.action || 'unknown';
         const detail = step.detail || {};
         const detailKeys = Object.keys(detail);
 
-        html += `<div class="timeline-step" style="border-left-color: ${color}">`;
+        let html = `<div class="timeline-step" style="border-left-color: ${color}">`;
         html += `<div class="step-header">`;
         html += `<span class="step-icon" style="background: ${color}22; color: ${color}">${icon}</span>`;
         html += `<span class="step-agent" style="color: ${color}">${escapeHtml(step.agent)}</span>`;
@@ -504,8 +603,25 @@ function renderTrajectories(agents) {
         }
 
         html += '</div>';
-    }
-    html += '</div>';
+        return html;
+    }).join('');
 
-    container.innerHTML = html;
+    if (pager) {
+        pager.innerHTML = pagerHtml(trajPage, trajPageSize,
+            trajSteps.length, TRAJ_SIZE_OPTIONS,
+            'gotoTrajPage', 'setTrajPageSize', 'steps');
+    }
+}
+
+function gotoTrajPage(p) {
+    trajPage = p;
+    renderTrajectoryPage();
+    document.querySelector('.trajectories-section')
+        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function setTrajPageSize(v) {
+    trajPageSize = Number(v) || trajPageSize;
+    trajPage = 1;
+    renderTrajectoryPage();
 }
