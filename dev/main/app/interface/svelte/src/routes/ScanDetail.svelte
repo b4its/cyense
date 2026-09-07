@@ -23,6 +23,21 @@
   let query = ''
   let findingPage = 1
   let findingSize = 12
+  let eventPage = 1
+  let eventSize = 20
+  let hostPage = 1
+  let hostSize = 25
+
+  // Event feed + per-host table can also grow long (live scans append events
+  // every ~1.2s poll; domain scans can crawl thousands of hosts), so both are
+  // paginated through the same Pagination component. Resets on route change.
+  $: eventPages = Math.max(1, Math.ceil((events?.length || 0) / eventSize))
+  $: eventSlice = (events || []).slice((eventPage - 1) * eventSize, eventPage * eventSize)
+  $: if (eventPage > eventPages) eventPage = eventPages
+  $: hostPages = Math.max(1, Math.ceil((report?.hosts?.length || 0) / hostSize))
+  $: hostSlice = (report?.hosts || []).slice((hostPage - 1) * hostSize, hostPage * hostSize)
+  $: if (hostPage > hostPages) hostPage = hostPages
+  $: { void scanId; eventPage = 1; hostPage = 1 }
 
   // ---- findings pagination ------------------------------------------------
   // 'findings' is the master sorted+searched list used by the TOC + all the
@@ -258,13 +273,15 @@
 
       {#if events && events.length}
         <div class="event-feed">
-          {#each events as ev}
+          {#each eventSlice as ev}
             <div class="event-item"><span class="event-dot"></span>{ev}</div>
           {/each}
           {#if job?.status !== 'completed' && job?.status !== 'failed'}
             <div class="event-item live"><span class="event-dot pulse"></span>menunggu langkah berikutnya…</div>
           {/if}
         </div>
+        <Pagination bind:page={eventPage} bind:pageSize={eventSize}
+                    total={events.length} label="Navigasi event per halaman" />
       {:else}
         <p class="muted">Menunggu proses scan…</p>
       {/if}
@@ -281,7 +298,7 @@
         <table class="tbl">
           <thead><tr><th>Host</th><th>Status</th><th>Temuan</th></tr></thead>
           <tbody>
-          {#each report.hosts as h}
+          {#each hostSlice as h}
             <tr>
               <td class="mono">{h.host}</td>
               <td><span class="badge {h.status === 'completed' ? 'info' : 'critical'}">{h.status}</span></td>
@@ -291,6 +308,8 @@
           </tbody>
         </table>
         </div>
+        <Pagination bind:page={hostPage} bind:pageSize={hostSize}
+                    total={report.hosts.length} label="Navigasi host per halaman" />
       </div>
     </section>
   {/if}
