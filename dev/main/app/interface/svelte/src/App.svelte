@@ -5,6 +5,7 @@
   import ScanDetail from './routes/ScanDetail.svelte'
   import Websites from './routes/Websites.svelte'
   import Rules from './routes/Rules.svelte'
+  import Tools from './routes/Tools.svelte'
   import { onMount } from 'svelte'
 
   let route = '/'
@@ -29,6 +30,8 @@
     <Websites />
   {:else if route.startsWith('/scans')}
     <Scans />
+  {:else if route.startsWith('/tools')}
+    <Tools />
   {:else if route.startsWith('/rules')}
     <Rules />
   {:else}

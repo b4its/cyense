@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from rich.console import Console  # type: ignore[import-untyped]
+from rich.markup import escape as rich_escape  # type: ignore[import-untyped]
 from rich.table import Table  # type: ignore[import-untyped]
 from rich.text import Text  # type: ignore[import-untyped]
 
@@ -37,7 +38,7 @@ _CTRL_RE = re.compile(r"[\x00-\x1f\x7f\x9b-\x9f]|\x1b\[[0-9;]*[mA-Za-z]")
 def _esc(value: Any) -> str:
     """Strip control chars + ANSI sequences dari nilai eksternal."""
     s = str(value) if not isinstance(value, str) else value
-    return _CTRL_RE.sub("", s)
+    return _CTRL_RE.sub("", rich_escape(s))
 
 
 # ---------------------------------------------------------------------------
@@ -971,5 +972,149 @@ def render_route_table(
         f"  [{p.muted}]Total {total} route "
         f"({len(sensitive)} sensitive · {len(api)} api · "
         f"{len(pages)} page · {len(other)} lain)[/]"
+    )
+    console.print()
+
+
+# ---------------------------------------------------------------------------
+# Pentest tools catalog (CLI `cyense tools`)
+# ---------------------------------------------------------------------------
+
+def render_tools_catalog(
+    console: Console,
+    caps: TermCaps,
+    catalog: dict[str, Any],
+) -> None:
+    """Render the pentest tools catalog grouped by category.
+
+    ``catalog`` shape = ``tools_catalog()`` payload:
+      {"categories": [{id,label,emoji,count}...], "tools": [...], "total": int}
+    """
+    p = PALETTE
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    categories = catalog.get("categories", [])
+    tools = catalog.get("tools", [])
+    by_cat = {}  # category id -> list of tools
+    for t in tools:
+        by_cat.setdefault(t.get("category", "?"), []).append(t)
+
+    console.print(f"  [bold {p.blue_primary}]PENTEST TOOLS CATALOG[/]")
+    console.print(
+        f"  [{p.muted}]{catalog.get('total', len(tools))} tools · "
+        f"{len(categories)} kategori · Kali-style catalog[/]"
+    )
+    console.print(sep)
+
+    _platform_names = {
+        "windows": "Win",
+        "linux": "Linux",
+        "mac": "macOS",
+        "chrome": "Chrome",
+        "docker": "Docker",
+        "cross": "Cross",
+    }
+
+    for cat in categories:
+        cat_id = cat["id"]
+        items = by_cat.get(cat_id, [])
+        if not items:
+            continue
+        label = cat.get("label", cat_id)
+        emoji = cat.get("emoji", "")
+        console.print(f"  [bold {p.blue_accent}]{emoji} {label}[/] [dim]({len(items)})[/]")
+        for t in items:
+            name = _esc(t.get("name", "?"))
+            url = _esc(t.get("url") or "")
+            desc = _esc(t.get("description", ""))
+            platforms = t.get("platforms", [])
+            features = t.get("features", [])
+            plat_badges = " ".join(
+                f"[{p.blue_mist}]({_platform_names.get(x, x)})[/]" for x in platforms
+            )
+            console.print(f"    [bold {p.ink}]{name}[/]")
+            if url:
+                console.print(f"      [{p.blue_soft}]{url}[/]")
+            if desc:
+                console.print(f"      [dim]{desc}[/]")
+            if plat_badges:
+                console.print(f"      {plat_badges}")
+            if features:
+                console.print(f"      [{p.blue_mist}]Fitur:[/]")
+                for f in features:
+                    console.print(f"        [dim]• {_esc(f)}[/]")
+            console.print()
+        console.print()
+
+    console.print(sep)
+    console.print(
+        f"  [{p.muted}]Total {catalog.get('total', len(tools))} tool "
+        f"di {len(categories)} kategori.[/]"
+    )
+    console.print()
+
+
+def render_tool_detail(
+    console: Console,
+    caps: TermCaps,
+    tool: dict[str, Any],
+    catalog: dict[str, Any],
+) -> None:
+    """Render a single tool's full profile: desc, platforms, features, usage,
+    bookmarks and related tools (used by ``cyense tools info/usage``)."""
+    p = PALETTE
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    name = _esc(tool.get("name", "?"))
+    url = _esc(tool.get("url") or "")
+    category = str(tool.get("category", "?"))
+    cat_label = ""
+    for c in catalog.get("categories", []):
+        if c.get("id") == category:
+            cat_label = f"{c.get('label', category)}"
+            break
+
+    _platform_names = {
+        "windows": "Win", "linux": "Linux", "mac": "macOS",
+        "chrome": "Chrome", "docker": "Docker", "cross": "Cross",
+    }
+
+    console.print(f"  [bold {p.blue_primary}]TOOL: {name}[/]")
+    console.print(sep)
+    if cat_label:
+        console.print(f"  [{p.blue_soft}]Kategori:[/]  {_esc(cat_label)}")
+    if url:
+        console.print(f"  [{p.blue_soft}]URL:[/]      {url}")
+    desc = _esc(tool.get("description", ""))
+    if desc:
+        console.print(f"  [{p.blue_soft}]Deskripsi:[/] {desc}")
+
+    platforms = tool.get("platforms", [])
+    if platforms:
+        badges = ", ".join(_platform_names.get(x, x) for x in platforms)
+        console.print(f"  [{p.blue_soft}]Platform:[/]  {_esc(badges)}")
+    console.print()
+
+    def _block(title: str, color: str, items: list[Any], prefix: str = "•") -> None:
+        if not items:
+            return
+        console.print(f"  [bold {color}]{title}[/]")
+        for it in items:
+            console.print(f"    [dim]{prefix} {_esc(it)}[/]")
+        console.print()
+
+    _block("FITUR", p.blue_accent, tool.get("features", []))
+    _block("CONTOH PENGGUNAAN", p.ok, tool.get("usage", []), "$")
+    _block("BOOKMARK / REFERENSI", p.blue_soft, tool.get("bookmarks", []), "→")
+    if tool.get("related"):
+        console.print(f"  [bold {p.blue_accent}]TOOL TERKAIT[/]")
+        for r in tool.get("related", []):
+            console.print(f"    [dim]→ {_esc(r)}[/]")
+        console.print()
+    console.print(sep)
+    console.print(
+        f"  [{p.muted}]Gunakan: cyense tools list --category {category}[/]"
     )
     console.print()

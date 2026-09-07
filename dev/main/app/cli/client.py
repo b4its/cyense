@@ -95,6 +95,12 @@ class CyenseClient:
         r.raise_for_status()
         return r.json()
 
+    async def tools(self) -> dict[str, Any]:
+        """GET /tools — pentest tools catalog."""
+        r = await self._c().get(f"{_API}/tools")
+        r.raise_for_status()
+        return r.json()
+
     async def submit_scan(self, payload: dict[str, Any]) -> dict[str, str]:
         """POST /scans → {"scan_id": "...", "status": "queued"}."""
         r = await self._c().post(f"{_API}/scans", json=payload)

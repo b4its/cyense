@@ -27,6 +27,7 @@
       <a href="#/" class:active={active('/')} onclick={nav}>Dashboard</a>
       <a href="#/websites" class:active={active('/websites')} onclick={nav}>Websites</a>
       <a href="#/scans" class:active={active('/scans')} onclick={nav}>Scan Library</a>
+      <a href="#/tools" class:active={active('/tools')} onclick={nav}>Tools</a>
       <a href="#/rules" class:active={active('/rules')} onclick={nav}>Rules</a>
     </nav>
 

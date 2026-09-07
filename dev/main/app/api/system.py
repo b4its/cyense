@@ -6,6 +6,10 @@ from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["system"])
 
+# Tool categories, reused by both the Rules page and the pentest-tools
+# catalog. Sourced from the static catalog so data stays in one place.
+tools_app = APIRouter(prefix="/tools", tags=["tools"])
+
 # Shared CVSS vectors used by the static-rule catalog below.
 _IDOR_VECTOR = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N"
 _XSS_VECTOR = "AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
@@ -408,3 +412,11 @@ async def rules() -> dict[str, object]:
             ),
         ],
     }
+
+
+@tools_app.get("")
+async def tools() -> dict[str, object]:
+    """Pentest tools catalog (Kali-style) for CLI & Website browsing."""
+    from app.program.tools_catalog import tools_catalog
+
+    return tools_catalog()

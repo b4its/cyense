@@ -18,6 +18,7 @@ async function req(path, opts = {}) {
 export const api = {
   health: () => req('/health'),
   rules: () => req('/rules'),
+  tools: () => req('/tools'),
   listScans: () => req('/scans'),
   websites: () => req('/websites'),
   getScan: (id) => req(`/scans/${id}`),

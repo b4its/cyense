@@ -1,0 +1,221 @@
+"""Tests for the pentest tools catalog (CLI `cyense tools` + `/api/v1/tools`).
+
+Covers:
+  * Server /tools catalog serves a structured, deduplicated tool list grouped
+    by category (including the added OSINT tools).
+  * CLI registers the `tools` group with `list` and `categories` subcommands.
+"""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+from typer.testing import CliRunner
+
+
+@pytest.fixture()
+def client() -> TestClient:
+    from app.main import create_app
+
+    app = create_app()
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def _tools_json(client) -> dict:
+    r = client.get("/api/v1/tools")
+    assert r.status_code == 200
+    return r.json()
+
+
+def _names_lower(data: dict) -> set[str]:
+    return {str(t["name"]).lower() for t in data["tools"]}
+
+
+def test_tools_catalog_serves_osint_and_pentest_tools(client) -> None:
+    """The catalog merges the OSINT list + the Kali-style Pentest Tools list."""
+    data = _tools_json(client)
+    names = _names_lower(data)
+
+    # OSINT additions from the awesome-osint list
+    for want in (
+        "DataSploit",
+        "Spiderfoot",
+        "Sn1per",
+        "recon-ng",
+        "wayparam",
+        "Facebook Friend List Scraper",
+        "Keyscope",
+    ):
+        assert want.lower() in names, f"OSINT tool {want} missing from /tools catalog"
+
+    # Kali-style Pentest tool subset
+    for want in (
+        "whois",
+        "Sublist3r",
+        "Nmap | Zenmap",
+        "theHarvester",
+        "Nuclei",
+        "WhatWeb",
+        "Burpsuite",
+        "ffuf",
+        "Sqlmap",
+        "Hydra",
+        "Hashcat",
+        "Metasploit",
+        "WireShark",
+        "GTFOBins",
+        "Sliver",
+        "Kali Linux",
+        "DVWA",
+    ):
+        assert want.lower() in names, f"Pentest tool {want} missing from /tools catalog"
+
+
+def test_tools_catalog_is_comprehensive(client) -> None:
+    """The full Kali-style list is parsed, not just the curated subset."""
+    data = _tools_json(client)
+    names = _names_lower(data)
+
+    # Tools that were NOT in the original curated subset — these can only come
+    # from the embedded markdown parser.
+    for want in (
+        "SearchDiggity",
+        "GitMiner",
+        "svnExploit",
+        "TXPortMap",
+        "Censys-subdomain-finder",
+        "gophish",
+        "Xray",
+        "Dirbuster",
+        "MDUT",
+        "HackBrowserDat",
+        "wordlists",
+        "JackIt",
+        "Ollydbg",
+        "NoSQLMap",
+        "Fuxploider",
+        "Oxml_xxe",
+        "Ysomap",
+        "Cain & abel",
+        "Hoaxshell",
+        "Rustcat",
+        "PrintNotifyPotato",
+        "Gitleaks",
+        "Trivy",
+        "DVWS",
+        "DecoyMini",
+        "Rawsec's CyberSecurity Inventory",
+    ):
+        assert want.lower() in names, f"tool {want} (from markdown) missing"
+
+
+def test_tools_catalog_is_deduplicated_and_well_formed(client) -> None:
+    data = _tools_json(client)
+    names = [t["name"] for t in data["tools"]]
+    assert len(names) == len(set(names)), "duplicate tool names in /tools catalog"
+    assert data["total"] == len(names)
+
+    seen_cats = {c["id"] for c in data["categories"]}
+    for t in data["tools"]:
+        assert t["category"] in seen_cats, f"{t['name']} has unknown category"
+        # platform badges must use known keys
+        for p in t.get("platforms", []):
+            assert p in data["platforms"], f"{t['name']} has unknown platform {p}"
+
+    # categories carry counts
+    for c in data["categories"]:
+        assert isinstance(c["count"], int)
+
+
+def test_tools_have_features(client) -> None:
+    """Every catalog tool carries a non-empty features list (CLI + Website)."""
+    data = _tools_json(client)
+    tools = data["tools"]
+    assert data["total"] == len(tools)
+
+    # Spot-check a few known tools.
+    by_name = {str(t["name"]).lower(): t for t in tools}
+    for name in ("Nmap | Zenmap", "Metasploit", "Sqlmap", "SpiderFoot"):
+        t = by_name.get(name.lower())
+        assert t is not None, name
+        assert isinstance(t.get("features"), list)
+        assert len(t["features"]) >= 2, f"{name} should have multiple features"
+
+    # Coverage: every tool must have ≥1 feature so the cards are useful.
+    empty = [t["name"] for t in tools if not t.get("features")]
+    assert not empty, f"tools missing features: {empty[:10]}"
+
+
+def test_tools_have_usage_bookmarks_related(client) -> None:
+    """Every tool carries usage examples, a bookmark, and related tools."""
+    data = _tools_json(client)
+    tools = data["tools"]
+    by_name = {str(t["name"]).lower(): t for t in tools}
+
+    # Curated spot-checks.
+    nmap = by_name["nmap | zenmap"]
+    assert any("nmap -sV" in u for u in nmap["usage"]), "Nmap should have a usage example"
+    assert nmap["bookmarks"], "Nmap should have bookmarks"
+    assert nmap["related"], "Nmap should have related tools"
+
+    metasploit = by_name["metasploit"]
+    assert metasploit["usage"], "Metasploit should have usage examples"
+    msf_related = metasploit.get("related", [])
+    assert "Sliver" in msf_related or "Covenant" in msf_related, (
+        "Metasploit should relate to other C2 frameworks"
+    )
+
+    # Coverage: every tool must carry all three enrichment fields.
+    for t in tools:
+        assert t.get("usage"), f"{t['name']} missing usage"
+        assert t.get("bookmarks"), f"{t['name']} missing bookmarks"
+        assert isinstance(t.get("related"), list) and t["related"], (
+            f"{t['name']} missing related tools"
+        )
+
+    # All related references must resolve to existing tools.
+    names = {str(t["name"]).lower() for t in tools}
+    for t in tools:
+        for r in t.get("related", []):
+            assert r.lower() in names, f"{t['name']} → unknown related {r}"
+
+    # Bookmarks must all be URLs.
+    for t in tools:
+        for b in t.get("bookmarks", []):
+            assert b.startswith("http")
+
+
+def test_cli_registers_tools_group() -> None:
+    from app.cli.main import app
+
+    runner = CliRunner()
+    r = runner.invoke(app, ["tools", "--help"])
+    assert r.exit_code == 0
+    for name in ("list", "categories", "info", "usage"):
+        assert name in r.stdout, f"subcommand {name} not in tools help"
+
+    r = runner.invoke(app, ["--help"])
+    assert r.exit_code == 0
+    assert "tools" in r.stdout
+
+
+def test_cli_tools_usage_and_info_offline_errors() -> None:
+    """info/usage require the service; offline should return a clean error panel."""
+    from app.cli.main import app
+
+    runner = CliRunner()
+    for args in (["tools", "info", "nmap"], ["tools", "usage", "nmap"]):
+        r = runner.invoke(app, args)
+        assert r.exit_code == 3, f"{args} should exit 3 when service is offline"
+        assert r.stdout.strip()
+
+
+def test_tools_categories_offline_invalid_id_exits() -> None:
+    from app.cli.main import app
+
+    runner = CliRunner()
+    # service is not running in the test env → expect a clean error panel (3)
+    r = runner.invoke(app, ["tools", "categories"])
+    assert r.exit_code == 3
+    assert r.stdout.strip(), "expected an error panel on offline service"

@@ -42,7 +42,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console  # type: ignore[import-untyped]
@@ -2083,6 +2083,415 @@ def rules_cmd() -> None:
         _state.console.print()
 
     _run(_do())
+
+
+# ---------------------------------------------------------------------------
+# tools — pentest tools catalog (Kali-style) browsing
+
+tools_app = typer.Typer(
+    help="Telusuri katalog tools pentest (Kali-style) + OSINT.",
+    no_args_is_help=True,
+)
+app.add_typer(tools_app, name="tools")
+
+
+@tools_app.command("list")
+def tools_list_cmd(
+    category: Annotated[
+        str | None,
+        typer.Option("--category", "-c", help="Filter satu kategori (mis. recon, osint)."),
+    ] = None,
+    query: Annotated[
+        str | None,
+        typer.Option("--query", "-q", help="Cari tool berdasarkan nama/deskripsi/tag."),
+    ] = None,
+    feature: Annotated[
+        str | None,
+        typer.Option(
+            "--feature", "-f",
+            help="Cari tool berdasarkan fitur/kapabilitas (mis. 'subdomain').",
+        ),
+    ] = None,
+) -> None:
+    """Tampilkan katalog tools pentest, dikelompokkan per kategori."""
+    from app.cli.renderer import render_tools_catalog
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps(catalog, indent=2))
+            return
+
+        # Filter data client-side (server returns the full catalog).
+        cats = catalog.get("categories", [])
+        tools = catalog.get("tools", [])
+        if category:
+            cats = [c for c in cats if c["id"] == category]
+            tools = [t for t in tools if t.get("category") == category]
+        if query:
+            q = query.lower()
+            tools = [
+                t for t in tools
+                if q in str(t.get("name", "")).lower()
+                or q in str(t.get("description", "")).lower()
+                or q in " ".join(t.get("tags", [])).lower()
+            ]
+        if feature:
+            fq = feature.lower()
+            tools = [
+                t for t in tools
+                if any(fq in str(x).lower() for x in t.get("features", []))
+            ]
+        filtered = dict(catalog)
+        filtered["categories"] = cats
+        filtered["tools"] = tools
+        filtered["total"] = len(tools)
+
+        if not tools:
+            from app.cli.theme import PALETTE as _PAL
+            _state.console.print(
+                f"  [{_PAL.sev_medium}] Tidak ada tool yang cocok"
+                f"{f' dengan kueri {query!r}' if query else ''}"
+                f"{f' dengan fitur {feature!r}' if feature else ''}"
+                f"{f' di kategori {category!r}' if category else ''}.[/]"
+            )
+            raise typer.Exit(1)
+
+        render_tools_catalog(_state.console, _state.caps, filtered)
+
+    _run(_do())
+
+
+@tools_app.command("categories")
+def tools_categories_cmd() -> None:
+    """Tampilkan daftar kategori tools (id + label + jumlah)."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        from app.cli.theme import PALETTE as PAL
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps(catalog.get("categories", []), indent=2))
+            return
+
+        cats = catalog.get("categories", [])
+        _state.console.print(f"\n  [bold {PAL.blue_primary}]KATEGORI TOOLS[/]"
+                             f"  [{PAL.muted}]({len(cats)})[/]")
+        for c in cats:
+            _state.console.print(
+                f"  [{PAL.blue_soft}]{c.get('emoji','')}[/] "
+                f"[bold {PAL.ink}]{c.get('id','?'):<24}[/]"
+                f"[dim]{c.get('label','')}[/]"
+                f"  [{PAL.blue_mist}]({c.get('count',0)})[/]"
+            )
+        _state.console.print()
+        _state.console.print(
+            f"  [{PAL.muted}]Gunakan: cyense tools list --category <id>[/]"
+        )
+
+    _run(_do())
+
+
+def _find_tool(catalog: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """Case-insensitive tool lookup by exact name (or unique prefix)."""
+    name_lower = name.strip().lower()
+    if not name_lower:
+        return None
+    for t in catalog.get("tools", []):
+        if str(t.get("name", "")).lower() == name_lower:
+            return t
+    # unique prefix match (so `cyense tools info subl` finds Sublist3r)
+    matches = [
+        t for t in catalog.get("tools", [])
+        if str(t.get("name", "")).lower().startswith(name_lower)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+@tools_app.command("info")
+def tools_info_cmd(
+    name: Annotated[str, typer.Argument(help="Nama tool (case-insensitive / awalan unik).")],
+) -> None:
+    """Tampilkan profil lengkap satu tool (fitur, usage, bookmarks, related)."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps(catalog, indent=2))
+            return
+
+        tool = _find_tool(catalog, name)
+        if tool is None:
+            render_error_panel(
+                _state.console, _state.caps,
+                f"Tool tidak ditemukan: {name}",
+                "Gunakan `cyense tools list` untuk melihat daftar lengkap.",
+            )
+            raise typer.Exit(1)
+
+        from app.cli.renderer import render_tool_detail
+        render_tool_detail(_state.console, _state.caps, tool, catalog)
+
+    _run(_do())
+
+
+@tools_app.command("usage")
+def tools_usage_cmd(
+    name: Annotated[str, typer.Argument(help="Nama tool (case-insensitive / awalan unik).")],
+) -> None:
+    """Tampilkan contoh penggunaan / perintah untuk satu tool."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        tool = _find_tool(catalog, name)
+        if tool is None:
+            render_error_panel(
+                _state.console, _state.caps,
+                f"Tool tidak ditemukan: {name}",
+                "Gunakan `cyense tools list` untuk melihat daftar lengkap.",
+            )
+            raise typer.Exit(1)
+
+        usage = tool.get("usage", [])
+        if _state.caps.json_out:
+            typer.echo(json.dumps({"name": tool.get("name"), "usage": usage}, indent=2))
+            return
+
+        from app.cli.renderer import _esc as _render_esc
+        from app.cli.theme import PALETTE as PAL
+        _state.console.print(
+            f"\n  [bold {PAL.blue_primary}]USAGE: {_render_esc(tool.get('name', name))}[/]"
+        )
+        for u in usage:
+            _state.console.print(f"    [{PAL.ok}]$ {_render_esc(u)}[/]")
+        _state.console.print()
+
+    _run(_do())
+
+
+@tools_app.command("stats")
+def tools_stats_cmd() -> None:
+    """Tampilkan statistik katalog tools (jumlah, platform, distribusi kategori)."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps(_tools_stats(catalog), indent=2))
+            return
+
+        from app.cli.renderer import render_tools_stats
+        render_tools_stats(_state.console, _state.caps, _tools_stats(catalog))
+
+    _run(_do())
+
+
+def _tools_stats(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Derive catalog statistics (deterministic, no network)."""
+    tools = catalog.get("tools", [])
+    cats = catalog.get("categories", [])
+
+    by_cat: dict[str, int] = {}
+    platform_count: dict[str, int] = {}
+    with_features = 0
+    total_features = 0
+    usage_total = 0
+    bookmark_total = 0
+    related_total = 0
+
+    for t in tools:
+        cat = str(t.get("category", "?"))
+        by_cat[cat] = by_cat.get(cat, 0) + 1
+        for p in t.get("platforms", []):
+            platform_count[str(p)] = platform_count.get(str(p), 0) + 1
+        feats = t.get("features") or []
+        if feats:
+            with_features += 1
+            total_features += len(feats)
+        usage_total += len(t.get("usage") or [])
+        bookmark_total += len(t.get("bookmarks") or [])
+        related_total += len(t.get("related") or [])
+
+    return {
+        "total_tools": len(tools),
+        "total_categories": len(cats),
+        "total_features": total_features,
+        "usage_examples": usage_total,
+        "bookmarks": bookmark_total,
+        "related_links": related_total,
+        "tools_with_features": with_features,
+        "platforms": dict(sorted(platform_count.items(), key=lambda kv: -kv[1])),
+        "top_categories": dict(sorted(by_cat.items(), key=lambda kv: -kv[1])[:10]),
+    }
+
+
+@tools_app.command("export")
+def tools_export_cmd(
+    out: Annotated[
+        str | None,
+        typer.Option(
+            "--out", "-o",
+            help="Path output. Format ditentukan dari ekstensi atau --format.",
+        ),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Format: json | csv | md."),
+    ] = "md",
+    category: Annotated[
+        str | None,
+        typer.Option("--category", "-c", help="Limit export ke satu kategori."),
+    ] = None,
+) -> None:
+    """Ekspor katalog tools ke JSON, CSV, atau Markdown."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        tools = catalog.get("tools", [])
+        if category:
+            tools = [t for t in tools if t.get("category") == category]
+
+        fmt = format.lower()
+        if out:
+            suffix = Path(out).suffix.lower().lstrip(".")
+            if suffix in ("json", "csv", "md"):
+                fmt = suffix
+
+        text = _export_catalog_text(tools, catalog, fmt)
+        if out:
+            dest = Path(out).resolve()
+            cwd = Path.cwd().resolve()
+            if not dest.is_relative_to(cwd):
+                render_error_panel(
+                    _state.console, _state.caps,
+                    f"--out path di luar direktori kerja: {dest}",
+                )
+                raise typer.Exit(3)
+            try:
+                dest.write_text(text, encoding="utf-8")
+                from app.cli.theme import PALETTE as PAL
+                _state.console.print(
+                    f"  [{PAL.ok}]Katalog diekspor:[/] [{PAL.blue_mist}]{dest}[/] "
+                    f"[{PAL.muted}]({len(tools)} tool, {fmt})[/]"
+                )
+            except OSError as e:
+                render_error_panel(_state.console, _state.caps, f"Gagal tulis export: {e}")
+                raise typer.Exit(3) from None
+        else:
+            typer.echo(text)
+
+    _run(_do())
+
+
+def _export_catalog_text(
+    tools: list[dict[str, Any]],
+    catalog: dict[str, Any],
+    fmt: str,
+) -> str:
+    """Render catalog as JSON / CSV / Markdown (deterministic)."""
+    import csv
+    import io
+
+    if fmt == "json":
+        return json.dumps({"total": len(tools), "tools": tools}, indent=2, ensure_ascii=False)
+
+    if fmt == "csv":
+        buf = io.StringIO()
+        fieldnames = [
+            "name", "url", "category", "description",
+            "features", "usage", "bookmarks", "related",
+        ]
+        writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for t in tools:
+            row = dict(t)
+            for k in ("features", "usage", "bookmarks", "related"):
+                if isinstance(row.get(k), list):
+                    row[k] = " | ".join(str(x) for x in row[k])
+            writer.writerow(row)
+        return buf.getvalue()
+
+    # markdown
+    by_cat: dict[str, list[dict[str, Any]]] = {}
+    for t in tools:
+        by_cat.setdefault(str(t.get("category", "?")), []).append(t)
+    cat_labels = {str(c["id"]): str(c["label"]) for c in catalog.get("categories", [])}
+
+    lines = [
+        "# Cyense — Pentest Tools Catalog",
+        "",
+        f"Total {len(tools)} tools · ekspor dari `cyense tools export`.",
+        "",
+    ]
+    for cat_id, items in sorted(by_cat.items()):
+        label = cat_labels.get(cat_id, cat_id)
+        if not items:
+            continue
+        lines.append(f"## {label}")
+        lines.append("")
+        for t in items:
+            name = t.get("name", "?")
+            url = t.get("url", "")
+            desc = t.get("description", "")
+            lines.append(f"### {name}")
+            if url:
+                lines.append(f"**URL:** {url}")
+            if desc:
+                lines.append(f"\n{desc}")
+            feats = t.get("features", [])
+            if feats:
+                lines.append("\n**Fitur:**")
+                lines += [f"- {f}" for f in feats]
+            usage = t.get("usage", [])
+            if usage:
+                lines.append("\n**Contoh penggunaan:**")
+                lines += [f"- `{u}`" for u in usage]
+            bookmarks = t.get("bookmarks", [])
+            if bookmarks:
+                lines.append("\n**Bookmark:**")
+                lines += [f"- {b}" for b in bookmarks]
+            related = t.get("related", [])
+            if related:
+                lines.append(f"\n**Terkait:** {', '.join(str(x) for x in related)}")
+            lines.append("")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

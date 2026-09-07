@@ -340,7 +340,28 @@ cyense crypt kdf 'password' --algo pbkdf2 --length 32
 cyense crypt random 16
 ```
 
-### 7.5 Alur lengkap end-to-end
+### 7.5 Katalog tools pentest (browse/search/detail)
+
+```bash
+cyense tools list                            # semua tool per kategori (332 tool, 35 kategori)
+cyense tools list --category osint           # hanya kategori OSINT
+cyense tools list --category recon --query dns   # filter nama/deskripsi/tag
+cyense tools list --feature subdomain        # cari tool berdasarkan fitur/kapabilitas
+cyense tools categories                      # daftar kategori + jumlah tool
+cyense tools info nmap                       # profil lengkap satu tool (fitur, usage, bookmarks, related)
+cyense tools usage nmap                      # hanya contoh penggunaan/perintah
+cyense tools list --json                     # output JSON mentah
+```
+
+Setiap tool menampilkan nama, URL, deskripsi, badge platform, daftar **fitur**
+(kapabilitas), **contoh penggunaan** (`usage`), **bookmark/referensi**, dan
+**tool terkait** (`related`). `cyense tools info <name>` membuka profil penuh;
+`cyense tools usage <name>` menampilkan contoh perintah. Katalog ini juga
+tersedia di halaman Website `/#/tools` dengan pencarian + filter kategori yang
+sama, dan mengklik sebuah kartu membuka panel detail (`usage`, bookmark,
+related, fitur lengkap).
+
+### 7.6 Alur lengkap end-to-end
 
 ```bash
 make up

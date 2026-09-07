@@ -54,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(export.router, prefix="/api/v1")  # CSV/PDF exports
     app.include_router(viewer.router, prefix="/api/v1")  # web viewer dashboard
     app.include_router(websites.router, prefix="/api/v1")  # saved scanned-websites list
+    app.include_router(system.tools_app, prefix="/api/v1")  # pentest tools catalog (/tools)
     app.include_router(ui.router)                        # Svelte web UI (/ui)
     return app
 
