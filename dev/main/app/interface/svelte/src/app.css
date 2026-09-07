@@ -209,6 +209,15 @@ section.block .sub { color: var(--ink-soft); margin: 0 0 20px; font-size: 16px; 
 .tool-modal-close:hover { color: var(--err); }
 .tool-modal-desc { color: var(--ink-soft); font-size: 15px; }
 .tool-modal-h { font-family: var(--serif); font-weight: 600; font-size: 16px; margin: 16px 0 6px; }
+
+.tool-pivot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; font-size: 13px; }
+.tool-pivot > div { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pivot-label { font-family: var(--mono, monospace); font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-mute, #8a93a6); }
+.tag-chip-ui { border: 1px solid var(--line, #2d3748); border-radius: 999px; padding: 2px 9px; font-size: 12px; color: var(--accent-strong, #7cc4ff); background: color-mix(in srgb, var(--accent, #3b82f6) 10%, transparent); }
+.tag-chip-ui.out { color: var(--ink-soft, #c6cede); background: var(--surface-2, rgba(127,127,127,.08)); }
+.tool-mech { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 8px; }
+.tool-mech p { margin: 0; color: var(--ink-soft, #9aa4b5); font-size: 13.5px; line-height: 1.65; }
+.tool-src { font-size: 12px; color: var(--ink-mute, #8a93a6); margin: 0 0 4px; }
 .tool-modal-list { margin: 0; padding-left: 20px; color: var(--ink-soft); font-size: 14px; display: flex; flex-direction: column; gap: 5px; }
 .tool-modal-list a { color: var(--accent-strong); word-break: break-all; }
 .tool-modal-usage { display: flex; flex-direction: column; gap: 6px; }

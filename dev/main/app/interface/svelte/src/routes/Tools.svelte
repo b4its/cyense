@@ -38,6 +38,10 @@
       (t.platforms || []).join(' '),
       (t.features || []).join(' '),
       (t.usage || []).join(' '),
+      (t.you_have || []).join(' '),
+      (t.you_get || []).join(' '),
+      (t.osint_category || ''),
+      (t.how_it_works || [])[0] || '',
     ].join(' ').toLowerCase()
     return hay.includes(q)
   })
@@ -177,7 +181,46 @@
         {#if selected.category}
           <span class="badge">{selected.category}</span>
         {/if}
+        {#if selected.pricing}
+          <span class="badge info">{selected.pricing}</span>
+        {/if}
+        {#if selected.access}
+          <span class="badge">{selected.access}</span>
+        {/if}
+        {#if selected.tool_status}
+          <span class="badge {selected.tool_status === 'Operational' ? 'info' : 'high'}">{selected.tool_status}</span>
+        {/if}
       </div>
+
+      {#if (selected.how_it_works || []).length}
+        <!-- OSINT Radar mirror: the tool's original operating model, kept
+             verbatim from the source library (you-have → you-get pivot map
+             plus the investigator how-it-works write-up). -->
+        <h3 class="tool-modal-h">Cara Kerja (asli — OSINT Radar)</h3>
+        {#if (selected.you_have || []).length || (selected.you_get || []).length}
+          <div class="tool-pivot">
+            {#if (selected.you_have || []).length}
+              <div><span class="pivot-label">You have</span>
+                {#each selected.you_have as v}<span class="tag-chip-ui">{v}</span>{/each}
+              </div>
+            {/if}
+            {(selected.you_have || []).length && (selected.you_get || []).length ? '→' : ''}
+            {#if (selected.you_get || []).length}
+              <div><span class="pivot-label">You get</span>
+                {#each selected.you_get as v}<span class="tag-chip-ui out">{v}</span>{/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+        <div class="tool-mech">
+          {#each selected.how_it_works as para}<p>{para}</p>{/each}
+        </div>
+        {#if selected.source_page}
+          <p class="tool-src">Entri & verifikasi:
+            <a href={selected.source_page} target="_blank" rel="noopener noreferrer">OSINT Radar · {selected.osint_category || 'tool library'}</a>
+          </p>
+        {/if}
+      {/if}
 
       {#if (selected.features || []).length}
         <h3 class="tool-modal-h">Fitur</h3>
