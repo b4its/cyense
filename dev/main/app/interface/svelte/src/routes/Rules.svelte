@@ -2,33 +2,36 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import SearchInput from '../components/SearchInput.svelte'
+  import Pagination from '../components/Pagination.svelte'
   import { buildIndex, searchIndex } from '../lib/search.js'
 
   let rules = null
   let loading = true
   let error = ''
   let query = ''
+  let page = 1
+  let pageSize = 24
 
   // ---- search index ------------------------------------------------------
   // Built ONCE when the catalog arrives. Flat arrays stay aligned by index:
   //   flatRule[i]  → the rule object
   //   flatKey[i]   → lowercased searchable string
-  //   flatCat[i]   → owning category label
-  // Filtering then is a single linear pass — no nested per-group re-walks,
-  // no N+1.
+  //   catOf(rule)  → owning category label (by row identity, so it survives
+  //                   searchIndex filtering which may drop rows and shift i).
   let flatRule = []
   let flatKey = []
-  let flatCat = []
+  let catOf = new Map()
   let built = false
 
   function buildFlat() {
     if (!rules || built) return
     flatRule = []
     flatKey = []
-    flatCat = []
+    catOf = new Map()
     for (const [g, list] of Object.entries(rules)) {
       for (const r of list || []) {
         flatRule.push(r)
+        catOf.set(r, g)
         flatKey.push(
           [
             r.rule,
@@ -41,7 +44,6 @@
             .join(' ')
             .toLowerCase()
         )
-        flatCat.push(g)
       }
     }
     built = true
@@ -49,21 +51,33 @@
 
   $: if (rules) buildFlat()
 
-  const index = { rows: flatRule, keys: flatKey }
+  // Reactive index: recompute when flatRule/flatKey are rebuilt (they'd
+  // otherwise be captured by a const and stay empty → 0 rules forever).
+  $: index = { rows: flatRule, keys: flatKey }
   $: matched = searchIndex(index, query)
 
-  // Regroup the flat matches by category, preserving the catalog order of
-  // groups and skipping empty ones.
+  // Pagination over the flat matched set (regrouped by category within the
+  // current page so each visible section only shows rules from this slice).
+  $: totalRules = matched.length
+  $: start = (page - 1) * pageSize
+  $: paged = matched.slice(start, start + pageSize)
+
+  // Reset page to 1 when the search filter changes (not when paging itself).
+  $: { void query; page = 1 }
+
+  // Regroup paged rules by category, preserving the order they appear in.
+  // catOf() keys rule → group by object identity, so filtered rows resolve
+  // their true category even when searchIndex removed some rows upstream.
   $: visibleGroups = (() => {
     const out = []
     const order = new Map()
-    for (let i = 0; i < matched.length; i++) {
-      const cat = flatCat[i]
+    for (const r of paged) {
+      const cat = catOf.get(r) || 'Uncategorized'
       if (!order.has(cat)) {
         order.set(cat, out.length)
         out.push([cat, []])
       }
-      out[order.get(cat)][1].push(matched[i])
+      out[order.get(cat)][1].push(r)
     }
     return out
   })()
@@ -80,10 +94,10 @@
 <section class="hero" style="padding-bottom:24px">
   <div class="wrap">
     <div class="kicker">Rule Catalog</div>
-    <h1>{loading ? '…' : `${matched.length} dari ${flatRule.length} rules`}</h1>
+    <h1>{loading ? '…' : `${totalRules} dari ${flatRule.length} rules`}</h1>
     <p class="lead">IDOR, XSS, SQLi, deteksi teknologi, port scan, dan CVE — dikelompokkan per kategori.</p>
     <div style="max-width:480px">
-      <SearchInput bind:value={query} count={matched.length} placeholder="Cari rule / CWE / severity…" label="Cari rules" />
+      <SearchInput bind:value={query} count={totalRules} placeholder="Cari rule / CWE / severity…" label="Cari rules" />
     </div>
   </div>
 </section>
@@ -92,7 +106,7 @@
   <div class="wrap">
     {#if loading}<div class="skeleton" style="height:300px"></div>
     {:else if error}<p style="color:var(--err)">{error}</p>
-    {:else if query && !matched.length}
+    {:else if query && !totalRules}
       <p class="muted">Tidak ada rule yang cocok dengan "{query}".</p>
     {:else}
       {#each visibleGroups as [g, list]}
@@ -118,6 +132,8 @@
           </div>
         </section>
       {/each}
+      <Pagination bind:page={page} bind:pageSize={pageSize}
+                  total={totalRules} label="Navigasi rules per halaman" />
     {/if}
   </div>
 </section>

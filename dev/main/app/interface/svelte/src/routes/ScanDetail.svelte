@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, tick } from 'svelte'
   import { api, sevRank, fmtDuration } from '../lib/api.js'
   import StageGraph from '../components/StageGraph.svelte'
   import StickyToc from '../components/StickyToc.svelte'
@@ -8,6 +8,7 @@
   import Celebration from '../components/Celebration.svelte'
   import DiffWidget from '../components/DiffWidget.svelte'
   import SearchInput from '../components/SearchInput.svelte'
+  import Pagination from '../components/Pagination.svelte'
 
   export let scanId = ''
   let report = null
@@ -20,6 +21,35 @@
   let coverage = null
   let coverageErr = ''
   let query = ''
+  let findingPage = 1
+  let findingSize = 12
+
+  // ---- findings pagination ------------------------------------------------
+  // 'findings' is the master sorted+searched list used by the TOC + all the
+  // category sections below. We only render findingSize cards at a time, and
+  // the TOC jump helper flips findingPage so the target is on screen before it
+  // scrolls. The global anchor ids f-{i} stay stable across pages because we
+  // pass i+offset when rendering the slice.
+  $: findingPages = Math.max(1, Math.ceil(findings.length / findingSize))
+  $: findingStart = (findingPage - 1) * findingSize
+  $: findingSlice = findings.slice(findingStart, findingStart + findingSize)
+  $: { void query; void scanId; findingPage = 1 }
+  // clamp if dataset shrank under the current page (e.g. new search hits fewer)
+  $: if (findingPage > findingPages) findingPage = findingPages
+
+  async function jumpToFinding(id) {
+    // id is 'f-<globalIndex>' — pick the page that contains it, then scroll.
+    const m = /^f-(\d+)$/.exec(id)
+    if (m) {
+      const idx = Number(m[1])
+      const want = Math.floor(idx / findingSize) + 1
+      if (want !== findingPage) {
+        findingPage = want
+        await tick()
+      }
+    }
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   // Realtime progress polling: while the scan is queued/running we poll
   // GET /scans/{id} every ~1.2s so stage/progress/events stay live and the
@@ -304,7 +334,7 @@
   <!-- Findings layout: sticky TOC + content -->
   <section class="block">
     <div class="wrap layout-split">
-      <StickyToc {ids} activeId={activeHeading} />
+      <StickyToc {ids} activeId={activeHeading} onjump={jumpToFinding} />
       <div>
         <div style="max-width:480px;margin-bottom:20px">
           <SearchInput bind:value={query} count={findings.length} placeholder="Cari temuan (rule / title / severity)…" label="Cari temuan" />
@@ -524,11 +554,15 @@
         {#if findings.length}
           <section class="block" id="findings">
             <h2>Semua Temuan</h2>
-            <p class="sub">Klik entri di TOC untuk lompat ke detail.</p>
+            <p class="sub">Klik entri di TOC untuk lompat ke detail (otomatis pindah halaman).</p>
             <div style="display:flex;flex-direction:column;gap:14px">
-              {#each findings as f, i}
-                <div id="f-{i}"><FindingCard f={f} /></div>
+              {#each findingSlice as f, i}
+                <div id="f-{findingStart + i}"><FindingCard f={f} /></div>
               {/each}
+            </div>
+            <div class="wrap" style="padding-left:0;padding-right:0">
+              <Pagination bind:page={findingPage} bind:pageSize={findingSize}
+                          total={findings.length} label="Navigasi temuan" />
             </div>
           </section>
         {:else}

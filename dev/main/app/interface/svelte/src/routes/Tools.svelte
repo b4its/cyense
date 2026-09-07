@@ -3,6 +3,7 @@
   import { api } from '../lib/api.js'
   import SearchInput from '../components/SearchInput.svelte'
   import SearchableSelect from '../components/SearchableSelect.svelte'
+  import Pagination from '../components/Pagination.svelte'
 
   let catalog = null
   let loading = true
@@ -10,6 +11,8 @@
   let query = ''
   let activeCat = '' // '' = all categories, otherwise a category id
   let selected = null // the tool open in the detail drawer
+  let page = 1
+  let pageSize = 24
 
   onMount(async () => {
     try {
@@ -20,7 +23,8 @@
 
   // ---- search ------------------------------------------------------------
   // Derived purely from catalog/query/activeCat so it always recomputes when
-  // those change (no captured-then-stale arrays). 332 rows is tiny.
+  // those change (no captured-then-stale arrays). Paginate the flat result,
+  // then regroup only the current page so cards stay grouped by category.
   $: flatTools = catalog?.tools || []
 
   $: filtered = flatTools.filter((t) => {
@@ -38,12 +42,24 @@
     return hay.includes(q)
   })
 
+  $: totalTools = filtered.length
+  $: start = (page - 1) * pageSize
+  $: paged = filtered.slice(start, start + pageSize)
+
+  // Reset to first page whenever the result set changes (search/category).
+  // The `void` reads register query/activeCat as dependencies; page changes
+  // from the pager itself do NOT retrigger this.
+  $: {
+    void query; void activeCat
+    page = 1
+  }
+
   // ---- grouping (preserve catalog category order, skip empty) ------------
   $: visibleGroups = (() => {
     const out = []
     for (const c of catalog?.categories || []) {
       if (activeCat && c.id !== activeCat) continue
-      const tools = filtered.filter((t) => t.category === c.id)
+      const tools = paged.filter((t) => t.category === c.id)
       if (tools.length) out.push({ ...c, tools })
     }
     return out
@@ -130,6 +146,10 @@
         </section>
       {/each}
     {/if}
+  </div>
+  <div class="wrap">
+    <Pagination bind:page={page} bind:pageSize={pageSize}
+                total={totalTools} label="Navigasi tool per halaman" />
   </div>
 </section>
 

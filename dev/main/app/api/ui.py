@@ -21,6 +21,11 @@ _UI_DIST = Path(__file__).resolve().parents[1] / "interface" / "svelte" / "dist"
 _INDEX = _UI_DIST / "index.html"
 
 
+# HTML must be revalidated on every load: index.html references hashed assets,
+# and caching it would serve a stale asset set after each `npm run build`.
+_HTML_HEADERS = {"Cache-Control": "no-cache"}
+
+
 @router.get("", include_in_schema=False)
 @router.get("/", include_in_schema=False)
 async def ui_index() -> FileResponse:
@@ -32,7 +37,7 @@ async def ui_index() -> FileResponse:
                 "cd app/interface/svelte && npm install && npm run build"
             ),
         )
-    return FileResponse(_INDEX, media_type="text/html")
+    return FileResponse(_INDEX, media_type="text/html", headers=_HTML_HEADERS)
 
 
 @router.get("/assets/{file_path:path}", include_in_schema=False)
@@ -60,4 +65,4 @@ async def ui_fallback(path: str) -> FileResponse:
                 "cd app/interface/svelte && npm install && npm run build"
             ),
         )
-    return FileResponse(_INDEX, media_type="text/html")
+    return FileResponse(_INDEX, media_type="text/html", headers=_HTML_HEADERS)

@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte'
   import { api, fmtTime } from '../lib/api.js'
   import SearchInput from '../components/SearchInput.svelte'
+  import Pagination from '../components/Pagination.svelte'
   import { buildIndex, searchIndex } from '../lib/search.js'
 
   let sites = []
@@ -9,6 +10,8 @@
   let error = ''
   let pollTimer = null
   let query = ''
+  let page = 1
+  let pageSize = 12
 
   // Saved results are persisted server-side (store.json + report.json per
   // scan) — poll so newly finished scans appear without a manual refresh.
@@ -26,13 +29,17 @@
   })
   onDestroy(() => { if (pollTimer) clearInterval(pollTimer) })
 
-  // Single-pass search index, rebuilt only when the dataset changes.
+  // ---- filter / search with pagination ---------------------------------
   $: index = buildIndex(sites, (s) =>
     [s.host, s.target, s.mode, s.status, s.scan_id,
      s.summary?.critical, s.summary?.high, s.summary?.medium,
      s.summary?.low, s.summary?.info, s.summary?.total].join(' ')
   )
   $: filtered = searchIndex(index, query)
+  $: totalSites = filtered.length
+  $: start = (page - 1) * pageSize
+  $: pagedSites = filtered.slice(start, start + pageSize)
+  $: { void query; page = 1 }
 
   $: totalFindings = (s) =>
     (s.summary?.critical || 0) + (s.summary?.high || 0) +
@@ -50,12 +57,12 @@
     <h1>Daftar Website yang Sudah Di-scan</h1>
     <p class="lead">
       Setiap entri = satu target (host/domain) dengan hasil scan tersimpan.
-      {filtered.length} website · {countByStatus.completed || 0} selesai
+      {totalSites} website · {countByStatus.completed || 0} selesai
       {#if countByStatus.failed}{countByStatus.failed} gagal{/if}
     </p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <div style="flex:1;min-width:240px;max-width:480px">
-        <SearchInput bind:value={query} count={filtered.length} placeholder="Cari host / URL / mode…" label="Cari website" />
+        <SearchInput bind:value={query} count={totalSites} placeholder="Cari host / URL / mode…" label="Cari website" />
       </div>
       <a class="btn primary" href="#/scans">← Scan Library</a>
       <a class="btn" href="#/rules">Lihat Rules</a>
@@ -69,14 +76,14 @@
       <div class="skeleton" style="height:240px"></div>
     {:else if error}
       <p style="color:var(--err)">{error}</p>
-    {:else if filtered.length}
+    {:else if pagedSites.length}
       <div class="table-scroll">
       <table class="tbl">
         <thead>
           <tr><th>Website</th><th>Mode</th><th>Status</th><th>Temuan</th><th>Terakhir di-scan</th></tr>
         </thead>
         <tbody>
-        {#each filtered as s}
+        {#each pagedSites as s}
           <tr>
             <td>
               <a class="mono" href="#/scan/{s.scan_id}" style="font-weight:600">{s.host}</a>
@@ -100,7 +107,9 @@
         </tbody>
       </table>
       </div>
-    {:else if sites.length}
+      <Pagination bind:page={page} bind:pageSize={pageSize}
+                  total={totalSites} label="Navigasi websites per halaman" />
+    {:else if totalSites}
       <p class="muted">Tidak ada website yang cocok dengan "{query}".</p>
     {:else}
       <p class="muted">Belum ada hasil tersimpan. Jalankan scan website/link/domain dari

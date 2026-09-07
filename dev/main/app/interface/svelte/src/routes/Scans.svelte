@@ -4,6 +4,7 @@
   import ScanCard from '../components/ScanCard.svelte'
   import SearchInput from '../components/SearchInput.svelte'
   import SearchableSelect from '../components/SearchableSelect.svelte'
+  import Pagination from '../components/Pagination.svelte'
   import { buildIndex, searchIndex } from '../lib/search.js'
 
   let scans = []
@@ -14,6 +15,8 @@
   let submitting = false
   let msg = ''
   let query = ''
+  let page = 1
+  let pageSize = 12
 
   onMount(async () => { try { scans = await api.listScans() || [] } catch (e) { error = String(e) } loading = false })
 
@@ -50,6 +53,9 @@
      s.summary?.critical, s.summary?.high, s.summary?.medium].join(' ')
   )
   $: filtered = searchIndex(index, query)
+  $: start = (page - 1) * pageSize
+  $: paged = filtered.slice(start, start + pageSize)
+  $: { void query; page = 1 }
 </script>
 
 <section class="hero" style="padding-bottom:24px">
@@ -87,10 +93,12 @@
   <div class="wrap">
     {#if loading}<div class="skeleton" style="height:240px"></div>
     {:else if error}<p style="color:var(--err)">{error}</p>
-    {:else if filtered.length}
+    {:else if paged.length}
       <div class="grid">
-        {#each filtered as s}<ScanCard {s} />{/each}
+        {#each paged as s}<ScanCard {s} />{/each}
       </div>
+      <Pagination bind:page={page} bind:pageSize={pageSize}
+                  total={filtered.length} label="Navigasi scan per halaman" />
     {:else if scans.length}
       <p class="muted">Tidak ada scan yang cocok dengan "{query}".</p>
     {:else}<p class="muted">Belum ada scan.</p>{/if}
