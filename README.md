@@ -354,7 +354,7 @@ make lint       # ruff, 0 errors
 | GET | `/scans/resumable` | List resumable scans / Daftar scan yang bisa dilanjutkan |
 | DELETE | `/scans/{id}` | Delete scan & artifacts / Hapus scan & artefak |
 | GET | `/rules` | Active rules catalog / Daftar rule aktif |
-| GET | `/tools` | Pentest tools catalog (Kali-style + OSINT, 343 tools, 35 categories, each with `features`) / Katalog tools pentest (Kali-style + OSINT, 343 tool, 35 kategori, masing-masing dengan fitur) |
+| GET | `/tools` | Pentest tools catalog (Kali-style + OSINT + full OSINT Radar mirror, 684 tools, 56 categories, each with `features`; OSR entries keep the original how-it-works mechanism + you-have→you-get pivot) / Katalog tools pentest (Kali-style + OSINT + mirror penuh OSINT Radar, 684 tool, 56 kategori; entri OSR menyimpan mekanisme asli + pivot you-have→you-get) |
 | GET | `/viewer/{id}` | Web viewer landing page / Halaman web viewer |
 | GET | `/viewer/{id}/data` | Viewer JSON data / Data JSON viewer |
 | GET | `/viewer/{id}/trajectories` | Agent trajectory logs / Log trajectory agent |
@@ -390,10 +390,10 @@ curl -X POST http://localhost:8000/api/v1/fixes/<session_id>/apply \
 ### Pentest tools catalog (CLI & Website) / Katalog tools pentest (CLI & Website)
 
 ```bash
-cyense tools list                            # all 343 tools grouped by category
+cyense tools list                            # all 684 tools grouped by category
 cyense tools list --category osint           # only OSINT tools
 cyense tools list --feature subdomain        # search tools by capability/feature
-cyense tools categories                      # list 35 categories with counts
+cyense tools categories                      # list 56 categories with counts
 cyense tools info nmap                       # full profile: features, usage, bookmarks, related
 cyense tools usage nmap                      # usage examples only
 ```
@@ -449,7 +449,7 @@ cyense/
 │   │   │   ├── engines/               ← link, program, github, website, domain, live_xss, live_sqli, diff_scope, scan_levels
 │   │   │   ├── cli/                   ← typer CLI + web viewer + renderer + theme
 │   │   │   ├── interface/             ← Svelte web UI frontend + static viewer assets
-│   │   │   ├── program/               ← CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 + DES001-RND002 rules + tools_catalog/tool_features + pentest_tools.md
+│   │   │   ├── program/               ← CY001-CY013 + XS001-XS011 + SQLI001-SQLI006 + DES001-RND002 rules + tools_catalog/tool_features + pentest_tools.md + osintradar_tools/data
 │   │   │   ├── remediation/           ← fixer, strategies, applier, store
 │   │   │   ├── report/                ← json + html + sarif + csv + pdf + coverage + md + compare
 │   │   │   ├── services/              ← multi_scan, scan_resume, openapi_parser
@@ -515,7 +515,7 @@ cyense/
 - ✅ E2E verified: scan → findings → remediation → safety gate / E2E live terverifikasi
 - ✅ Strix-derived features: scan resume, target-list, instructions, diff-base, headless mode / Fitur dari Strix: resume, target-list, instruksi, diff-base, mode headless
 - ✅ Crypto toolbelt (`cyense crypt`): MD5/SHA-1/SHA-2/SHA-3 hash + identifikasi, HMAC, AES (ECB/CBC/CTR/GCM), Blowfish, Twofish (pure-Python, KAT-verified), ChaCha20/Salsa20, RC4, RSA (OAEP/PSS), ECC (ECDSA), PBKDF2/scrypt, random CSPRNG / Toolbelt kriptografi (`cyense crypt`): hash MD5/SHA-1/SHA-2/SHA-3 + identifikasi, HMAC, AES (ECB/CBC/CTR/GCM), Blowfish, Twofish (pure-Python, terverifikasi KAT), ChaCha20/Salsa20, RC4, RSA (OAEP/PSS), ECC (ECDSA), PBKDF2/scrypt, random CSPRNG
-- ✅ Pentest tools catalog (CLI + Website + API `/tools`): 343 tools · 35 kategori (Kali-style + OSINT), tiap tool dengan daftar fitur/kapabilitas, contoh penggunaan (`usage`), bookmark/referensi, dan tool terkait (`related`); pencarian `--feature`/search bar, filter kategori, detail per tool (`tools info`/`tools usage` + panel detail Website) / Katalog tools pentest (CLI + Website + API `/tools`): 343 tool · 35 kategori, tiap tool dengan fitur, contoh penggunaan, bookmark, dan tool terkait; pencarian fitur, filter kategori, detail per tool
+- ✅ Pentest tools catalog (CLI + Website + API `/tools`): 684 tools · 56 kategori (Kali-style + OSINT + OSINT Radar), tiap tool dengan daftar fitur/kapabilitas, contoh penggunaan (`usage`), bookmark/referensi, dan tool terkait (`related`), dan entri OSINT Radar dengan mekanisme cara kerja aslinya; pencarian `--feature`/search bar, filter kategori, detail per tool (`tools info`/`tools usage` + panel detail Website) / Katalog tools pentest (CLI + Website + API `/tools`): 684 tool · 56 kategori, tiap tool dengan fitur, contoh penggunaan, bookmark, dan tool terkait; pencarian fitur, filter kategori, detail per tool
 - 📋 Backlog: GitLab adapter, more CI adapters, interactive web UI (see PRD features) / Backlog: GitLab adapter, CI adapter tambahan, interactive web UI
 
 ---
