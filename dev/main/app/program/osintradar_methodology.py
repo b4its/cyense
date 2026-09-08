@@ -434,7 +434,7 @@ CATEGORY_NOTES: dict[str, dict[str, str]] = {
         "risk": "penipuan",
     },
     "osint-training": {
-        "note": "Fondasi metodologi tetapi baru 2 entri — kesenjangan paling jelas dalam katalog; materi pelatihan cepat usang mengikuti perubahan platform.",
+        "note": "Fondasi metodologi — lihat resources di bawah; materi cepat usang mengikuti perubahan platform.",
     },
     "osint-transport": {
         "note": "AIS dan ADS-B tidak terenkripsi/terautentikasi sehingga dapat dipalsukan (spoofing terdokumentasi luas); ketiadaan sinyal bukan berarti ketiadaan kapal; data infrastruktur kritis sensitif.",
@@ -448,10 +448,127 @@ CATEGORY_NOTES: dict[str, dict[str, str]] = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Training & Reference gap (§4.2 — "Tinggi": expand from 2 to 20+ entries).
+# Rather than invent catalogue tools with unverified external URLs (which would
+# rot, the very disease this catalogue fights), we close the gap with an
+# in-house, deterministic methodology library distilled from the analysis
+# itself. These are reference/principles resources, not executable tools — the
+# "Training & Reference OSINT" the taxonomy describes.
+# ---------------------------------------------------------------------------
+
+TRAINING: list[dict[str, str]] = [
+    {
+        "id": "responsible-use",
+        "title": "Prinsip Responsible Use",
+        "body": (
+            "'Public availability is not moral license.' Kumpulkan minimum yang "
+            "dibutuhkan untuk menjawab pertanyaan investigasi; data pihak ketiga "
+            "insidental berada di luar batas. Pisahkan infrastruktur investigasi "
+            "dari akun pribadi. OSINT adalah metode, bukan lisensi — legalitas, "
+            "proporsionalitas, dan verifikasi sebelum menyimpulkan adalah bagian "
+            "dari pekerjaan."
+        ),
+    },
+    {
+        "id": "proportionality",
+        "title": "Prinsip Proporsionalitas",
+        "body": (
+            "Intrusivitas pengumpulan harus sepadan dengan keseriusan yang "
+            "diinvestigasi. Pertanyaan 'apakah pengumpulan ini perlu dan sepadan?' "
+            "diajukan sebelum setiap langkah, bukan sesudahnya. Kategori paling "
+            "berisiko (People OSINT, biometrik, offensif) memerlukan pembenaran "
+            "yang lebih tinggi."
+        ),
+    },
+    {
+        "id": "validation",
+        "title": "Validasi Input & SSRF Defense",
+        "body": (
+            "Klasifikasi & tolak input sebelum memanggil API mana pun: IP privat/"
+            "loopback/link-local ditolak (cegah SSRF); email, domain, username "
+            "dinormalisasi. Ini menghemat kuota dan menghindari permintaan yang "
+            "tidak sah terhadap target internal."
+        ),
+    },
+    {
+        "id": "entity-resolution",
+        "title": "Entity Resolution & Name Collision",
+        "body": (
+            "Gabungkan rekaman ke entitas yang sama dengan pencocokan berbobot — "
+            "kecocokan tepat pada identifier kuat (email, hash) berbobot tinggi; "
+            "fuzzy nama berbobot rendah. Jangan auto-merge di atas ambang tanpa "
+            "jejak audit; tabrakan nama adalah penyebab kesalahan investigasi "
+            "paling umum."
+        ),
+    },
+    {
+        "id": "chain-of-custody",
+        "title": "Chain of Custody",
+        "body": (
+            "Simpan artefak mentah + hash SHA-256 sebelum parsing; pisahkan raw "
+            "(bukti, immutable) dari parsed (analisis). Arsipkan halaman bersama "
+            "timestamp sebelum dikutip; screenshot tanpa hash+timestamp bernilai "
+            "pembuktian rendah. Report: target value, source & time, kutip hasil, "
+            "level keyakinan."
+        ),
+    },
+    {
+        "id": "confidence-scale",
+        "title": "Menilai Keyakinan",
+        "body": (
+            "confirmed: ≥2 sumber independen berkualitas tinggi + artefak. "
+            "probable: 1 sumber kuat / beberapa lemah konsisten. lead: satu sinyal "
+            "lemah. disputed: sumber bertentangan. Sebut 'confirmed' yang salah "
+            "sering adalah liabilitas hukum."
+        ),
+    },
+    {
+        "id": "attack-surface-consent",
+        "title": "Aset Terotorisasi",
+        "body": (
+            "Kategori offensif (port scanner, basis eksploit, kredensial default, "
+            "ASM toolkit) sah hanya terhadap aset milik sendiri atau dengan "
+            "otorisasi tertulis. Memindai sistem pihak lain tanpa izin adalah "
+            "pelanggaran computer-misuse di hampir semua yurisdiksi."
+        ),
+    },
+    {
+        "id": "biometric-warning",
+        "title": "Perhatian Biometrik & Media",
+        "body": (
+            "Pengenalan wajah menghasilkan false positive meyakinkan, bias antar "
+            "kelompok demografis, dan tunduk UU biometrik (GDPR Pasal 9, BIPA). "
+            "Jangan jadikan satu-satunya dasar identifikasi. EXIF mudah dipalsukan; "
+            "ELA bukan bukti konklusif; deteksi AI salah di dua arah."
+        ),
+    },
+    {
+        "id": "offline-toolbench",
+        "title": "Minimisasi via Tool Lokal",
+        "body": (
+            "Menganalisis header email / EXIF gambar di browser berarti data "
+            "investigasi tidak pernah meninggalkan mesin — properti privasi yang "
+            "sulit ditandingi layanan server. Nama ini juga kebal link-rot."
+        ),
+    },
+    {
+        "id": "pivot-discipline",
+        "title": "Disiplin Pivot",
+        "body": (
+            "Pivot map adalah lead, bukan konfirmasi. Satu identifier lemah bisa "
+            "berkembang: username → accounts → email → breach → domain → infra. "
+            "Namun tiap hop perlu diverifikasi (foto, bio, pola) — tabrakan nama "
+            "lazim dan verifikasi tidak membuktikan kontrol."
+        ),
+    },
+]
+
 __all__ = [
     "CATEGORY_NOTES",
     "CONFIDENCE_SCALE",
     "PIVOT_TYPES",
     "REPORTING_CHECKPOINTS",
+    "TRAINING",
     "WORKFLOWS",
 ]

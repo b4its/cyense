@@ -577,6 +577,9 @@ def tools_catalog() -> dict[str, object]:
         "platforms":  {"windows": "Windows", ...},
         "pivot_types" / "workflows" / "reporting_checkpoints" /
         "confidence_scale":  OSINT Radar methodology layer (Lapis A)
+        "health":            verification view {operational, unverified, flagged,
+                                                 by_category}
+        "artefact_types":    you_get artefact → identifier type(s) for Pivot Map
       }
     """
     from app.program.osintradar_methodology import (
@@ -584,8 +587,10 @@ def tools_catalog() -> dict[str, object]:
         CONFIDENCE_SCALE,
         PIVOT_TYPES,
         REPORTING_CHECKPOINTS,
+        TRAINING,
         WORKFLOWS,
     )
+    from app.program.osintradar_pivot import ARTEFACT_TYPES, build_health
 
     return {
         "categories": [
@@ -605,6 +610,9 @@ def tools_catalog() -> dict[str, object]:
         "workflows": WORKFLOWS,
         "reporting_checkpoints": REPORTING_CHECKPOINTS,
         "confidence_scale": CONFIDENCE_SCALE,
+        "health": build_health(TOOLS),
+        "artefact_types": ARTEFACT_TYPES,
+        "training": TRAINING,
     }
 
 

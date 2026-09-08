@@ -271,6 +271,33 @@ def test_methodology_layer_in_payload(client) -> None:
                 "osint-social", "osint-synthetic"):
         assert cats[cid].get("risk"), f"{cid} should carry an explicit risk class"
 
+    # Health view — verification status totals + per-category breakdown.
+    h = data["health"]
+    assert h["operational"] + h["unverified"] + h["flagged"] == data["total"]
+    assert sum(v for v in h["totals"].values()) == data["total"]
+    assert h["by_category"]["osint-social"].get("Unverified", 0) >= 2
+    # Every category in the health breakdown must be a valid category id.
+    for cid in h["by_category"]:
+        assert cid in cats, f"health category {cid} missing from categories"
+
+    # Artefact types — each you_get label maps to one or more identifier codes
+    # that a pivot exploration can hand off; labels not mapped are terminal.
+    at = data["artefact_types"]
+    assert isinstance(at, dict) and len(at) >= 30
+    assert at.get("breaches") == ["email", "username", "domain"]
+    assert at.get("transactions") == ["wallet"]
+    assert at.get("subdomains") == ["domain", "ip"]
+    # Every artefact code in the map must be a valid pivot_type code.
+    all_codes = {p["code"] for p in data["pivot_types"]}
+    for codes in at.values():
+        for c in codes:
+            assert c in all_codes, f"artefact_type code {c} not in PIVOT_TYPES"
+
+    # Training & Reference — the gap-filling resources (§4.2).
+    assert len(data["training"]) >= 10, "should have ≥10 methodology resources"
+    for t in data["training"]:
+        assert t["id"] and t["title"] and t["body"]
+
 def test_cli_registers_tools_group() -> None:
     from app.cli.main import app
 
