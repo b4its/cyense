@@ -180,7 +180,7 @@ tools_catalog()  →  payload /api/v1/tools
         ▼
 Tools.svelte
    ├─ view=tools       →  chip "Saya punya" memfilter you_have; .cat-note per grup
-   ├─ view=workflows   →  kartu 6 alur → drawer: caution, steps → tool chips
+   ├─ view=workflows   →  kartu 10 alur (6 asli + 4 ekspansi) → drawer: caution, steps → tool chips
    │                     (nama tak resolve tampil teks biasa), checkpoints, skala
    ├─ view=toolbench   →  Toolbench.svelte: 10 utilitas (7 asli + 3 ext), masing-masing + Tombol case
    └─ view=casefile    →  CaseFile.svelte (localStorage; ekspor md/json + hash)
