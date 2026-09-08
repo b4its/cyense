@@ -82,10 +82,34 @@ POST /scans ──► asyncio queue ──► Orchestrator
 | **`link`** | URL with placeholder `http://app/invoice/{ID}` + credentials / URL ber-placeholder + kredensial | Recon → Prober → Verifier → Report (dynamic) | Verified findings + PII evidence + reproducible curl / Temuan terverifikasi + bukti PII + curl reprodusibel |
 | **`program`** | Source code (mounted `/workspace` or built-in sample) / Source code (mounted `/workspace` atau sample bawaan | Static analysis / Analisis statis | `file:line` + rule CY001–CY010 + XS001–XS008 + SQLI001–SQLI006 + remediation |
 | **`github`** | Repo link `https://github.com/owner/repo` / Link repo | Fetcher (tarball + sandbox) → Analyze → Report | Static findings + reproducible `commit_sha` + brain cache / Temuan statis + `commit_sha` reprodusibel + brain cache |
-| **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report | ID-bearing endpoints + live XSS surface (CSP, HSTS, eval/innerHTML in HTML *and external JS*, confirmed reflected params via benign probe, srcdoc, cookie exfiltration, missing headers) + live SQLi (error-based + blind boolean) |
-| **`domain`** | A domain `example.com` (no scheme needed) / Sebuah domain `example.com` (tanpa scheme) | DomainEngine: enumerate subdomains (Wayback + DNS) → run website pipeline per live host → aggregate / enumerasi subdomain → pipeline website per host hidup → agregasi | Per-host findings (tagged `host`) + per-host summary table + subdomain enumeration / Temuan per-host (ditandai `host`) + tabel ringkasan per-host + enumerasi subdomain |
+| **`website`** | Any public URL `http://example.com` (no placeholder needed) / URL publik apa pun (tanpa placeholder) | Crawler → Probe-IDOR → Analyze-XSS → Report (+ optional `--flag-hunt`: read-only CTF flag stage) | ID-bearing endpoints + live XSS surface (CSP, HSTS, eval/innerHTML in HTML *and external JS*, confirmed reflected params via benign probe, srcdoc, cookie exfiltration, missing headers) + live SQLi (error-based + blind boolean) + optional FLAG-PAGE / FLAG-PATH marker findings |
+| **`domain`** | A domain `example.com` (no scheme needed) / Sebuah domain `example.com` (tanpa scheme) | DomainEngine: enumerate subdomains (Wayback + DNS) → run website pipeline per live host → aggregate / enumerasi subdomain → pipeline website per host hidup → agregasi (mendukung `--flag-hunt`) | Per-host findings (tagged `host`) + per-host summary table + subdomain enumeration / Temuan per-host (ditandai `host`) + tabel ringkasan per-host + enumerasi subdomain |
 | **`api`** | OpenAPI/Swagger spec `openapi.yaml` or an endpoint exposing one / Spec OpenAPI/Swagger `openapi.yaml` atau endpoint yang memaparkannya | parse_openapi_spec → extract path params → test each declared endpoint (Strix pattern) | IDOR candidates on every declared endpoint / kandidat IDOR di setiap endpoint yang dideklarasikan |
 | **`fixes`** | Findings from any scan / Temuan dari scan manapun | Fixer → propose (dry-run) → apply+confirm → re-scan verify | Diff patch + proof finding disappeared + backup/revert / Diff patch + bukti temuan hilang + backup/revert |
+
+### CTF flag-hunt (read-only, website/domain) / Pencarian flag CTF (read-only, website/domain)
+
+After a website/domain scan completes you can search the target for CTF flag
+markers without leaving the read-only discipline (ground rule #6 — HTTP
+GET/HEAD only, no auto-exploit): run `cyense scan website <url>
+--flag-hunt [--i-have-permission]` (or `--flag-hunt` on `scan domain`).
+
+The optional **flag stage** (`app/engines/flag_hunt.py`, rules `FLAG-PAGE` /
+`FLAG-PATH`, severity `info`) does two things:
+
+1. scans the pages the crawler already fetched for marker formats —
+   `ctf{…}`, `flag{…}`, `picoCTF{…}` (body and response headers),
+2. GET-probes a short deterministic list of common flag-file locations on
+   the same origin (`/flag.txt`, `/flag`, `/ctf/flag.txt`, `/.flag`, …,
+   plus `/robots.txt` for a Disallow disclosure) and reports only 200s
+   carrying a marker or a flag-named path.
+
+Intended for **authorised CTF / security-lab / cyber-range targets** (the
+catalogue's `Cyber Range & CTF` space); findings are observations at
+`info` severity so a flag hunt never distorts vulnerability summaries —
+on production scopes a marker hit is a signal to check for an exposed
+secret. Same-origin only, honors `rate_limit`, capped to the fixed path
+list.
 
 ### Analysis Levels / Level Analisis
 
@@ -116,6 +140,9 @@ POST /scans ──► asyncio queue ──► Orchestrator
 cyense scan program --level high --i-have-permission --source-type sample
 # → 13 findings (vs 10 at medium) — CY011 data-flow catches 3 additional IDOR
 cyense scan github https://github.com/owner/repo --level max --i-have-permission
+cyense scan website http://target.lab --i-have-permission --flag-hunt
+# → normal website findings + FLAG-PAGE (marker di halaman ter-crawl) / FLAG-PATH (flag.txt reachable)
+cyense scan domain target.lab --i-have-permission --flag-hunt   # flag hunt per host hidup
 ```
 
 **73 static detection rules / 73 aturan deteksi statis** — 13 IDOR `CY001–CY013`, 11 XSS `XS001–XS011`, 6 SQLi `SQLI001–SQLI006`, **43 CWE-broad security** `DES001–RND002` (deserialization, crypto, passwords, transport, files, XML/XXE, CRLF, CSV, session, process/reflection injection, error handling, races, regex, obsolete, logging/privacy, least-privilege) — plus live rules: `IDOR-LINK`, `IDOR-WEBSITE`, `XS-LIVE-*`, `SQLI-LIVE`, `PORT-OPEN`, `DETECT-*`, `CVE-MATCH`, `SECRET-*`, `DISC-*`, `HARVEST-*`, `NIKTO-*`, `NUCLEI-*`, `OWASP-*`, `OSINT-*`, `RE-*`:

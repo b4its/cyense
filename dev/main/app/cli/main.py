@@ -518,6 +518,14 @@ def scan_domain(
             help="[mandatory] Konfirmasi izin eksplisit untuk memindai domain ini.",
         ),
     ] = False,
+    flag_hunt: Annotated[
+        bool,
+        typer.Option(
+            "--flag-hunt",
+            help="Aktifkan pencarian flag CTF read-only di tiap host hidup "
+                 "(GET saja, same-origin).",
+        ),
+    ] = False,
     out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
     no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
     fail_on: Annotated[
@@ -533,7 +541,8 @@ def scan_domain(
     Mode domain: subdomain ditemukan secara pasif (Wayback Machine) dan
     aktif (DNS), lalu setiap host yang hidup di-scan dengan pipeline
     website lengkap (crawl → teknologi → port → CVE → discovery → probe).
-    Hasil diagregasi dengan atribusi per-host.
+    Hasil diagregasi dengan atribusi per-host. Dengan --flag-hunt, tiap
+    host juga dijalankan pencarian flag CTF read-only (same-origin).
     """
     payload: dict = {
         "mode": "domain",
@@ -542,6 +551,7 @@ def scan_domain(
         "max_pages": max_pages,
         "rate_limit": rate_limit,
         "i_have_permission": i_have_permission,
+        "flag_hunt": flag_hunt,
     }
     _run(_run_scan(
         payload=payload,
@@ -576,6 +586,21 @@ def scan_website(
             help="Max requests per second to the target (1-100, default 10).",
         ),
     ] = 10,
+    skip_port_scan: Annotated[
+        bool,
+        typer.Option(
+            "--no-port-scan",
+            help="Lewati pemeriksaan open-port (TCP connect) pada host target.",
+        ),
+    ] = False,
+    flag_hunt: Annotated[
+        bool,
+        typer.Option(
+            "--flag-hunt",
+            help="Aktifkan pencarian flag CTF read-only (GET saja, same-origin): "
+                 "scan marker pada halaman ter-crawl + path flag umum.",
+        ),
+    ] = False,
     i_have_permission: Annotated[
         bool,
         typer.Option(
@@ -603,6 +628,11 @@ def scan_website(
     ID-bearing endpoints automatically and inspects every HTML response for
     XSS surface (weak CSP, eval/innerHTML/document.write, inline handlers,
     reflected parameters, missing security headers).
+
+    With --flag-hunt, after the pipeline completes an optional read-only CTF
+    flag search runs: crawled page bodies are matched for flag marker formats
+    and a short deterministic list of common flag paths is GET-probed (same
+    origin only).
     """
     payload: dict = {
         "mode": "website",
@@ -611,6 +641,8 @@ def scan_website(
         "max_pages": max_pages,
         "rate_limit": rate_limit,
         "i_have_permission": i_have_permission,
+        "skip_port_scan": skip_port_scan,
+        "flag_hunt": flag_hunt,
     }
     _run(_run_scan(
         payload=payload,
