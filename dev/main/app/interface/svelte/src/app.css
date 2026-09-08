@@ -228,6 +228,56 @@ section.block .sub { color: var(--ink-soft); margin: 0 0 20px; font-size: 16px; 
 }
 .badge.related { cursor: pointer; border-color: var(--accent); color: var(--accent-strong); }
 .badge.related:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+
+/* ---------- tools: OSINT Radar methodology layer (views, pivot, notes) ---------- */
+.view-tabs { display: flex; gap: 8px; margin: 0 0 16px; }
+.view-tab {
+  font-family: var(--mono, monospace); font-size: 12px; letter-spacing: .04em;
+  color: var(--ink-soft); background: var(--bg-elev); cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 16px;
+}
+.view-tab:hover { color: var(--ink, #e8ecf4); }
+.view-tab.active {
+  color: var(--accent-strong); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.pivot-filter { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.pivot-chip {
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
+  font-size: 12.5px; cursor: pointer; background: transparent;
+  color: var(--ink-soft, #c6cede);
+}
+.pivot-chip:hover { border-color: var(--accent); color: var(--accent-strong); }
+.pivot-chip.active {
+  color: var(--accent-strong); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.pivot-chip.clear { color: var(--err, #f87171); border-color: color-mix(in srgb, var(--err, #f87171) 45%, transparent); }
+.cat-note {
+  margin: 4px 0 14px; padding: 9px 13px; max-width: 860px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 0 10px 10px 0;
+  font-size: 12.5px; line-height: 1.6; color: var(--ink-soft, #9aa4b5);
+}
+.wf-caution {
+  margin: 4px 0 12px; padding: 10px 13px; font-size: 13px; line-height: 1.6;
+  color: #fca5a5; background: color-mix(in srgb, var(--err, #ef4444) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--err, #ef4444) 35%, transparent);
+  border-radius: 10px;
+}
+.wf-step { padding: 8px 0 10px; border-bottom: 1px dashed var(--line); }
+.wf-step:last-of-type { border-bottom: none; }
+.wf-step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin-right: 2px; border-radius: 50%;
+  font-family: var(--mono, monospace); font-size: 11px;
+  color: var(--accent-strong); border: 1px solid var(--accent);
+}
+.wf-conf {
+  font-family: var(--mono, monospace); font-size: 12px; color: var(--accent-strong);
+  border: 1px solid var(--line); border-radius: 6px; padding: 0 6px;
+}
 @media (min-width: 640px) {
   .tool-modal { inset: 8vh 0 0 auto; width: 480px; border-radius: 16px 0 0 16px; border-top: none; border-left: 1px solid var(--line); }
 }
