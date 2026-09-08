@@ -12,6 +12,8 @@
   import UsernameSweep from './toolbench/UsernameSweep.svelte'
   import HashIdentifier from './toolbench/HashIdentifier.svelte'
   import CoordinateConverter from './toolbench/CoordinateConverter.svelte'
+  import Chronolocation from './toolbench/Chronolocation.svelte'
+  import WarcIntegrity from './toolbench/WarcIntegrity.svelte'
 
   const TOOLS = [
     { id: 'dork-builder', name: 'Dork Builder', emoji: '🔩', comp: DorkBuilder },
@@ -21,8 +23,10 @@
     { id: 'image-metadata-exif', name: 'Image Metadata / EXIF', emoji: '🖼️', comp: ImageMetadata },
     { id: 'username-sweep', name: 'Username Sweep', emoji: '🧹', comp: UsernameSweep },
     { id: 'hash-identifier', name: 'Hash Identifier', emoji: '🔐', comp: HashIdentifier },
-    // §4.2 low-priority proposal by the analysis (not one of the site's 7)
+    // §4.2 low-priority proposals implemented by Cyense (not the site's 7):
     { id: 'coordinate-converter', name: 'Coordinate Converter', emoji: '🗺️', comp: CoordinateConverter, ext: true },
+    { id: 'chronolocation', name: 'Chronolocation (Sun)', emoji: '☀️', comp: Chronolocation, ext: true },
+    { id: 'warc-integrity', name: 'WARC Integrity', emoji: '🧯', comp: WarcIntegrity, ext: true },
   ]
 
   let active = TOOLS[0].id
