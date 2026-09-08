@@ -3149,31 +3149,37 @@ def coverage_cmd(
             _state.console.print("  Coverage tidak tersedia untuk scan ini.")
             raise typer.Exit(3)
 
-        if _state.caps.json_out or out:
+        if _state.caps.json_out:
             typer.echo(json.dumps(cov, indent=2))
         else:
             from app.cli.theme import PALETTE as PAL
             _state.console.print(f"  [{PAL.blue_primary}]COVERAGE {scan_id}[/]")
+            # Coverage document structure (coverage.py): schema_version, scan_id,
+            # generated_at, scope (with "complete"), machine_observed (with
+            # "files_scanned", "rules_executed"), engine_reported, gaps.
+            mo = cov.get("machine_observed", {})
+            scope = cov.get("scope", {})
             _state.console.print(
-                f"  [{PAL.blue_soft}]total files:[/]     {cov.get('total_files', '?')}"
+                f"  [{PAL.blue_soft}]total files:[/]     {mo.get('files_scanned', '?')}"
             )
             _state.console.print(
-                f"  [{PAL.blue_soft}]files analyzed:[/]  {cov.get('files_analyzed', '?')}"
+                f"  [{PAL.blue_soft}]complete:[/]       {scope.get('complete', '?')}"
             )
-            _state.console.print(
-                f"  [{PAL.blue_soft}]complete:[/]       {cov.get('complete', '?')}"
-            )
-            rules = cov.get("rules_analyzed", [])
+            rules = mo.get("rules_executed", [])
             if rules:
                 _state.console.print(
                     f"  [{PAL.blue_soft}]rules analyzed:[/] {len(rules)} — "
-                    + ", ".join(x.get('rule', '?') for x in rules[:12])
+                    + ", ".join(str(x) for x in rules[:12])
                     + ("..." if len(rules) > 12 else "")
                 )
 
         if out:
             dest = Path(out)
-            dest.write_text(json.dumps(cov, indent=2), encoding="utf-8")
+            # Only write to file — the JSON was already emitted above when
+            # json_out is set, so avoid spamming stdout when --out is used
+            # without --json.
+            if not _state.caps.json_out:
+                dest.write_text(json.dumps(cov, indent=2), encoding="utf-8")
             _state.console.print(f"  [green]Coverage tersimpan:[/] {dest}")
 
     _run(_do())

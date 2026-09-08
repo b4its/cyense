@@ -110,8 +110,10 @@ class ProberAgent(BaseAgent):
                 fired_before = set(fired)
                 tasks = [self._probe_one(client, method, profile, pid, baseline_body)
                          for pid in probe_ids if pid not in fired]
-                results = await asyncio.gather(*tasks)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
                 for hit in results:
+                    if isinstance(hit, Exception):
+                        continue  # skip individual probe failure; logged inside _probe_one
                     fired.add(hit.probe_id)
                     if hit.status == 0:
                         unreachable += 1

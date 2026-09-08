@@ -140,7 +140,7 @@ class ScanWorker:
                 "crawl": 8, "port-scan": 24, "cve": 30,
                 "discovery": 36, "harvest": 42, "osint": 46, "re": 50,
                 "nikto": 56, "nuclei": 62, "sec-live": 68,
-                "sqli": 80, "verify": 70,
+                "sqli": 80, "verify": 70, "owasp": 65, "flag": 72,
                 # domain
                 "enumerate": 15, "hosts": 35, "host": 60,
                 "report": 90,

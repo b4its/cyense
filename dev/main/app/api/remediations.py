@@ -30,6 +30,25 @@ class ApplyResponse(BaseModel):
     message: str = ""
 
 
+def _resolve_source_root(settings: Any, scan_id: str) -> Any:
+    """Determine the same-origin source root for a scan's fix proposals.
+
+    A github scan extracts its tree into ``reports/<scan_id>/src`` — that is
+    the correct same-origin root for its proposals. Otherwise fall back to the
+    workspace volume (mounted program mode), and finally to CWD rather than a
+    hardcoded ``./src`` that never matches any real scan source.
+    """
+    from pathlib import Path
+
+    scan_src = Path(settings.reports_dir) / scan_id / "src" if scan_id else None
+    if scan_src is not None and scan_src.exists():
+        return scan_src
+    source_root = Path(settings.workspace_dir)
+    if not source_root.exists():
+        source_root = Path.cwd()
+    return source_root
+
+
 # --- Endpoints ---
 
 @router.post("/scans/{scan_id}/fixes", status_code=202)
@@ -73,7 +92,18 @@ async def propose_fixes(
     if not findings:
         return {"message": "No valid findings to fix"}
 
-    # Create fix session
+    # Create fix session (reuse active session if one already exists to
+    # avoid duplicate proposals — PRD §3.2 idempotency).
+    existing = session_store.list_sessions(scan_id)
+    active = [s for s in existing if s.get("status") in ("active", "proposed")]
+    if active:
+        session_id = active[0]["session"]["session_id"]
+        return {
+            "session_id": session_id,
+            "status": "reused",
+            "message": f"Active session {session_id} already exists; skipping proposal generation.",
+        }
+
     session = session_store.create_session(scan_id)
 
     # Run FixerAgent
@@ -90,7 +120,7 @@ async def propose_fixes(
 
     return {
         "session_id": session.session_id,
-        "status": "queued",
+        "status": "ready",
         "message": f"Proposals generated: {result.data.get('proposals_count', 0)} fixes ready",
     }
 
@@ -172,23 +202,15 @@ async def apply_fixes(
 
     from app.remediation.applier import apply_patch, compute_file_hash, is_same_origin
     from app.remediation.store import _now_iso
+    from app.utils.logger import get_logger
+
+    _fixlog = get_logger("api.remediation.apply")
 
     applied: list[str] = []
     failed: list[str] = []
 
-    # Source root determination. A github scan extracts its tree into
-    # reports/<scan_id>/src — that is the correct same-origin root for its
-    # proposals. Otherwise fall back to the workspace volume (mounted program
-    # mode), and finally to CWD rather than a hardcoded "./src" that never
-    # matches any real scan source.
-    scan_id = session_data.get("session", {}).get("scan_id", "")
-    scan_src = Path(settings.reports_dir) / scan_id / "src" if scan_id else None
-    if scan_src is not None and scan_src.exists():
-        source_root = scan_src
-    else:
-        source_root = Path(settings.workspace_dir)
-        if not source_root.exists():
-            source_root = Path.cwd()
+    # Source root determination (shared helper).
+    source_root = _resolve_source_root(settings, session_data.get("session", {}).get("scan_id", ""))
 
     for fix_id in body.fix_ids:
         proposal = session_store.get_proposal(session_id, fix_id)
@@ -235,7 +257,8 @@ async def apply_fixes(
             else:
                 failed.append(fix_id)
 
-        except Exception:
+        except Exception as exc:
+            _fixlog.warning("Failed to apply fix %s for session %s: %s", fix_id, session_id, exc)
             failed.append(fix_id)
 
     # Mark the session completed only when something was actually applied;
@@ -270,7 +293,13 @@ async def revert_fixes(
 
     from pathlib import Path
 
-    from app.remediation.applier import revert_patch
+    from app.remediation.applier import is_same_origin, revert_patch
+
+    # Same-origin guard: determine source root from the session's scan_id
+    # (mirroring apply_fixes logic).
+    settings = request.app.state.settings
+    scan_id_for_revert = session_data.get("session", {}).get("scan_id", "")
+    source_root = _resolve_source_root(settings, scan_id_for_revert)
 
     reverted = []
     failed = []
@@ -282,10 +311,16 @@ async def revert_fixes(
             continue
 
         try:
-            file_path = Path(prop.get("target_file"))
+            file_path = prop.get("target_file", "")
             backup_path = Path(backup_path_str)
 
-            success = revert_patch(file_path, backup_path)
+            # Same-origin check (defense-in-depth — mirror apply_fixes).
+            is_valid, error = is_same_origin(file_path, source_root)
+            if not is_valid:
+                failed.append(prop.get("fix_id"))
+                continue
+
+            success = revert_patch(Path(file_path), backup_path)
 
             if success:
                 reverted.append(prop.get("fix_id"))

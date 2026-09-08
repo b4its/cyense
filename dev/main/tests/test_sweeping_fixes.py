@@ -220,6 +220,28 @@ def test_recommend_url_classification_not_structural() -> None:
     assert classify_recommendation("medium", locs) == "quick_win"
 
 
+def test_build_recommendations_survives_none_confidence() -> None:
+    """build_recommendations must not crash when confidence is None (float(None)).
+
+    Regression: dict.get("confidence", 0.0) returns None when the key EXISTS
+    but holds a null value, so float(None) raised TypeError and broke
+    render_recommendations + markdown report generation.
+    """
+    from app.cli.recommend import build_recommendations
+
+    findings = [
+        {"rule": "CY001", "severity": "high", "confidence": None,
+         "location": "a.py:1", "remediation": "add user scoping"},
+        {"rule": "CY001", "severity": "high", "confidence": 0.9,
+         "location": "b.py:2", "remediation": "add user scoping"},
+    ]
+    recs = build_recommendations(findings)
+    assert len(recs) == 1
+    assert recs[0].rule == "CY001"
+    # max confidence must ignore the null entry, not crash on it
+    assert recs[0].max_confidence == 0.9
+
+
 def test_dedupe_keeps_distinct_cookies() -> None:
     from app.report.dedupe import deduplicate_findings
 

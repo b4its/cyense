@@ -167,6 +167,10 @@ async def probe_flag_paths(
                 continue
             if resp.status >= 400:
                 continue
+            # status == 0 means connection refused/timeout — skip to avoid
+            # false FLAG-PATH findings on unreachable hosts.
+            if resp.status == 0:
+                continue
             hits = find_flags(resp.body or "")
             path_name = urlparse(url).path.lower()
             if not hits and "flag" not in path_name:

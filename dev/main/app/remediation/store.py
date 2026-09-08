@@ -28,6 +28,7 @@ class FixStore:
         self._reports_dir = Path(reports_dir)
         self._reports_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self._load()
 
     # -- lifecycle -------------------------------------------------------------
 
@@ -206,10 +207,74 @@ class FixStore:
 
     # -- persistence -----------------------------------------------------------
 
+    def _load(self) -> None:
+        """Restore sessions + proposals from ``fix_sessions.json`` on startup.
+
+        Mirrors ``JobStore._load`` so remediation state survives a service
+        restart (previously the JSON was written but never read back, making
+        every session disappear from the API after a restart while the file
+        kept accumulating stale data on disk).
+        """
+        path = self._reports_dir / "fix_sessions.json"
+        try:
+            if not path.is_file():
+                return
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                return
+            sessions = payload.get("sessions") or []
+            proposals = payload.get("proposals") or []
+            if not isinstance(sessions, list) or not isinstance(proposals, list):
+                return
+            with self._lock:
+                self._sessions = {}
+                self._proposals = [p for p in proposals if isinstance(p, dict)]
+                for raw in sessions:
+                    if not isinstance(raw, dict):
+                        continue
+                    if "session" in raw and isinstance(raw.get("session"), dict):
+                        # Current wrapper format (written by _dump below):
+                        #   {session: <model dump>, created, status, fixes}
+                        sess = raw["session"]
+                        wrapper = {
+                            "session": sess,
+                            "created": raw.get("created", raw.get("created_at", "")),
+                            "status": raw.get("status", sess.get("status", "active")),
+                            "fixes": raw.get("fixes") or [],
+                        }
+                        sid = sess.get("session_id")
+                    else:
+                        # Legacy flat format: raw == model dump; proposals were
+                        # only stored in the flat self._proposals list.
+                        sess = raw
+                        wrapper = {
+                            "session": sess,
+                            "created": raw.get("created_at", ""),
+                            "status": raw.get("status", "active"),
+                            "fixes": [
+                                p for p in self._proposals
+                                if p.get("session_id") == sess.get("session_id")
+                            ],
+                        }
+                        sid = sess.get("session_id")
+                    if not sid:
+                        continue
+                    # A stale inner status ("active") must not shadow real
+                    # progress recorded on the wrapper/proposals.
+                    if wrapper["status"] == "active" and wrapper["fixes"]:
+                        statuses = {p.get("status") for p in wrapper["fixes"]}
+                        if "applied" in statuses or "verified" in statuses:
+                            wrapper["status"] = "completed"
+                        else:
+                            wrapper["status"] = "proposed"
+                    self._sessions[sid] = wrapper
+        except (OSError, ValueError):
+            pass  # corrupt/absent dump — start empty (best-effort)
+
     def _dump(self) -> None:
         try:
             payload = {
-                "sessions": [s["session"] for s in self._sessions.values()],
+                "sessions": [dict(s) for s in self._sessions.values()],
                 "proposals": self._proposals,
             }
             (self._reports_dir / "fix_sessions.json").write_text(

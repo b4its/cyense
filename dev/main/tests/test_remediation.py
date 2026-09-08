@@ -451,3 +451,78 @@ def test_missing_auth_var_raises_manual_required():
     # find_auth_context should return unknown when nothing found
     auth_var = find_auth_context(ast.parse(unguarded_code.decode()))
     assert auth_var == "unknown"
+
+
+# =============================================================================
+# FixStore persistence + regression tests
+# =============================================================================
+
+def test_fix_store_survives_restart(tmp_path: Path) -> None:
+    """Fix sessions/proposals written to disk must be restored on restart."""
+    from app.remediation.store import FixProposal, FixStore
+
+    reports = tmp_path / "fixes"
+    store = FixStore(reports)
+    session = store.create_session("scan_persist")
+    proposal = FixProposal(
+        fix_id="fx_p1",
+        session_id=session.session_id,
+        scan_id="scan_persist",
+        finding_id="finding_cy001",
+        rule="CY001",
+        target_file="app/api/users.py",
+        line=1,
+        diff="- a\n+ b",
+        before_snippet="a",
+        after_snippet="b",
+        risk="low",
+        strategy="cy001_unscoped_get",
+    )
+    assert store.add_proposal(session.session_id, proposal) is True
+
+    # "Restart": a fresh FixStore instance over the same directory must load
+    # the persisted sessions + proposals back (previously _load did not exist,
+    # so every session vanished from the API after a service restart).
+    store2 = FixStore(reports)
+    session2 = store2.get_session(session.session_id)
+    assert session2 is not None
+    assert session2["status"] == "proposed"
+    assert len(store2.get_all_proposals(session.session_id)) == 1
+    props = store2.get_all_proposals(session.session_id)
+    assert props[0]["fix_id"] == "fx_p1"
+
+
+def test_html_report_curl_redacts_credentials() -> None:
+    """Reproduce-curl block must not leak Authorization / API-key headers."""
+    from app.report.html_report import render_html_report
+
+    report = {
+        "meta": {"scan_id": "scan_x", "mode": "link"},
+        "summary": {"high": 1, "total": 1},
+        "findings": [{
+            "finding_id": "F001",
+            "rule": "IDOR-LINK",
+            "severity": "high",
+            "confidence": 0.9,
+            "title": "Object access",
+            "description": "d",
+            "location": "https://t.com/invoice/1",
+            "evidence": {
+                "request": {
+                    "url": "https://t.com/invoice/1",
+                    "headers": {
+                        "Authorization": "Bearer ghp_secret123",
+                        "X-Api-Key": "super-secret-key",
+                        "Cookie": "session=abc",
+                    },
+                    "cookies": {"session": "abc"},
+                }
+            },
+        }],
+    }
+    html = render_html_report(report)
+    assert "ghp_secret123" not in html
+    assert "super-secret-key" not in html
+    assert "session=abc" not in html
+    # redacted marker should appear instead
+    assert "[REDACTED]" in html

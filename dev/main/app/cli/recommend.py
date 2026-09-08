@@ -45,7 +45,11 @@ def build_recommendations(findings: list[Any]) -> list[Recommendation]:
     for rule, group in groups.items():
         # -- 2. Hitung skor kelompok
         severities = [fd.get("severity", "info") for fd in group]
-        confidences = [float(fd.get("confidence", 0.0)) for fd in group]
+        # Guard against None/absent confidence values to avoid float(None) crash.
+        # dict.get(key, default) returns the default ONLY if the key is absent;
+        # when the key exists but is null/None, .get() returns None, so we use
+        # the "or 0.0" pattern to coalesce None to 0.0 before float().
+        confidences = [float(fd.get("confidence") or 0.0) for fd in group]
 
         # Severity tertinggi berdasarkan bobot
         sev_max = max(severities, key=lambda s: SEVERITY_WEIGHT.get(s, 0))
@@ -54,7 +58,7 @@ def build_recommendations(findings: list[Any]) -> list[Recommendation]:
         sc = score_group(sev_max, conf_max, n)
 
         # -- 5. Teks tindakan: dari temuan dengan confidence tertinggi
-        best = max(group, key=lambda fd: float(fd.get("confidence", 0.0)))
+        best = max(group, key=lambda fd: float(fd.get("confidence") or 0.0))
         action = best.get("remediation") or f"Tinjau penggunaan rule {rule} secara manual."
 
         # -- 6. Daftar lokasi (maks 5 + ringkasan)

@@ -98,7 +98,7 @@ async def delete_scan(request: Request, scan_id: str) -> None:
     if ".." in scan_id or "/" in scan_id or scan_id in (".", ""):
         raise HTTPException(status_code=403, detail="invalid scan_id")
     deleted = request.app.state.store.delete(scan_id)
-    # also drop any computed report and its on-disk artifacts
-    request.app.state.worker.discard(scan_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="scan not found")
+    # only drop computed report / on-disk artifacts when the job was found
+    request.app.state.worker.discard(scan_id)

@@ -31,8 +31,15 @@ class VerifierAgent(BaseAgent):
     async def run(self, ctx: dict[str, Any]) -> AgentResult:
         profile = TargetProfile.from_dict(ctx["profile"])
         baseline_body: str = ctx.get("baseline_body", "")
-        hits = [ProbeHit(**h) for h in ctx.get("hits_internal", [])
-                if isinstance(h, dict)]
+        # Rehydrate hits defensively: only copy fields the ProbeHit dataclass
+        # declares, so an unexpected extra key in hits_internal doesn't crash
+        # the whole verifier with a TypeError.
+        hit_fields = ProbeHit.__dataclass_fields__
+        hits = [
+            ProbeHit(**{k: h[k] for k in hit_fields if k in h})
+            for h in ctx.get("hits_internal", [])
+            if isinstance(h, dict)
+        ]
         headers: dict[str, str] = ctx.get("headers", {}) or {}
         cookies: dict[str, str] = ctx.get("cookies", {}) or {}
         control_id: str = str(ctx.get("control_id", "99999999"))

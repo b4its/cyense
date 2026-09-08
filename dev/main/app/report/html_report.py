@@ -11,6 +11,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
+from app.utils.redact import redact_headers
+
 _SEVERITY_COLORS = {
     "critical": "#7f1d1d",
     "high": "#c2410c",
@@ -116,7 +118,10 @@ def _pretty(value: Any) -> str:
 def _curl_of(request: dict[str, Any]) -> str:
     url = request.get("url", "")
     parts = [f"curl -i '{url}'"]
-    for key, value in (request.get("headers") or {}).items():
+    # Redact sensitive headers (Authorization, X-Api-Key, cookies, etc.)
+    # before embedding them in the HTML report to avoid credential leaks.
+    safe_headers = redact_headers(request.get("headers") or {})
+    for key, value in safe_headers.items():
         parts.append(f"  -H '{key}: {value}'")
     for key, _value in (request.get("cookies") or {}).items():
         parts.append(f"  --cookie '{key}=[REDACTED]'")

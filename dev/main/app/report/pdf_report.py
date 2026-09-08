@@ -5,6 +5,7 @@ Uses reportlab library to generate professional PDF reports with CVSS/CWE info.
 from __future__ import annotations
 
 import io
+import time
 from typing import Any
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -76,16 +77,18 @@ def generate_pdf_report(
     elements.append(Paragraph(title, title_style))
 
     # Meta info table
+    generated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     meta_data = [
         ["Scan ID:", scan_id],
-        ["Generated At:", "Current timestamp"],
+        ["Generated At:", generated_at],
         [
             "Severity Breakdown:",
             (
                 f"Critical: {summary.get('critical', 0)}, "
                 f"High: {summary.get('high', 0)}, "
                 f"Medium: {summary.get('medium', 0)}, "
-                f"Low: {summary.get('low', 0)}"
+                f"Low: {summary.get('low', 0)}, "
+                f"Info: {summary.get('info', 0)}"
             ),
         ],
     ]
@@ -120,6 +123,7 @@ def generate_pdf_report(
         ['High', str(summary.get('high', 0)), _pct('high')],
         ['Medium', str(summary.get('medium', 0)), _pct('medium')],
         ['Low', str(summary.get('low', 0)), _pct('low')],
+        ['Info', str(summary.get('info', 0)), _pct('info')],
     ]
 
     severity_table = Table(severity_data, colWidths=[3*inch, 1.2*inch, 1.3*inch])
