@@ -402,6 +402,7 @@ cyense tools usage nmap                      # usage examples only
 cyense tools workflows                       # 10 investigative frameworks (6 site + 4 ext)
 cyense tools pivot email --detail            # "saya punya email" → 138 tools, next hops
 cyense tools training                        # in-house methodology resources (§4.2)
+cyense tools safety                            # §3.4 security/privacy/anti-abuse + §3.3.6 contract
 cyense tools stats                           # totals + verification/health strip
 ```
 
@@ -454,6 +455,15 @@ curated catalog itself:
 - **Training & Reference** — 10 in-house methodology resources (responsible
   use, proportionality, chain-of-custody, confidence, …) closing the §4.2 gap
   without inventing external tools that would rot.
+- **Safety Panel (§3.4 + §3.3.6)** — security/privacy considerations shown at
+  the point of use: 5 data principles (encryption, minimisation, third-party
+  incidental data, secret management, log redaction); 6-regulation table
+  (GDPR, UU PDP ID, CCPA/CPRA, FCRA, BIPA, computer-misuse) + operator-vs-
+  jurisdiction rule (subject location, not server); 6 organisational controls
+  (RBAC+SoD, mandatory case, append-only audit, anomaly detection, hard gate,
+  authorised-assets for offensif); 4 **hard refusals** including `subject_is_minor`
+  marked **MUTLAK — no override** + the §3.3.6 YAML workflow contract example
+  with the `policy` evaluation note ("Cyense tidak menjalankan koneksi").
 
 Data: `app/program/osintradar_methodology.py` + `osintradar_pivot.py`; PRD:
 `instruction/feature/osintradar-methodology.md`.

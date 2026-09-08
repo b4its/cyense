@@ -1,6 +1,6 @@
 # PRD Fitur — Lapis Metodologi OSINT Radar di /tools (Pivot Map + Workflows + Verifikasi + Training)
 
-> **Feature PRD** | Versi 1.6 | Status: implemented
+> **Feature PRD** | Versi 1.7 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` — dokumen ini adalah *addendum*, bukan pengganti
 > **Sumber konten:** "Dokumentasi Implementasi & Penerapan Fitur — osintradar.com/tools", analisis independen v1.0 (8 Sep 2026) atas `/tools` (20 halaman, 346 tool, 21 kategori), `/categories`, `/workflows`, `/free-tools`, `/about`, `/responsible-use`, `sitemap.xml`
 > **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`, `GET /tools/search`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile,coords,solar,warc,seo}.js`
@@ -146,6 +146,28 @@ filter lokal = pola yang sama dipakai `--category/--query/--feature` sejak
 awal); payload sudah tunggal. Validasi identifier pivot terjadi *sebelum*
 jaringan (test: exit 1 offline untuk kode asing, exit 3 saat service mati).
 
+## 2.5 Fase 7 — Keamanan & Privasi (reference content)
+
+Dokumen analisis memuat §3.4 (keamanan/privasi, kepatuhan regulasi, kontrol
+anti-penyalahgunaan) dan §3.3.6 (contoh kontrak deklaratif workflow dengan
+blok `policy` hard-gate). Cyense tidak menjalankan konektor OSINT (tidak
+punya account model) — tetapi data & prinsip §3.4/§3.3.6 adalah *reference
+content* yang layak disajikan di UI (satu sumber = Website/Workflows dan =
+CLI `tools safety`).
+
+| Item dok | Implementasi di Cyense |
+|---|---|
+| §3.4.1 Prinsip data | 5 prinsip: TLS1.3/AES256=baseline bukan pencapaian; minimisasi + hapus di normalisasi; pihak ketiga insidental (kerabat/rekan) → JANGAN simpan, filter di pipeline; kunci di secret manager + rotasi; redaksi log otomatis |
+| §3.4.2 Regulasi | 6 regulasi: GDPR (Pasal 9 biometrik), UU PDP 27/2022, CCPA/CPRA, FCRA (people-search ≠ CRA), BIPA, computer-misuse. + aturan lokasi operator-vs-subjek |
+| §3.4.3 Kontrol organisasional | RBAC+sod; kasus wajib; log audit append-only; anomali (volume/offhours); gate keras: MENOLAK eksekusi SEBELUM; authorized-assets (tool offensif) |
+| | **subject_is_minor = penolakan MUTLAK tanpa override** (kombinasi pengenalan wajah + geolokasi = sangat berbahaya untuk minor; tanpa pengecualian) |
+| §3.3.6 Kontrak workflow | Contoh YAML `analyze-an-email` lengkap dengan blok policy + checkpoint (saran bila pengguna membangun executor sendiri) |
+
+**Cyense bukan enforcement:** Cyense tidak menolak query (tidak punya
+executor), tapi menyajikan daftar "penolakan wajib" + prinsip data + tabel
+regulasi di panel **Etika & Privasi OSINT** dalam Workflows view + CLI
+`cyense tools safety`.
+
 ## 3. Desain
 
 ```
@@ -196,6 +218,8 @@ Tools.svelte
 | Fase 5 — Chronolocation (solar) | ✅ node: equinox Jakarta noon 83.96° (expect ≈83.8±1), NYC equinox sunrise/sunset azimuth 90.08/270.19 (≈±90/270±1.5), London solstice max elev 61.93 vs 61.94, solver elev=45 round-trip ≤0.01°, polar night = 0 crossing; UI: panel depan + rasio bayangan 2m/2m → 45.00° → 2 kandidat waktu UTC, regresi guard `isFinite(null)` terverifikasi (10 tool, tanpa console error) |
 | Fase 5 — WARC integrity | ✅ node fixture 4 record: `ok`(sha1-hex) / `mismatch`(body dirusak) / `ok`(urn:sha1-base32) / `no-digest`; deteksi gzip eksplisit; UI panel + file input render (end-to-end `DataTransfer` terhalang origin browser — logika parser teruji di node) |
 | Fase 5b — Graf SVG | ✅ headless: Email → SVG 1 type + 14 tool + 12 artefact + 26 edge; klik node tool ⇒ rebuild (3 input, 4 artefak); klik artefak ⇒ drill ke identifier awal dengan 27 node; 0 console error; fix Bug reaktif: `$: graph = buildGraph()` tak recompute saat focus berubah (dep tak terlacak sintaksis) ⇒ argumen eksplisit `buildGraph(focus, flatTools)` |
+| Fase 6 — CLI parity | ✅ CLI 3 cmd baru (`workflows`, `pivot`, `training`); facet `list --have/--pricing/--access/--status`; info diperkaya (pivot asli, verif, risc per tool); stats health; fix `render_tools_stats` (sebelumnya ImportError crash) + `info --json` (sebelumnya 684-dump, kini hanya record tool); test baru CLI exit=1 utk bad identifier (tanpa service) |
+| Fase 7 — Safety panel | ✅ 18 data item: 5 prinsip+6 regulasi+6 kontrol+4 refusal (subject_is_minor=MUTLAK); CLI `tools safety` headless exit=0; UI Workflows → SafetyPanel: 15 `.tool-card` (5+6+4), 6-row table, `details.safety-contract` + YAML block + copy btn, 0 console error |
 
 ## 5. Batasan (diumumkan ke pengguna di UI)
 
