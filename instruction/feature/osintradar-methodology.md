@@ -1,9 +1,9 @@
 # PRD Fitur — Lapis Metodologi OSINT Radar di /tools (Pivot Map + Workflows + Verifikasi + Training)
 
-> **Feature PRD** | Versi 1.2 | Status: implemented
+> **Feature PRD** | Versi 1.3 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` — dokumen ini adalah *addendum*, bukan pengganti
 > **Sumber konten:** "Dokumentasi Implementasi & Penerapan Fitur — osintradar.com/tools", analisis independen v1.0 (8 Sep 2026) atas `/tools` (20 halaman, 346 tool, 21 kategori), `/categories`, `/workflows`, `/free-tools`, `/about`, `/responsible-use`, `sitemap.xml`
-> **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile}.js`
+> **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`, `GET /tools/search`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile,coords,seo}.js`
 
 ---
 
@@ -50,7 +50,7 @@ mengeksekusi apa pun).
 | Bagian dokumen sumber | Elemen | Jatuh ke |
 |---|---|---|
 | §2.2 A2 — Pivot Map | Kosakata 12 identifier terverifikasi | `PIVOT_TYPES`; chip "Saya punya" di hero `Tools.svelte`; invariant diuji (`have_values ⊆ pivot_codes`) |
-| §2.2 A3 — Workflows (6 alur) | `investigate-a-username` … `trace-a-wallet` + peringatan tiap alur | `WORKFLOWS`; tab Workflows + drawer kerangka |
+| §2.2 A3 — Workflows (6 alur; +4 ekspansi fase 4) | `investigate-a-username` … `trace-a-wallet` + peringatan tiap alur | `WORKFLOWS`; tab Workflows + drawer kerangka |
 | §2.2 A3 — Reporting Checkpoints | Target value / Source and time / Observed result / Confidence | `REPORTING_CHECKPOINTS`; footer drawer workflow |
 | §3.3.3 — Skoring keyakinan | confirmed / probable / lead / disputed + kriteria & contoh | `CONFIDENCE_SCALE`; drawer workflow |
 | §2.3 B1–B21 — keterbatasan per kategori | Ringkasan risiko + batasan 21 kategori `osint-*` | `CATEGORY_NOTES`; `.cat-note` + badge risiko di judul grup |
@@ -109,6 +109,17 @@ antar perangkat).
 
 ---
 
+## 2.3 Fase 4 — Sisa butir §4.2 yang bisa diterapkan
+
+| Butir §4.2 / §A1 | Implementasi | Lokasi |
+|---|---|---|
+| Tinggi: API publik read-only JSON + filter facet ala situs (`?category`, `?have=email`, `?page`) | `GET /api/v1/tools/search` — facet `category/have/pricing/access/status/q/page/page_size`, respons ringkas terpaginate (tanpa menggeser payload penuh `/tools` yang dipakai UI/CLI) | `tools_catalog.tools_filtered` + `api/system.py` + test |
+| Sedang: nama tool sebagai data terstruktur (microdata SoftwareApplication) | JSON-LD: `CollectionPage`+`ItemList` 24 kartu halaman aktif; drawer terbuka ⇒ `SoftwareApplication`; `<` di-escape | `lib/seo.js` + `Tools.svelte` svelte:head |
+| Sedang: perluas workflows 6 → cakupan kategori yang tak punya alur | +4 workflow (triage-a-threat-alert, investigate-a-darkweb-service, track-a-vessel-or-flight, verify-a-public-record) — tiap tool reference tervalidasi test; **badge "ekspansi" jujur** + catatan sumber, karena bukan alur resmi OSINT Radar | `osintradar_methodology.WORKFLOWS` + test slug |
+| Sedang: kelas risiko **per tool** | `TOOL_RISK`/`TOOL_RISK_WHY` (27 tool tersorot dokumen: biometrik/offensif/privasi-tinggi/darkweb/ToS/**mati**) di-enrich ke record katalog saat build; badge kartu + drawer (ikon per kelas) | `osintradar_methodology` + enrichment `tools_catalog._all_tools` |
+| Sedang: catatan cakupan yurisdiksi | `JURISDICTION` (17 tool region-bound: people-search AS/UK/CA, RIR, dll.) → badge `coverage` di drawer | sama |
+| Rendah: +Toolbench (konverter koordinat, chronolocation, WARC check) | **Coordinate Converter** DMS ⇄ desimal ⇄ UTM (Snyder WGS84; inversi = Newton pada *forward series sendiri* ⇒ round-trip ≤1e-13°, 9 vektor teruji) — badge "ext" jujur (bukan salah satu 7 asli). **Chronolocation & WARC checker tetap future work** (butuh astronomi/arsip yang lebih luas dari scope) | `lib/coords.js` + `toolbench/CoordinateConverter.svelte` |
+
 ## 3. Desain
 
 ```
@@ -151,6 +162,11 @@ Tools.svelte
 | Smoke headless fase 2 (Toolbench) | ✅ Dork `site:example.com "secret" filetype:pdf`; Timestamp s/ms + FILETIME benar (UTC `2024-09-08T01:46:40Z`); Hash 32-hex → 2 kandidat; Username Sweep → 23 URL (github/john_doe123 ✅); Email Header → 2 hop, verdict `spf=pass dkim=fail dmarc=pass`, origin IP diekstrak |
 | EXIF unit (fixture JPEG buatan) | ✅ Make/DateTime + GPS `40.446111, -73.983333` + SHA-256 |
 | Case File alur | ✅ +case di kartu & drawer; persist `localStorage` lintas reload (2 entri); catatan tersimpan; ekspor Markdown ber-`SHA-256` terverifikasi |
+| Fase 4 — facet API | ✅ `pytest` baru: `have=email&pricing=Free` subset konsisten; `q=certificate transparency` relevan; `status=Flagged` == 2; halaman 1∩2 kosong & `matched` stabil; have/price tak dikenal → kosong, tanpa crash |
+| Fase 4 — workflow 10 & extension flag | ✅ test slug eksak 6+4; `bool(extension)` == anggota 4 baru; semua referensi resolve |
+| Fase 4 — JSON-LD | ✅ (headless) `CollectionPage` 24 item/684; buka drawer ⇒ `SoftwareApplication` (name 'whois'); tutup ⇒ kembali CollectionPage; parse JSON sukses |
+| Fase 4 — Converter | ✅ node round-trip 9 vektor (termasuk 45,0; NYC; Sydney; London) maksimum error 0; UI: desimal→DMS/UTM ⇄ balik, junk ditolak |
+| Fase 4 — risk/coverage | ✅ payload: Face Recognition=biometrik, Gobuster=offensif, InstaLooter=mati, USPS coverage 'AS'; ≥25 label; kartu+drawer badge terverifikasi headless |
 
 ## 5. Batasan (diumumkan ke pengguna di UI)
 
