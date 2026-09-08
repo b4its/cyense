@@ -117,6 +117,7 @@ class DomainEngine:
         rate_limit: int = 10,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
+        flag_hunt: bool = False,
     ) -> dict[str, Any]:
         started = time.monotonic()
         base_domain = normalize_domain(domain)
@@ -192,6 +193,7 @@ class DomainEngine:
                     rate_limit=rate_limit,
                     headers=headers,
                     cookies=cookies,
+                    flag_hunt=flag_hunt,
                 )
                 host_error = (host_report.get("meta") or {}).get("error")
             except Exception as exc:  # noqa: BLE001 — one host must not fail all

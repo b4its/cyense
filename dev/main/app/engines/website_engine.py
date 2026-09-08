@@ -111,6 +111,7 @@ class WebsiteEngine:
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
         skip_port_scan: bool = False,
+        flag_hunt: bool = False,
     ) -> dict[str, Any]:
         started = time.monotonic()
         headers = dict(headers or {})
@@ -336,13 +337,36 @@ class WebsiteEngine:
             f["finding_id"] = f"{self.scan_id}-WOWASP{k:03d}"
 
         # ------------------------------------------------------------------
+        # Stage 5c: CTF flag-hunt (optional, read-only, same-origin) — §3.5/
+        # authorised CTF & lab. Crawled pages are scanned for marker text and
+        # a short deterministic list of common flag paths is GET-probed.
+        # ------------------------------------------------------------------
+        flag_findings: list[dict[str, Any]] = []
+        if flag_hunt:
+            await self._notify("flag")
+            from app.engines.flag_hunt import run_flag_hunt
+
+            try:
+                flag_findings = await run_flag_hunt(
+                    url,
+                    pages,
+                    rate_limit=rate_limit,
+                    headers=headers,
+                    cookies=cookies,
+                )
+                for k, f in enumerate(flag_findings, start=1):
+                    f["finding_id"] = f"{self.scan_id}-WFLAG{k:03d}"
+            except Exception as exc:  # noqa: BLE001 — flag hunt must never fail scan
+                log.warning("flag-hunt stage failed for %s: %s", url, exc)
+
+        # ------------------------------------------------------------------
         # Stage 6: Report
         # ------------------------------------------------------------------
         await self._notify("report")
         all_findings = (
             idor_findings + tech_findings + port_findings
             + cve_findings + discovery_findings + xss_findings
-            + sqli_findings + owasp_findings
+            + sqli_findings + owasp_findings + flag_findings
         )
         all_findings.sort(
             key=lambda f: (
@@ -376,6 +400,7 @@ class WebsiteEngine:
             ),
             "xss_scan_activated": has_html and (xss_relevant or _pages_have_query_params(pages)),
             "idor_scan_activated": bool(id_endpoints),
+            "flags_found": len(flag_findings),
             "domain": domain,
             "duration_ms": int((time.monotonic() - started) * 1000),
         }
@@ -387,7 +412,9 @@ class WebsiteEngine:
                 "engine": "website-crawler",
                 "pipeline": [
                     "crawl", "analyze", "framework", "port-scan",
-                    "cve", "discovery", "probe", "sqli", "owasp", "report",
+                    "cve", "discovery", "probe", "sqli", "owasp",
+                    *(["flag"] if flag_hunt else []),
+                    "report",
                 ],
                 "url": url,
             },
