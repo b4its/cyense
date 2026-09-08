@@ -799,6 +799,99 @@ TRAINING: list[dict[str, str]] = [
             "lazim dan verifikasi tidak membuktikan kontrol."
         ),
     },
+    {
+        "id": "source-priority",
+        "title": "Prioritas Sumber Data",
+        "body": (
+            "Urutan aman: API resmi berlisensi → dataset publik (CT, RDAP, RIR, "
+            "Common Crawl) → arsip pihak ketiga → scraping sebagai pilihan "
+            "terakhir, dengan throttling konservatif dan hormati ToS/robots."
+        ),
+    },
+    {
+        "id": "raw-parsed-separation",
+        "title": "Pisahkan Raw dari Parsed",
+        "body": (
+            "Terapkan rate limit di sisi sendiri (retry + backoff + jitter), "
+            "jangan menunggu 429. Simpan respons mentah + hash sebelum parsing: "
+            "parser boleh berubah, bukti tidak boleh. Interpretasi selalu bisa "
+            "diaudit ulang terhadap artefak mentahnya."
+        ),
+    },
+    {
+        "id": "provenance-per-claim",
+        "title": "Provenance di Samping Setiap Klaim",
+        "body": (
+            "Tampilkan source + timestamp koleksi + level keyakinan di samping "
+            "nilai temuan, bukan hanya nilainya. Hasil mesin pencari personal dan "
+            "berubah — arsipkan sebelum dikutip. Timeline disusun berdasarkan "
+            "waktu peristiwa, bukan waktu pengambilan."
+        ),
+    },
+    {
+        "id": "data-minimisation",
+        "title": "Minimisasi & Data Pihak Ketiga",
+        "body": (
+            "Kumpulkan hanya field yang menjawab pertanyaan investigasi; hapus sisanya "
+            "di tahap normalisasi. Lookup yang mengembalikan 'kerabat' atau 'rekan' "
+            "yang tidak relevan → jangan simpan; filter di pipeline, bukan "
+            "mengandalkan analis mengabaikannya."
+        ),
+    },
+    {
+        "id": "retention-by-code",
+        "title": "Retensi Ditegakkan Kode",
+        "body": (
+            "legal_basis, purpose, dan retention_until wajib pada setiap unit "
+            "kerja; purge otomatis saat kedaluwarsa. Kebijakan yang hanya "
+            "dinyatakan di dokumen = klaim, bukan kontrol."
+        ),
+    },
+    {
+        "id": "role-separation",
+        "title": "RBAC & Pemisahan Tugas",
+        "body": (
+            "Analis mengumpulkan; hanya supervisor mengekspor; hanya admin "
+            "mengubah retensi. Separation of duties menghancurkan jalur "
+            "penyalahgunaan tunggal."
+        ),
+    },
+    {
+        "id": "case-binding",
+        "title": "Kasus Wajib per Query",
+        "body": (
+            "Tidak ada pencarian ad hoc tanpa referensi kasus + dasar hukum + "
+            "tujuan. Query tanpa kasus = penyalahgunaan yang disahkan UI."
+        ),
+    },
+    {
+        "id": "audit-append-only",
+        "title": "Log Audit Append-only + Anomali",
+        "body": (
+            "Siapa mencari apa, kapan, di kasus mana — tercatat & tak dapat "
+            "diubah. Deteksi anomali: volume tak wajar, subjek berulang di luar "
+            "kasus aktif, jam kerja. Pengetahuan bahwa setiap query tercatat "
+            "mengubah perilaku orang."
+        ),
+    },
+    {
+        "id": "policy-gate-before",
+        "title": "Gerbang Kebijakan Sebelum Eksekusi",
+        "body": (
+            "Blok policy dievaluasi SEBELUM eksekusi (max_total_requests, "
+            "require_case_reference, forbid_if) — menolak, bukan memperingatkan. "
+            "subject_is_minor: penolakan mutlak tanpa override."
+        ),
+    },
+    {
+        "id": "secret-and-log-hygiene",
+        "title": "Secret Manager & Redaksi Log",
+        "body": (
+            "Kunci/ token di secret manager dengan rotasi terjadwal, tidak di "
+            "kode/image. Log diredaksi otomatis agar identifier subjek tidak "
+            "bocor ke sistem observability yang aksesnya lebih luas."
+        ),
+    },
 ]
 
 __all__ = [

@@ -302,9 +302,15 @@ def test_methodology_layer_in_payload(client) -> None:
             assert c in all_codes, f"artefact_type code {c} not in PIVOT_TYPES"
 
     # Training & Reference — the gap-filling resources (§4.2).
-    assert len(data["training"]) >= 10, "should have ≥10 methodology resources"
+    assert len(data["training"]) >= 20, "should have ≥20 methodology resources (§4.2)"
     for t in data["training"]:
         assert t["id"] and t["title"] and t["body"]
+
+    # Catalogue-level verification meta (§1.1/§A1: source verification date + mirror date).
+    ver = data.get("verification", {})
+    assert ver.get("site_verified_at") == "2026-07-11"
+    assert ver.get("mirrored_at") == "2026-09-08"
+    assert ver.get("not_verified_label")
 
     # Per-tool risk labels + jurisdiction notes (§4.2 display enrichment).
     by_name = {str(t["name"]): t for t in data["tools"]}

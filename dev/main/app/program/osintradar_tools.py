@@ -32,6 +32,17 @@ from urllib.parse import urlparse
 
 _DATA_PATH = Path(__file__).resolve().parent / "osintradar_data.json"
 
+# Verification timeline — honest provenance metadata per §1.1/§A1: the vast
+# majority of catalogue cards showed "Verified Jul 11, 2026" on the source and
+# the rest "Not verified"; the Cyense mirror itself was taken on 2026-09-08
+# (module docstring). The mirror is a point-in-time copy: re-sync before
+# treating any card as current.
+OSR_VERIFICATION: dict[str, str] = {
+    "site_verified_at": "2026-07-11",   # majority badge date on osintradar.com
+    "not_verified_label": "Not verified",  # how the rest was labelled
+    "mirrored_at": "2026-09-08",        # when this dataset was scraped into Cyense
+}
+
 # OSINT-Radar categories appended to the catalog taxonomy (original grouping).
 OSR_CATEGORIES: list[dict[str, str]] = [
     {"id": "osint-academic", "label": "Academic & Records Research", "emoji": "🎓"},

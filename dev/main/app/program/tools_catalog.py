@@ -651,6 +651,7 @@ def tools_catalog() -> dict[str, object]:
     )
     from app.program.osintradar_pivot import ARTEFACT_TYPES, build_health
     from app.program.osintradar_safety import SAFETY
+    from app.program.osintradar_tools import OSR_VERIFICATION
 
     return {
         "categories": [
@@ -671,6 +672,7 @@ def tools_catalog() -> dict[str, object]:
         "reporting_checkpoints": REPORTING_CHECKPOINTS,
         "confidence_scale": CONFIDENCE_SCALE,
         "health": build_health(TOOLS),
+        "verification": OSR_VERIFICATION,
         "artefact_types": ARTEFACT_TYPES,
         "training": TRAINING,
         "safety": SAFETY,

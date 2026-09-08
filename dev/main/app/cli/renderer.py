@@ -1124,14 +1124,20 @@ def render_tool_detail(
         console.print()
     src = _esc(tool.get("source_page") or "")
     status = str(tool.get("tool_status") or "")
-    verified = str(tool.get("last_verified") or "")
+    # Provenance: per-record `last_verified` is NOT carried by the OSR mirror
+    # (site shows "Verified Jul 11, 2026" as a mostly-global badge); surface the
+    # catalogue-level verification meta instead of an always-empty field.
+    ver = catalog.get("verification") or {}
+    verified = str(ver.get("site_verified_at") or "") if ver else ""
     if src or status or verified:
         bits = []
         if status:
             col = {"Operational": p.ok, "Flagged": p.sev_high}.get(status, p.sev_medium)
             bits.append(f"[{col}]{status}[/]")
         if verified:
-            bits.append(f"[{p.muted}]verified {verified}[/]")
+            bits.append(f"[{p.muted}]site-verified {verified}[/]")
+        if ver.get("mirrored_at"):
+            bits.append(f"[{p.muted}]mirror {ver['mirrored_at']}[/]")
         if src:
             bits.append(f"[{p.blue_soft}]{src}[/]")
         console.print(f"  [{p.muted}]Verifikasi:[/] " + "  ·  ".join(bits))
