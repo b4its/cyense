@@ -347,6 +347,42 @@ section.block .sub { color: var(--ink-soft); margin: 0 0 20px; font-size: 16px; 
 }
 .case-note:focus { outline: none; border-color: var(--accent); border-style: solid; }
 .tool-modal-close.cf-on { color: var(--accent-strong); border-color: var(--accent) !important; }
+
+/* ---------- pivot map (interactive typed graph) ---------- */
+.pm-wrap { display: flex; flex-direction: column; }
+.pm-trail {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+  font-family: var(--mono, monospace); font-size: 12px;
+  padding: 8px 12px; margin: 8px 0 0; border-radius: 10px;
+  background: var(--bg-elev); border: 1px solid var(--line);
+}
+.pm-node {
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
+  color: var(--ink-soft); white-space: nowrap;
+}
+.pm-node.pm-active { color: var(--accent-strong); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.pm-arrow { color: var(--ink-mute, #8a93a6); }
+.pm-panel { margin-top: 14px; }
+.pm-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.pm-tool {
+  text-align: left; cursor: pointer; border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 11px; background: var(--bg-elev);
+  color: var(--ink-soft); font-size: 12.5px;
+}
+.pm-tool:hover { border-color: var(--accent); color: var(--ink); }
+.pm-artefact {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 6px 0; border-bottom: 1px dashed var(--line);
+}
+.pm-artefact:last-of-type { border-bottom: none; }
+
+/* ---------- verification / health badges ---------- */
+.badge.unverified { color: #fbbf24; border-color: color-mix(in srgb, #f59e0b 55%, transparent); background: color-mix(in srgb, #f59e0b 8%, transparent); }
+.badge.flagged { color: #f87171; border-color: color-mix(in srgb, var(--err, #ef4444) 50%, transparent); background: color-mix(in srgb, var(--err, #ef4444) 10%, transparent); }
+.badge.operational { color: #4ade80; border-color: color-mix(in srgb, #22c55e 50%, transparent); background: color-mix(in srgb, #22c55e 8%, transparent); }
+.health-bar { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; font-size: 13px; }
+.health-bar .seg { display: flex; align-items: center; gap: 6px; }
+.health-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 @media (min-width: 640px) {
   .tool-modal { inset: 8vh 0 0 auto; width: 480px; border-radius: 16px 0 0 16px; border-top: none; border-left: 1px solid var(--line); }
 }

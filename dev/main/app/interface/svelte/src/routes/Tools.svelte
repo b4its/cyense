@@ -6,6 +6,7 @@
   import Pagination from '../components/Pagination.svelte'
   import Toolbench from '../components/Toolbench.svelte'
   import CaseFile from '../components/CaseFile.svelte'
+  import PivotMap from '../components/PivotMap.svelte'
   import { caseFile, addToCaseFile, removeFromCaseFile, isInCaseFile } from '../lib/casefile.js'
 
   let catalog = null
@@ -14,7 +15,7 @@
   let query = ''
   let activeCat = '' // '' = all categories, otherwise a category id
   let haveType = '' // pivot filter: '' off, otherwise one of pivot_types codes
-  let view = 'tools' // 'tools' | 'workflows' | 'toolbench' | 'casefile'
+  let view = 'tools' // 'tools' | 'workflows' | 'toolbench' | 'casefile' | 'pivot'
   let selected = null // the tool open in the detail drawer
   let selectedWf = null // the workflow open in the detail drawer
   let page = 1
@@ -84,6 +85,7 @@
   $: workflows = catalog?.workflows || []
   $: checkpoints = catalog?.reporting_checkpoints || []
   $: confidenceScale = catalog?.confidence_scale || []
+  $: health = catalog?.health || null
   $: haveLabel = (c) => pivotTypes.find((p) => p.code === c)?.label || c
 
   function openTool(t) { selected = t }
@@ -122,6 +124,21 @@
       ? removeFromCaseFile(items, t.name)
       : addToCaseFile(items, t))
   }
+
+  // ---- "tool ini dipakai di workflow mana?" (saran workflow per tool) ----
+  $: workflowsFor = (name) => {
+    const nl = String(name || '').toLowerCase()
+    const found = []
+    for (const w of workflows || []) {
+      for (const s of w.steps || []) {
+        if ((s.tools || []).some((n) => String(n).toLowerCase() === nl)) {
+          found.push({ workflow: w.slug, question: w.question, step: s.title })
+          break
+        }
+      }
+    }
+    return found
+  }
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') closeTop() }} />
@@ -135,6 +152,8 @@
       <h1>{loading ? '...' : `${workflows.length} workflows investigasi`}</h1>
     {:else if view === 'toolbench'}
       <h1>Toolbench — 7 utilitas lokal</h1>
+    {:else if view === 'pivot'}
+      <h1>Pivot Map</h1>
     {:else}
       <h1>🗂 Case File <span class="muted" style="font-size:20px">· {$caseFile.length}</span></h1>
     {/if}
@@ -152,6 +171,10 @@
         Satu-satunya lapis yang benar-benar memproses data di sisi platform — dibangun
         ulang 1:1 di browser: lokal, tanpa akun, tanpa unggah, tanpa logging. Satu
         pengecualian: IP Lookup, yang secara inheren memanggil API geolokasi publik.
+      {:else if view === 'pivot'}
+        Visualisasi graf bertipe: tiap tool <code class="wf-conf">you have → you get</code>,
+        dan investigasi maju dengan menyerahkan identifier yang Anda pegang ke tool berikutnya.
+        Telusuri hop demi hop secara manual — inti nilai OSINT Radar.
       {:else}
         Keranjang bukti ringan ala OSINT Radar: simpan tool selama menyelidiki, beri
         catatan, lalu salin atau ekspor bundel dengan hash integritas SHA-256.
@@ -160,8 +183,10 @@
     <div class="view-tabs" role="tablist" aria-label="Ganti tampilan katalog">
       <button class="view-tab {view === 'tools' ? 'active' : ''}" role="tab"
               aria-selected={view === 'tools'} onclick={() => view = 'tools'}>🧰 Tools</button>
+      <button class="view-tab {view === 'pivot' ? 'active' : ''}" role="tab"
+              aria-selected={view === 'pivot'} onclick={() => view = 'pivot'}>🧭 Pivot</button>
       <button class="view-tab {view === 'workflows' ? 'active' : ''}" role="tab"
-              aria-selected={view === 'workflows'} onclick={() => view = 'workflows'}>🧭 Workflows</button>
+              aria-selected={view === 'workflows'} onclick={() => view = 'workflows'}>⚙ Workflows</button>
       <button class="view-tab {view === 'toolbench' ? 'active' : ''}" role="tab"
               aria-selected={view === 'toolbench'} onclick={() => view = 'toolbench'}>🧪 Toolbench</button>
       <button class="view-tab {view === 'casefile' ? 'active' : ''}" role="tab"
@@ -209,9 +234,25 @@
     {:else if !visibleGroups.length}
       <p class="muted">Belum ada tool.</p>
     {:else}
+      {#if health}
+        <div class="health-bar" role="group" aria-label="Kesehatan verifikasi katalog">
+          <span class="pivot-label">Verifikasi:</span>
+          <span class="seg"><span class="health-dot" style="background:#22c55e"></span><b>{health.operational}</b> operational</span>
+          <span class="seg"><span class="health-dot" style="background:#f59e0b"></span><b>{health.unverified}</b> unverified</span>
+          <span class="seg"><span class="health-dot" style="background:#ef4444"></span><b>{health.flagged}</b> flagged</span>
+          <span class="tool-src">transparansi status — pembeda katalog terkurasi ini vs daftar link biasa</span>
+        </div>
+      {/if}
       {#each visibleGroups as g}
         <section class="block">
-          <h2>{g.emoji} {g.label}{#if g.risk}<span class="badge high" title="Kelas risiko kategori">⚠ {g.risk}</span>{/if}</h2>
+          <h2>{g.emoji} {g.label}{#if g.risk}<span class="badge high" title="Kelas risiko kategori">⚠ {g.risk}</span>{/if}
+            {#if health?.by_category?.[g.id]?.Flagged}
+              <span class="badge flagged" title="Verifikasi gagal dalam kategori ini">{health.by_category[g.id].Flagged} flagged</span>
+            {/if}
+            {#if health?.by_category?.[g.id]?.Unverified}
+              <span class="badge unverified" title="Belum diverifikasi dalam kategori ini">{health.by_category[g.id].Unverified} unverified</span>
+            {/if}
+          </h2>
           <p class="sub">{g.tools.length} tool</p>
           {#if g.note}<p class="cat-note">{g.note}</p>{/if}
           <div class="grid tools-grid">
@@ -239,6 +280,11 @@
                     {inCase(t.name) ? '✓ case' : '＋ case'}</button>
                   <span class="badge">detail →</span>
                 </div>
+                {#if t.tool_status && t.tool_status !== 'Operational'}
+                  <div class="health-dot {t.tool_status === 'Flagged' ? 'flagged' : 'unverified'}"></div>
+                  <span class="badge {t.tool_status === 'Flagged' ? 'flagged' : 'unverified'}"
+                        style="font-size:10.5px;padding:1px 8px">{t.tool_status}</span>
+                {/if}
               </div>
             {/each}
           </div>
@@ -249,6 +295,15 @@
   <div class="wrap">
     <Pagination bind:page={page} bind:pageSize={pageSize}
                 total={totalTools} label="Navigasi tool per halaman" />
+  </div>
+</section>
+
+{:else if view === 'pivot' && !loading && !error}
+<!-- Interactive Pivot Map — user-guided typed graph (no auto-ranked
+     suggestions, which the analysis flags as occasionally illogical). -->
+<section class="block">
+  <div class="wrap">
+    <PivotMap {catalog} onOpenTool={openTool} />
   </div>
 </section>
 
@@ -282,6 +337,20 @@
       Keterbatasan sadar dari model ini: tidak ada eksekusi otomatis — pengguna tetap
       menjalankan tiap tool di situs aslinya; workflow memberi urutan dan disiplin pelaporan.
     </p>
+
+    {#if catalog?.training?.length}
+      <h2 style="margin-top:34px">📚 Training &amp; Reference — Prinsip Metodologi</h2>
+      <p class="sub">Menutup kesenjangan kategori osint-training (§4.2) dengan pustaka
+        metode internal (bukan tool eksternal yang bisa busuk).</p>
+      <div class="grid tools-grid">
+        {#each catalog.training as r}
+          <div class="tool-card" role="article">
+            <div class="tool-name" style="font-size:15px">📘 {r.title}</div>
+            <p class="tool-desc">{r.body}</p>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 </section>
 
@@ -334,7 +403,7 @@
           <span class="badge">{selected.access}</span>
         {/if}
         {#if selected.tool_status}
-          <span class="badge {selected.tool_status === 'Operational' ? 'info' : 'high'}">{selected.tool_status}</span>
+          <span class="badge {selected.tool_status === 'Operational' ? 'operational' : (selected.tool_status === 'Flagged' ? 'flagged' : 'unverified')}">{selected.tool_status}</span>
         {/if}
       </div>
 
@@ -398,6 +467,18 @@
             <button class="badge related" onclick={() => openTool(toolBy(r.name))}>{r.name}</button>
           {/each}
         </div>
+      {/if}
+
+      {#if workflowsFor(selected.name).length}
+        <h3 class="tool-modal-h">Saran Workflow</h3>
+        <p class="tool-src">Tool ini dipakai sebagai langkah dalam kerangka investigasi berikut — konteks nyata untuk menggunakannya.</p>
+        {#each workflowsFor(selected.name) as wf}
+          <div style="margin:4px 0">
+            <button class="badge related" onclick={() => openWf(workflows.find((w) => w.slug === wf.workflow))}>
+              {wf.question}</button>
+            <span class="tool-src"> · langkah: {wf.step}</span>
+          </div>
+        {/each}
       {/if}
     </div>
   </div>
