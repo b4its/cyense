@@ -172,6 +172,7 @@
         Mulai dari pertanyaan investigatif, bukan dari daftar tool — kerangka kerja OSINT
         Radar berlangkah dengan tool dipetakan ke tiap langkah, plus checkpoint pelaporan
         dan level keyakinan. Catatan: workflow adalah metodologi, bukan eksekusi otomatis.
+        6 kerangka dari OSINT Radar + {#if workflows.length > 6}{workflows.length - 6} ekspansi Cyense untuk kategori yang dokumen catat belum punya alur (§4.2){/if}.
       {:else if view === 'toolbench'}
         Satu-satunya lapis yang benar-benar memproses data di sisi platform — dibangun
         ulang 1:1 di browser: lokal, tanpa akun, tanpa unggah, tanpa logging. Satu
@@ -317,8 +318,8 @@
 </section>
 
 {:else if view === 'workflows' && !loading && !error}
-<!-- OSINT Radar Workflows — "Start from an investigative question, not a
-     tool list": 6 frameworks, steps mapped to catalog tools. -->
+<!-- Workflows — first 6 from OSINT Radar verbatim; 4 expansions fill the
+     categories the analysis (§4.2) flags as lacking an alur. -->
 <section class="block">
   <div class="wrap">
     <div class="grid tools-grid">
@@ -337,6 +338,7 @@
           </ul>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">
             <span class="tag-chip-ui">saya punya: {haveLabel(w.start_type)}</span>
+            {#if w.extension}<span class="badge info" title="Ekspansi Cyense, bukan dari OSINT Radar — §4.2">ekspansi</span>{/if}
             <span class="badge" style="margin-left:auto">kerangka →</span>
           </div>
         </div>
@@ -345,6 +347,9 @@
     <p class="cat-note">
       Keterbatasan sadar dari model ini: tidak ada eksekusi otomatis — pengguna tetap
       menjalankan tiap tool di situs aslinya; workflow memberi urutan dan disiplin pelaporan.
+      {workflows.filter(w => w.extension).length
+        ? `6 kerangka pertama adalah alur asli OSINT Radar; ${workflows.filter(w => w.extension).length} sisanya ekspansi Cyense (label "ekspansi") untuk mengisi kategori yang dokumen catat belum punya workflow — bukan claim dari OSINT Radar.`
+        : ''}
     </p>
 
     {#if catalog?.training?.length}
@@ -556,7 +561,14 @@
         </div>
       {/if}
 
-      <p class="tool-src">Kerangka metodologi: mirror analisis OSINT Radar ·
+      <p class="tool-src">
+        {#if selectedWf.extension}
+          Kerangka ini <b>ekspansi Cyense</b> untuk kategori yang dokumen analisis
+          catat belum punya workflow (mengisi §4.2) — bukan alur resmi OSINT Radar.
+          Referensi metodologi:
+        {:else}
+          Kerangka metodologi: mirror analisis OSINT Radar ·
+        {/if}
         <a href="https://osintradar.com/workflows" target="_blank" rel="noopener noreferrer">osintradar.com/workflows</a>
         (tool dieksekusi di situs aslinya, bukan di sini).</p>
     </div>

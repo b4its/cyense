@@ -17,11 +17,16 @@ investigation:
     (confirmed / probable / lead / disputed)
   * ``REPORTING_CHECKPOINTS``  — the per-finding recording discipline every
     workflow enforces
-  * ``WORKFLOWS``              — the 6 investigative frameworks, with each
-    step mapped to catalog tool names (resolved case-insensitively in the UI)
+  * ``WORKFLOWS``              — the 6 original investigative frameworks from
+    OSINT Radar + 4 Cyense extensions (flagged ``extension: True``) filling the
+    categories §4.2 flags as lacking an alur; each step maps to catalog tool
+    names (resolved case-insensitively in the UI)
   * ``CATEGORY_NOTES``         — per-OSR-category limitations + the risk
-    classes the analysis recommends surfacing next to the most sensitive
-    groups (per-tool risk labelling as future work)
+    classes the analysis recommends surfacing next to the most sensitive groups
+  * ``TOOL_RISK`` / ``TOOL_RISK_WHY`` — per-tool risk class for the specific
+    tools the analysis singles out (§B5/B11/B13/B14), with rationale
+  * ``JURISDICTION``           — region-coverage hints (§B13: aggregator
+    coverage is US-centric; RIRs; UK/CA portals)
 
 Toolbench (7 utilitas lokal) dan Case File diimplementasikan sebagai *fitur UI
 klien* (Svelte: ``components/Toolbench.svelte``, ``lib/casefile.js`` —
@@ -333,7 +338,7 @@ WORKFLOWS: list[dict[str, object]] = [
             "heuristik — attribution nyata umumnya butuh data non-OSINT."
         ),
         "caution": (
-            "Label entitas probabilistik dan usang; CoinJoin/custodial wallet/"
+            "Label entitas probabilistik dan sering usang; CoinJoin/custodial wallet/"
             "batching bursa mematahkan heuristik klaster. Monero menyembunyikan "
             "pengirim, penerima, dan jumlah secara desain."
         ),
@@ -349,7 +354,7 @@ WORKFLOWS: list[dict[str, object]] = [
             {
                 "title": "Atribusi entitas",
                 "detail": "Label exchange/entitas + wallet clustering.",
-                "tools": ["ARKHAM INTEL", "Bitcoin WhosWho", "Bitref"],
+                "tools": ["ARKHAM INTEL", "Bitcoin WhosWho", "BitRef"],
             },
             {
                 "title": "Monitoring & intel",
@@ -360,6 +365,163 @@ WORKFLOWS: list[dict[str, object]] = [
                 "title": "Batasan privasi",
                 "detail": "Explorer XMR hanya memberi data blok/hashrate.",
                 "tools": ["Monero Blocks", "XMR Chain"],
+            },
+        ],
+    },
+    # ── Fase 4: perluasan cakupan workflow (§4.2 — dari 6 untuk mengisi 4
+    # kategori yang disebut dokumen tidak punya alur: threat intelligence,
+    # dark web, transport tracking, verifikasi rekaman publik) ──
+    {
+        "slug": "triage-a-threat-alert",
+        "extension": True,
+        "question": "Alert menyebut IP/domain/hash — nyata atau derau?",
+        "start_type": "ip",
+        "summary": (
+            "Pisahkan pemindai internet oportunistik dari ancaman tertarget, "
+            "perkaya indikator multi-sumber, lalu petakan ke taktik ATT&CK."
+        ),
+        "caution": (
+            "Unggahan sampel ke sandbox publik umumnya dapat diakses publik — "
+            "jangan pernah unggah dokumen sensitif; verdict agregat engine memuat "
+            "false positive. Kategori ini offensif-adjacent: hanya aset terotorisasi."
+        ),
+        "steps": [
+            {
+                "title": "Reputasi indikator",
+                "detail": "Laporan komunitas + blocklist + skor reputasi.",
+                "tools": ["VirusTotal", "Abuse IP DB", "Pulsedive", "Spamhaus", "Phishtank"],
+            },
+            {
+                "title": "Konteks jaringan",
+                "detail": "Pemindaian internet-wide pasif, ASN/RIR, klasifikasi sumber scan.",
+                "tools": ["Shodan", "Censys Search", "Greynoise", "RIPE", "ARIN"],
+            },
+            {
+                "title": "Perilaku sampel",
+                "detail": "Sandbox dinamis + basis kerentanan + basis intel malware.",
+                "tools": ["Hybrid analysis", "Exploit DB", "Vulnerability DB", "OSV Database", "Malpedia Library"],
+            },
+            {
+                "title": "Korelasi & pemetaan",
+                "detail": "IOC sharing (STIX/TAXII) + honeypot + pemetaan teknik adversary.",
+                "tools": ["MISP Project", "Honey DB", "Ransomware finder", "Mitre Attack"],
+            },
+            {
+                "title": "Arsipkan bukti triase",
+                "detail": "Snapshot halaman verdict + timestamp terpisah.",
+                "tools": ["Hunchly", "Webpage Saver", "ArchiveBox"],
+            },
+        ],
+    },
+    {
+        "slug": "investigate-a-darkweb-service",
+        "extension": True,
+        "question": "Layanan .onion ini — aktif, dan apa hubungannya dengan clearnet?",
+        "start_type": "url",
+        "summary": (
+            "Temukan layanan tersembunyi, periksa kebocoran konfigurasi operator "
+            "yang menautkannya ke clearnet, dan verifikasi status relay."
+        ),
+        "caution": (
+            "Wajib VM terisolasi + pemisahan identitas (OPSEC); konten ilegal dapat "
+            "termuat tanpa disengaja — sebagian materi ilegal untuk sekadar diunduh. "
+            "Indeks .onion sangat usang; direktori penuh phishing."
+        ),
+        "steps": [
+            {
+                "title": "Temukan & indeks",
+                "detail": "Mesin pencari & direktori onion (dengan skeptisisme).",
+                "tools": ["Ahmia", "Onion Search Engine", "BlackWeb", "Thehiddenwiki", "Onion Links"],
+            },
+            {
+                "title": "Pemeriksaan kerentanan konfigurasi",
+                "detail": "Kebocoran klasik: server-status, EXIF gambar, sertifikat, reused Bitcoin address.",
+                "tools": ["Onion Inspector", "Onion Scan", "Onion Scan Tool", "Dark Web Tools"],
+            },
+            {
+                "title": "Riwayat relay",
+                "detail": "Apakah IP ini exit/relay Tor pada tanggal peristiwa — memisahkan derau dari pemilik IP.",
+                "tools": ["Tor IP Relay", "Tor Project"],
+            },
+            {
+                "title": "Korelasi clearnet",
+                "detail": "Tautkan indikator yang bocor ke domain/IP/identitas clearnet.",
+                "tools": ["Certificate Search", "Shodan", "IntelX"],
+            },
+        ],
+    },
+    {
+        "slug": "track-a-vessel-or-flight",
+        "extension": True,
+        "question": "Benarkah kapal/pesawat ini berada di lokasi & waktu yang diklaim?",
+        "start_type": "location",
+        "summary": (
+            "Verifikasi pergerakan lintas udara/laut dari siaran ADS-B/AIS dan "
+            "koridas darat — dengan kesadaran penuh kedua protokol dapat dipalsukan."
+        ),
+        "caution": (
+            "AIS & ADS-B tidak terenkripsi dan tidak terautentikasi — spoofing "
+            "terdokumentasi luas (penghindaran sanksi); ketiadaan sinyal ≠ tidak ada "
+            "kapal; sebagian penerbangan disensor platform; data infrastruktur "
+            "kritis sensitif di tangan yang salah."
+        ),
+        "steps": [
+            {
+                "title": "Posisi & rute langsung",
+                "detail": "Agregasi siaran ADS-B/AIS dari feeder sukarelawan.",
+                "tools": ["Flight Radar", "Flight Aware", "Marine Traffic", "Vessel Finder", "Vessel Tracker"],
+            },
+            {
+                "title": "Riwayat pergerakan",
+                "detail": "Port call, lintasan lama, jadwal satelit.",
+                "tools": ["Live Train Tracker", "Open Railway Map", "Satellite Tracking", "Military Tracking"],
+            },
+            {
+                "title": "Koridor & infrastruktur",
+                "detail": "Kabel, jaringan listrik/telekom — konteks geografis.",
+                "tools": ["Submarine Cable Map", "Open Infrastructure"],
+            },
+            {
+                "title": "Korroborasi independen",
+                "detail": "Citra satelit bertanggal untuk konfirmasi sebelum/sesudah.",
+                "tools": ["Image Wayback", "Earth Explorer"],
+            },
+        ],
+    },
+    {
+        "slug": "verify-a-public-record",
+        "extension": True,
+        "question": "Klaim ini harus dipegang oleh rekaman resmi — ada tidaknya?",
+        "start_type": "name",
+        "summary": (
+            "Telusuri rekaman pengadilan/properti/perusahaan lewat portal resmi "
+            "dan agregator — verifikasi ke sumber asal, catat yurisdiksi."
+        ),
+        "caution": (
+            "Ketersediaan rekaman sangat bervariasi antar-yurisdiksi; agregator "
+            "bukan consumer reporting agency — memakai hasilnya untuk keputusan "
+            "kerja/kredit melanggar FCRA di AS; sebagian entri direktori sudah mati."
+        ),
+        "steps": [
+            {
+                "title": "Kandidat dari agregator",
+                "detail": "Reverse lookup nama/perusahaan/telepon sebagai penunjuk arah.",
+                "tools": ["Background Checks", "Global Business Directory", "Numlookup", "FamilyTreeNow"],
+            },
+            {
+                "title": "Portal resmi",
+                "detail": "Pivot dari kandidat ke direktori situs pemerintah & arsip nasional.",
+                "tools": ["Usa Official", "National Archives UK", "UK People Search"],
+            },
+            {
+                "title": "Konteks lokasi & lingkungan",
+                "detail": "Rekaman geografis/non-kriminal sebagai korroborasi.",
+                "tools": ["Environmental Info", "Snoop Station"],
+            },
+            {
+                "title": "Arsipkan & tandai sumber",
+                "detail": "Screenshot + hash hanya sebagai pendukung; kutipan dokumen resmi yang mengendalikan.",
+                "tools": ["Webpage Saver", "SingleFile", "Webrecorder"],
             },
         ],
     },

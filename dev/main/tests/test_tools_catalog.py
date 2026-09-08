@@ -238,16 +238,24 @@ def test_methodology_layer_in_payload(client) -> None:
     have_values = {h for t in data["tools"] for h in (t.get("you_have") or [])}
     assert have_values <= pivot_codes, f"you_have outside vocabulary: {have_values - pivot_codes}"
 
-    # Workflows — the 6 investigative frameworks, verbatim slugs, each step
-    # referencing only tools that exist in the catalog.
+    # Workflows — the 6 core frameworks from OSINT Radar + 4 Cyense extensions
+    # filling the categories the analysis flags as lacking an alur (§4.2).
+    # Verbatim slugs, each step referencing only tools that exist in the catalog.
     slugs = [w["slug"] for w in data["workflows"]]
     assert slugs == [
         "investigate-a-username", "analyze-an-email", "research-a-domain",
         "verify-an-image", "locate-a-place", "trace-a-wallet",
+        "triage-a-threat-alert", "investigate-a-darkweb-service",
+        "track-a-vessel-or-flight", "verify-a-public-record",
     ]
-    names = _names_lower(data)
+    originals = slugs[:6]
     for w in data["workflows"]:
         assert w["question"] and w["steps"] and w["caution"], w["slug"]
+        # core frameworks come from the site; the 4 new slugs must be flagged
+        # (honest sourcing: UI must not represent them as OSINT-Radar-authored).
+        assert bool(w.get("extension")) == (w["slug"] not in originals)
+    names = _names_lower(data)
+    for w in data["workflows"]:
         assert w["start_type"] in pivot_codes
         referenced = [t for s in w["steps"] for t in s["tools"]]
         assert referenced, f"{w['slug']} has no tool references"
