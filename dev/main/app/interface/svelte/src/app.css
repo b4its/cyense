@@ -278,6 +278,75 @@ section.block .sub { color: var(--ink-soft); margin: 0 0 20px; font-size: 16px; 
   font-family: var(--mono, monospace); font-size: 12px; color: var(--accent-strong);
   border: 1px solid var(--line); border-radius: 6px; padding: 0 6px;
 }
+
+/* ---------- toolbench + case file (OSINT Radar Lapis A, client-side) ---------- */
+.tb-wrap { display: grid; grid-template-columns: 1fr; gap: 18px; }
+@media (min-width: 860px) { .tb-wrap { grid-template-columns: 250px 1fr; } }
+.tb-nav { display: flex; flex-direction: column; gap: 6px; }
+.tb-tool {
+  display: flex; align-items: center; gap: 8px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 13px;
+  background: transparent; color: var(--ink-soft); font-size: 13.5px;
+}
+.tb-tool:hover { border-color: var(--accent); color: var(--ink); }
+.tb-tool.active {
+  color: var(--accent-strong); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.tb-privacy { font-size: 12px; color: var(--ink-mute, #8a93a6); margin: 10px 2px 0; line-height: 1.6; }
+.tb-main { min-width: 0; }
+.tb-panel { display: flex; flex-direction: column; }
+.tb-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; }
+.tb-output {
+  margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--bg-elev);
+}
+.field-label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-mute, #8a93a6); margin-bottom: 6px; }
+.tb-kv { display: grid; grid-template-columns: max-content 1fr; gap: 5px 16px; margin: 0; font-size: 13.5px; }
+.tb-kv dt { font-family: var(--mono); font-size: 11.5px; color: var(--ink-mute, #8a93a6); text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+.tb-kv dd { margin: 0; color: var(--ink); word-break: break-word; }
+.tb-mono { font-family: var(--mono, monospace); font-size: 12.5px; }
+.tb-break { word-break: break-all; }
+.tb-code {
+  flex: 1; min-width: 0; display: block;
+  background: var(--code-bg); color: var(--code-ink);
+  border-radius: 8px; padding: 8px 12px; font-size: 13px;
+  overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+}
+.tb-err { color: #fca5a5; font-size: 13px; margin: 8px 0 0; }
+.usage-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.auth-row { display: flex; gap: 8px; align-items: center; margin: 3px 0; flex-wrap: wrap; }
+.btn.sm { width: auto !important; padding: 6px 12px; font-size: 12px; margin: 0 !important; transform: none !important; }
+.btn.sm:hover { transform: none !important; }
+.field textarea {
+  background: var(--bg-inset, rgba(127,127,127,.06)); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  font-family: var(--mono, monospace); font-size: 12.5px; line-height: 1.55;
+}
+.field textarea:focus { outline: none; border-color: var(--accent); }
+.badge.related.in-case { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.case-row {
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-elev); margin-bottom: 10px;
+}
+.case-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.case-num {
+  font-family: var(--mono); font-size: 11px; color: var(--accent-strong);
+  border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+}
+.case-src { font-size: 12.5px; color: var(--accent-strong); word-break: break-all; }
+.case-del {
+  margin-left: auto; border: none; background: transparent; cursor: pointer;
+  color: var(--ink-soft); font-size: 14px; padding: 2px 6px;
+}
+.case-del:hover { color: var(--err); }
+.case-note {
+  width: 100%; margin-top: 8px; background: transparent; color: var(--ink);
+  border: 1px dashed var(--line); border-radius: 8px; padding: 7px 10px; font-size: 13px;
+}
+.case-note:focus { outline: none; border-color: var(--accent); border-style: solid; }
+.tool-modal-close.cf-on { color: var(--accent-strong); border-color: var(--accent) !important; }
 @media (min-width: 640px) {
   .tool-modal { inset: 8vh 0 0 auto; width: 480px; border-radius: 16px 0 0 16px; border-top: none; border-left: 1px solid var(--line); }
 }

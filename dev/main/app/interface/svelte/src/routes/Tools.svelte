@@ -4,6 +4,9 @@
   import SearchInput from '../components/SearchInput.svelte'
   import SearchableSelect from '../components/SearchableSelect.svelte'
   import Pagination from '../components/Pagination.svelte'
+  import Toolbench from '../components/Toolbench.svelte'
+  import CaseFile from '../components/CaseFile.svelte'
+  import { caseFile, addToCaseFile, removeFromCaseFile, isInCaseFile } from '../lib/casefile.js'
 
   let catalog = null
   let loading = true
@@ -11,7 +14,7 @@
   let query = ''
   let activeCat = '' // '' = all categories, otherwise a category id
   let haveType = '' // pivot filter: '' off, otherwise one of pivot_types codes
-  let view = 'tools' // 'tools' | 'workflows' — OSINT Radar Lapis A: question-first
+  let view = 'tools' // 'tools' | 'workflows' | 'toolbench' | 'casefile'
   let selected = null // the tool open in the detail drawer
   let selectedWf = null // the workflow open in the detail drawer
   let page = 1
@@ -111,6 +114,14 @@
       return t ? { name: t.name, tool: t } : { name: n, tool: null }
     })
   }
+
+  // ---- Case File (client-side localStorage, OSINT Radar style) -----------
+  $: inCase = (name) => isInCaseFile($caseFile, name)
+  function toggleCase(t) {
+    caseFile.update((items) => isInCaseFile(items, t.name)
+      ? removeFromCaseFile(items, t.name)
+      : addToCaseFile(items, t))
+  }
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') closeTop() }} />
@@ -120,8 +131,12 @@
     <div class="kicker">Pentest Tools</div>
     {#if view === 'tools'}
       <h1>{loading ? '...' : `${filtered.length} dari ${catalog?.total || 0} tools`}</h1>
-    {:else}
+    {:else if view === 'workflows'}
       <h1>{loading ? '...' : `${workflows.length} workflows investigasi`}</h1>
+    {:else if view === 'toolbench'}
+      <h1>Toolbench — 7 utilitas lokal</h1>
+    {:else}
+      <h1>🗂 Case File <span class="muted" style="font-size:20px">· {$caseFile.length}</span></h1>
     {/if}
     <p class="lead">
       {#if view === 'tools'}
@@ -129,10 +144,17 @@
         Klik kartu untuk detail (fitur, usage, bookmark, tool terkait). Filter “Saya punya”
         memakai pivot map OSINT Radar: pilih identifier yang Anda pegang, katalog menampilkan
         tool yang menerimanya.
-      {:else}
+      {:else if view === 'workflows'}
         Mulai dari pertanyaan investigatif, bukan dari daftar tool — kerangka kerja OSINT
         Radar berlangkah dengan tool dipetakan ke tiap langkah, plus checkpoint pelaporan
         dan level keyakinan. Catatan: workflow adalah metodologi, bukan eksekusi otomatis.
+      {:else if view === 'toolbench'}
+        Satu-satunya lapis yang benar-benar memproses data di sisi platform — dibangun
+        ulang 1:1 di browser: lokal, tanpa akun, tanpa unggah, tanpa logging. Satu
+        pengecualian: IP Lookup, yang secara inheren memanggil API geolokasi publik.
+      {:else}
+        Keranjang bukti ringan ala OSINT Radar: simpan tool selama menyelidiki, beri
+        catatan, lalu salin atau ekspor bundel dengan hash integritas SHA-256.
       {/if}
     </p>
     <div class="view-tabs" role="tablist" aria-label="Ganti tampilan katalog">
@@ -140,6 +162,11 @@
               aria-selected={view === 'tools'} onclick={() => view = 'tools'}>🧰 Tools</button>
       <button class="view-tab {view === 'workflows' ? 'active' : ''}" role="tab"
               aria-selected={view === 'workflows'} onclick={() => view = 'workflows'}>🧭 Workflows</button>
+      <button class="view-tab {view === 'toolbench' ? 'active' : ''}" role="tab"
+              aria-selected={view === 'toolbench'} onclick={() => view = 'toolbench'}>🧪 Toolbench</button>
+      <button class="view-tab {view === 'casefile' ? 'active' : ''}" role="tab"
+              aria-selected={view === 'casefile'} onclick={() => view = 'casefile'}>
+        {`🗂 Case File${$caseFile.length ? ` (${$caseFile.length})` : ''}`}</button>
     </div>
     {#if view === 'tools'}
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -205,7 +232,12 @@
                   {#each t.platforms || [] as p}
                     <span class="badge info" title={platformLabel(p)}>{platformLabel(p)}</span>
                   {/each}
-                  <span class="badge" style="margin-left:auto">detail →</span>
+                  <button class="badge related {inCase(t.name) ? 'in-case' : ''}"
+                          style="margin-left:auto"
+                          title={inCase(t.name) ? 'Hapus dari case file' : 'Simpan ke case file'}
+                          onclick={(e) => { e.stopPropagation(); toggleCase(t) }}>
+                    {inCase(t.name) ? '✓ case' : '＋ case'}</button>
+                  <span class="badge">detail →</span>
                 </div>
               </div>
             {/each}
@@ -220,7 +252,7 @@
   </div>
 </section>
 
-{:else if !loading && !error}
+{:else if view === 'workflows' && !loading && !error}
 <!-- OSINT Radar Workflows — "Start from an investigative question, not a
      tool list": 6 frameworks, steps mapped to catalog tools. -->
 <section class="block">
@@ -252,6 +284,16 @@
     </p>
   </div>
 </section>
+
+{:else if view === 'toolbench' && !loading && !error}
+<!-- Toolbench — OSINT Radar's local utilities rebuilt client-side. The only
+     execution layer; everything offline-capable except IP Lookup. -->
+<section class="block">
+  <div class="wrap"><Toolbench /></div>
+</section>
+
+{:else if view === 'casefile'}
+<CaseFile />
 {/if}
 
 {#if selected}
@@ -264,7 +306,14 @@
           {selected.url}
         </a>
       </div>
-      <button class="tool-modal-close" onclick={closeTool} aria-label="Tutup">✕</button>
+      <div style="display:flex;gap:6px;align-items:flex-start">
+        <button class="tool-modal-close" class:cf-on={inCase(selected.name)}
+                title={inCase(selected.name) ? 'Hapus dari case file' : 'Simpan ke case file'}
+                onclick={() => toggleCase(selected)} aria-label="Case file"
+                style="font-size:14px;border:1px solid var(--line);border-radius:8px;padding:4px 10px">
+          {inCase(selected.name) ? '✓ case' : '＋ case'}</button>
+        <button class="tool-modal-close" onclick={closeTool} aria-label="Tutup">✕</button>
+      </div>
     </div>
 
     <div class="tool-modal-body">

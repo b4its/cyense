@@ -23,10 +23,11 @@ investigation:
     classes the analysis recommends surfacing next to the most sensitive
     groups (per-tool risk labelling as future work)
 
-Not mirrored: Case File (the catalog already ships per-tool data; the UI has
-its own browsing) and Toolbench (execution features, out of scope for a data
-module). Everything here is *presentation + reference* content — no engine,
-rule, or scan state changed.
+Toolbench (7 utilitas lokal) dan Case File diimplementasikan sebagai *fitur UI
+klien* (Svelte: ``components/Toolbench.svelte``, ``lib/casefile.js`` —
+murni browser, tanpa backend), jadi keduanya tidak butuh modul data Python.
+Semua yang ada di sini adalah materi presentasi + referensi — tidak ada engine,
+rule, atau state machine scan yang berubah.
 """
 
 from __future__ import annotations
