@@ -566,6 +566,52 @@ for _t in TOOLS:
     TOOLS_BY_CATEGORY.setdefault(str(_t["category"]), []).append(_t)
 
 
+def tools_filtered(
+    *,
+    category: str = "",
+    have: str = "",
+    pricing: str = "",
+    access: str = "",
+    status: str = "",
+    q: str = "",
+    page: int = 1,
+    page_size: int = 100,
+) -> tuple[list[dict[str, object]], int]:
+    """Faceted catalog query (public-API style, mirrors §A1: filters arrive as
+    query params, not scraping). Returns ``(page_of_tools, matched_count)``.
+
+    ``category``/``have`` are exact ids; ``pricing``/``access``/``status`` are
+    case-insensitive equality; ``q`` is a substring sweep over the same fields
+    the website search covers.
+    """
+    ql = (q or "").lower()
+    matched: list[dict[str, object]] = []
+    for t in TOOLS:
+        if category and str(t.get("category") or "") != category:
+            continue
+        if have and have not in (t.get("you_have") or []):
+            continue
+        if pricing and str(t.get("pricing") or "").lower() != pricing.lower():
+            continue
+        if access and str(t.get("access") or "").lower() != access.lower():
+            continue
+        if status and str(t.get("tool_status") or "Operational").lower() != status.lower():
+            continue
+        if ql:
+            hay = " ".join([
+                str(t.get("name") or ""), str(t.get("description") or ""),
+                " ".join(t.get("tags") or []), str(t.get("osint_category") or ""),
+                " ".join(t.get("you_have") or []), " ".join(t.get("you_get") or []),
+            ]).lower()
+            if ql not in hay:
+                continue
+        matched.append(t)
+    page = max(1, page)
+    page_size = max(1, min(page_size, 200))
+    start = (page - 1) * page_size
+    return matched[start:start + page_size], len(matched)
+
+
 def tools_catalog() -> dict[str, object]:
     """Return the full catalog payload (categories + tools) for API / CLI.
 
@@ -622,4 +668,5 @@ __all__ = [
     "TOOLS_BY_CATEGORY",
     "PLATFORM_LABELS",
     "tools_catalog",
+    "tools_filtered",
 ]

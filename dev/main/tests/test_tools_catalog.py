@@ -298,6 +298,36 @@ def test_methodology_layer_in_payload(client) -> None:
     for t in data["training"]:
         assert t["id"] and t["title"] and t["body"]
 
+def test_faceted_catalog_search_api(client) -> None:
+    """/api/v1/tools/search — read-only faceted machine API (§4.2, mirrors §A1
+    query-param contract: category / have / pricing / status / q / page)."""
+    r = client.get("/api/v1/tools/search", params={"have": "email", "pricing": "Free"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["matched"] > 0
+    for t in data["tools"]:
+        assert "email" in (t.get("you_have") or [])
+        assert str(t.get("pricing") or "").lower() == "free"
+
+    r2 = client.get("/api/v1/tools/search", params={"q": "certificate transparency"})
+    assert r2.status_code == 200 and r2.json()["matched"] >= 1
+    assert any(
+        "cert" in str(t["name"]).lower() or "crt" in str(t["name"]).lower()
+        for t in r2.json()["tools"]
+    )
+
+    r3 = client.get("/api/v1/tools/search", params={"status": "Flagged"})
+    assert r3.json()["matched"] == 2  # Twiangulate, Usa Official (as published)
+
+    # pagination: page 2 disjoint from page 1, matched stays stable
+    p1 = client.get("/api/v1/tools/search", params={"category": "osint-domain", "page_size": 10, "page": 1}).json()
+    p2 = client.get("/api/v1/tools/search", params={"category": "osint-domain", "page_size": 10, "page": 2}).json()
+    assert {t["name"] for t in p1["tools"]} & {t["name"] for t in p2["tools"]} == set()
+    assert p1["matched"] == p2["matched"]
+    assert len(p1["tools"]) == 10
+    # unknown have/pricing filters return empty (no crash)
+    assert client.get("/api/v1/tools/search", params={"have": "zip"}).json()["matched"] == 0
+
 def test_cli_registers_tools_group() -> None:
     from app.cli.main import app
 

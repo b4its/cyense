@@ -420,3 +420,33 @@ async def tools() -> dict[str, object]:
     from app.program.tools_catalog import tools_catalog
 
     return tools_catalog()
+
+
+@tools_app.get("/search")
+async def tools_search(
+    category: str = "",
+    have: str = "",
+    pricing: str = "",
+    access: str = "",
+    status: str = "",
+    q: str = "",
+    page: int = 1,
+    page_size: int = 100,
+) -> dict[str, object]:
+    """Faceted catalog query — the read-only machine API the analysis
+    recommends (§4.2: integrate into SOAR/notebooks instead of scraping).
+    Mirrors the site's own query-param contract (?category=, ?have=email, ?page=n).
+    """
+    from app.program.tools_catalog import TOOLS, tools_filtered
+
+    page_of_tools, matched = tools_filtered(
+        category=category, have=have, pricing=pricing, access=access,
+        status=status, q=q, page=page, page_size=page_size,
+    )
+    return {
+        "tools": page_of_tools,
+        "matched": matched,
+        "total": len(TOOLS),
+        "page": max(1, page),
+        "page_size": min(max(1, page_size), 200),
+    }
