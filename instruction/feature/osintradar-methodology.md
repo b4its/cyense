@@ -1,9 +1,9 @@
 # PRD Fitur — Lapis Metodologi OSINT Radar di /tools (Pivot Map + Workflows + Verifikasi + Training)
 
-> **Feature PRD** | Versi 1.3 | Status: implemented
+> **Feature PRD** | Versi 1.4 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` — dokumen ini adalah *addendum*, bukan pengganti
 > **Sumber konten:** "Dokumentasi Implementasi & Penerapan Fitur — osintradar.com/tools", analisis independen v1.0 (8 Sep 2026) atas `/tools` (20 halaman, 346 tool, 21 kategori), `/categories`, `/workflows`, `/free-tools`, `/about`, `/responsible-use`, `sitemap.xml`
-> **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`, `GET /tools/search`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile,coords,seo}.js`
+> **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`, `GET /tools/search`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile,coords,solar,warc,seo}.js`
 
 ---
 
@@ -118,7 +118,7 @@ antar perangkat).
 | Sedang: perluas workflows 6 → cakupan kategori yang tak punya alur | +4 workflow (triage-a-threat-alert, investigate-a-darkweb-service, track-a-vessel-or-flight, verify-a-public-record) — tiap tool reference tervalidasi test; **badge "ekspansi" jujur** + catatan sumber, karena bukan alur resmi OSINT Radar | `osintradar_methodology.WORKFLOWS` + test slug |
 | Sedang: kelas risiko **per tool** | `TOOL_RISK`/`TOOL_RISK_WHY` (27 tool tersorot dokumen: biometrik/offensif/privasi-tinggi/darkweb/ToS/**mati**) di-enrich ke record katalog saat build; badge kartu + drawer (ikon per kelas) | `osintradar_methodology` + enrichment `tools_catalog._all_tools` |
 | Sedang: catatan cakupan yurisdiksi | `JURISDICTION` (17 tool region-bound: people-search AS/UK/CA, RIR, dll.) → badge `coverage` di drawer | sama |
-| Rendah: +Toolbench (konverter koordinat, chronolocation, WARC check) | **Coordinate Converter** DMS ⇄ desimal ⇄ UTM (Snyder WGS84; inversi = Newton pada *forward series sendiri* ⇒ round-trip ≤1e-13°, 9 vektor teruji) — badge "ext" jujur (bukan salah satu 7 asli). **Chronolocation & WARC checker tetap future work** (butuh astronomi/arsip yang lebih luas dari scope) | `lib/coords.js` + `toolbench/CoordinateConverter.svelte` |
+| Rendah: +Toolbench (konverter koordinat, chronolocation, WARC check) | **Coordinate Converter** DMS ⇄ desimal ⇄ UTM (Snyder WGS84; inversi = Newton pada *forward series sendiri* ⇒ round-trip ≤1e-13°, 9 vektor teruji); **Chronolocation** (posisi matahari Williams/NOAA: azimuth/elevasi, bayangan/m, solver waktu-untuk-elevasi via scan+bisection — ekuidoksNYC sunrise azimuth terverifikasi 90.08±1.5°, solstis London maks 61.93°; bug nyata dijinakkan: `isFinite(null)===true` ⇒ guard `reverseElevOk` bertipe); **WARC Integrity** (parser ISO-28500 subset, digest deklaratif sha1/sha256 dalam hex/base64/base32/urn diverifikasi ulang via `crypto.subtle`, .warc.gz dilaporkan jujur tanpa parsing). Ketiganya ber-badge "ext" (bukan salah satu 7 asli) | `lib/coords.js`, `lib/solar.js`, `lib/warc.js` + `toolbench/CoordinateConverter/Chronolocation/WarcIntegrity.svelte` |
 
 ## 3. Desain
 
@@ -134,7 +134,7 @@ Tools.svelte
    ├─ view=tools       →  chip "Saya punya" memfilter you_have; .cat-note per grup
    ├─ view=workflows   →  kartu 6 alur → drawer: caution, steps → tool chips
    │                     (nama tak resolve tampil teks biasa), checkpoints, skala
-   ├─ view=toolbench   →  Toolbench.svelte: 7 utilitas, masing-masing + Tombol case
+   ├─ view=toolbench   →  Toolbench.svelte: 10 utilitas (7 asli + 3 ext), masing-masing + Tombol case
    └─ view=casefile    →  CaseFile.svelte (localStorage; ekspor md/json + hash)
 ```
 
@@ -167,6 +167,8 @@ Tools.svelte
 | Fase 4 — JSON-LD | ✅ (headless) `CollectionPage` 24 item/684; buka drawer ⇒ `SoftwareApplication` (name 'whois'); tutup ⇒ kembali CollectionPage; parse JSON sukses |
 | Fase 4 — Converter | ✅ node round-trip 9 vektor (termasuk 45,0; NYC; Sydney; London) maksimum error 0; UI: desimal→DMS/UTM ⇄ balik, junk ditolak |
 | Fase 4 — risk/coverage | ✅ payload: Face Recognition=biometrik, Gobuster=offensif, InstaLooter=mati, USPS coverage 'AS'; ≥25 label; kartu+drawer badge terverifikasi headless |
+| Fase 5 — Chronolocation (solar) | ✅ node: equinox Jakarta noon 83.96° (expect ≈83.8±1), NYC equinox sunrise/sunset azimuth 90.08/270.19 (≈±90/270±1.5), London solstice max elev 61.93 vs 61.94, solver elev=45 round-trip ≤0.01°, polar night = 0 crossing; UI: panel depan + rasio bayangan 2m/2m → 45.00° → 2 kandidat waktu UTC, regresi guard `isFinite(null)` terverifikasi (10 tool, tanpa console error) |
+| Fase 5 — WARC integrity | ✅ node fixture 4 record: `ok`(sha1-hex) / `mismatch`(body dirusak) / `ok`(urn:sha1-base32) / `no-digest`; deteksi gzip eksplisit; UI panel + file input render (end-to-end `DataTransfer` terhalang origin browser — logika parser teruji di node) |
 
 ## 5. Batasan (diumumkan ke pengguna di UI)
 

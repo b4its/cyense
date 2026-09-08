@@ -28,7 +28,8 @@ investigation:
   * ``JURISDICTION``           — region-coverage hints (§B13: aggregator
     coverage is US-centric; RIRs; UK/CA portals)
 
-Toolbench (7 utilitas asli + 1 ekstensi konverter koordinat — lihat §4.2) dan
+Toolbench (7 utilitas asli + 3 ekstensi §4.2: konverter koordinat,
+chronolocation solar, pemeriksa integritas WARC) dan
 Case File diimplementasikan sebagai *fitur UI
 klien* (Svelte: ``components/Toolbench.svelte``, ``lib/casefile.js`` —
 murni browser, tanpa backend), jadi keduanya tidak butuh modul data Python.

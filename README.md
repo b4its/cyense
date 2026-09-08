@@ -447,14 +447,18 @@ Data: `app/program/osintradar_methodology.py` + `osintradar_pivot.py`; PRD:
 
 Two more Lapis-A features are implemented fully client-side:
 
-- **Toolbench** — 8 local utilities (7 rebuilt from the platform + 1 §4.2
-  extension): Dork Builder, IP Lookup (the documented network exception),
+- **Toolbench** — 10 local utilities (7 rebuilt from the platform + 3 §4.2
+  extensions): Dork Builder, IP Lookup (the documented network exception),
   Timestamp Decoder, Email Header Analyzer, Image Metadata / EXIF (with
   SHA-256 for chain-of-custody), Username Sweep (pivot-URL generation, no
-  requests), Hash Identifier, and Coordinate Converter (DMS ⇄ decimal ⇄ UTM,
-  Snyder/WGS84, round-trip verified). Components:
-  `components/Toolbench.svelte` + `components/toolbench/*.svelte`,
-  parser libs at `lib/exif.js`, `lib/headers.js`, `lib/coords.js`.
+  requests), Hash Identifier, and three Cyense extensions (badged `ext`):
+  Coordinate Converter (DMS ⇄ decimal ⇄ UTM, Snyder/WGS84, round-trip
+  verified <1e-13°), Chronolocation (NOAA solar position + shadow/time
+  solver, ±~0.1° for 1990–2050), and WARC Integrity (recomputes declared
+  record digests — sha1/sha256 × hex/base64/base32 — entirely in the
+  browser). Components: `components/Toolbench.svelte` +
+  `components/toolbench/*.svelte`, parser libs at `lib/exif.js`,
+  `lib/headers.js`, `lib/coords.js`, `lib/solar.js`, `lib/warc.js`.
 - **Case File** — an OSINT-Radar-style lightweight evidence bundle
   (`localStorage`): save tools during browsing, add observed-result notes,
   copy/export as Markdown or JSON. Every export includes a SHA-256 integrity
