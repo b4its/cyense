@@ -120,6 +120,32 @@ antar perangkat).
 | Sedang: catatan cakupan yurisdiksi | `JURISDICTION` (17 tool region-bound: people-search AS/UK/CA, RIR, dll.) → badge `coverage` di drawer | sama |
 | Rendah: +Toolbench (konverter koordinat, chronolocation, WARC check) | **Coordinate Converter** DMS ⇄ desimal ⇄ UTM (Snyder WGS84; inversi = Newton pada *forward series sendiri* ⇒ round-trip ≤1e-13°, 9 vektor teruji); **Chronolocation** (posisi matahari Williams/NOAA: azimuth/elevasi, bayangan/m, solver waktu-untuk-elevasi via scan+bisection — ekuidoksNYC sunrise azimuth terverifikasi 90.08±1.5°, solstis London maks 61.93°; bug nyata dijinakkan: `isFinite(null)===true` ⇒ guard `reverseElevOk` bertipe); **WARC Integrity** (parser ISO-28500 subset, digest deklaratif sha1/sha256 dalam hex/base64/base32/urn diverifikasi ulang via `crypto.subtle`, .warc.gz dilaporkan jujur tanpa parsing). Ketiganya ber-badge "ext" (bukan salah satu 7 asli) | `lib/coords.js`, `lib/solar.js`, `lib/warc.js` + `toolbench/CoordinateConverter/Chronolocation/WarcIntegrity.svelte` |
 
+## 2.4 Fase 6 — Paritas CLI untuk lapis metodologi
+
+Dokumen memuji model "one source, two clients" katalog (CLI + Website);
+paritas sebelumnya berhenti di data tool mentah — workflows, pivot, health,
+training, risk/coverage **hanya** muncul di web. Fase ini menyambungkan payload
+yang sama ke CLI (data tetap satu sumber, tanpa endpoint baru):
+
+| Command / flag | Isi | Sumber data |
+|---|---|---|
+| `cyense tools workflows` | 10 framework + checkpoints; label "(ekspansi)" untuk 4 Cyense | `payload.workflows` |
+| `cyense tools pivot <code> [--detail]` | "saya punya X" → tool penerima (operasional saja); `--detail` output + hop identifier berikutnya | `you_have` / `artefact_types` |
+| `cyense tools training` | 10 resources metodologi | `payload.training` |
+| `list --have --pricing --access --status` | facet penuh ala `/tools/search` (filter sisi klien — mengikuti pola CLI yang sudah ada: fetch satu payload) | payload |
+| `info <name>` (diperkaya) | blok baru: *Cara kerja (asli — OSINT Radar)* dengan pivot `you have → you get`, baris **Verifikasi** (status + source), **RISK per tool** (ikon+alasan), **coverage**, **DIPAKAI DALAM WORKFLOW**, **PIVOT LANJUTAN** (artefak→identifier→penerima) | payload per-record |
+| `stats` (diperkaya) | strip verifikasi Operational/Unverified/Flagged + jumlah workflows/training | derivasi payload (`_tools_stats`) |
+
+**Bug lama ikut diperbaiki:** `render_tools_stats` diimpor tapi tidak pernah
+didefinisikan → `cyense tools stats` crash dengan `ImportError`; kini
+didefinisikan (+health strip). `info --json` sebelumnya membuang *seluruh
+katalog* — kini hanya record tool (konsisten dengan view manusia).
+
+**Kejujuran arsitektur:** CLI tidak memakai `/tools/search` (fetch penuh +
+filter lokal = pola yang sama dipakai `--category/--query/--feature` sejak
+awal); payload sudah tunggal. Validasi identifier pivot terjadi *sebelum*
+jaringan (test: exit 1 offline untuk kode asing, exit 3 saat service mati).
+
 ## 3. Desain
 
 ```

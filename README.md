@@ -394,16 +394,26 @@ curl -X POST http://localhost:8000/api/v1/fixes/<session_id>/apply \
 cyense tools list                            # all 684 tools grouped by category
 cyense tools list --category osint           # only OSINT tools
 cyense tools list --feature subdomain        # search tools by capability/feature
+cyense tools list --have email --pricing Free    # pivot/facet filter (mirrors /tools/search)
 cyense tools categories                      # list 56 categories with counts
 cyense tools info nmap                       # full profile: features, usage, bookmarks, related
+cyense tools info shodan                     # OSR tools also show how-it-works + you-have→you-get
 cyense tools usage nmap                      # usage examples only
+cyense tools workflows                       # 10 investigative frameworks (6 site + 4 ext)
+cyense tools pivot email --detail            # "saya punya email" → 138 tools, next hops
+cyense tools training                        # in-house methodology resources (§4.2)
+cyense tools stats                           # totals + verification/health strip
 ```
 
 Every tool record carries its own **features** (capabilities) plus **usage**
 examples, **bookmarks** and **related** tools — surfaced in the CLI
 (`cyense tools list` shows a `Fitur:` block; `cyense tools info <name>` the full
 profile), the `/api/v1/tools` JSON, and the Website page `/#/tools` (searchable
-cards + category filter + detail panel on click).
+cards + category filter + detail panel on click). The full methodology layer
+(workflows, pivot vocabulary/health/training, per-tool risk + jurisdiction)
+is served by the same `/api/v1/tools` payload and consumed by **both** clients:
+the Website tabs and these CLI subcommands (`workflows`, `pivot`, `training`,
+`--have/--pricing/--access/--status` on `list`) — single source, two views.
 
 The Website additionally renders the **OSINT Radar methodology layer** — the
 platform features the catalogue analysis identified as distinct from the
