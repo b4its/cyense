@@ -571,12 +571,22 @@ def tools_catalog() -> dict[str, object]:
 
     Shape:
       {
-        "categories": [{"id", "label", "emoji", "count"}...],
+        "categories": [{"id", "label", "emoji", "count", "note?", "risk?"}...],
         "tools":      [{name, url, description, category, platforms, tags}...],
         "total":      int,
         "platforms":  {"windows": "Windows", ...},
+        "pivot_types" / "workflows" / "reporting_checkpoints" /
+        "confidence_scale":  OSINT Radar methodology layer (Lapis A)
       }
     """
+    from app.program.osintradar_methodology import (
+        CATEGORY_NOTES,
+        CONFIDENCE_SCALE,
+        PIVOT_TYPES,
+        REPORTING_CHECKPOINTS,
+        WORKFLOWS,
+    )
+
     return {
         "categories": [
             {
@@ -584,12 +594,17 @@ def tools_catalog() -> dict[str, object]:
                 "label": c["label"],
                 "emoji": c["emoji"],
                 "count": len(TOOLS_BY_CATEGORY.get(str(c["id"]), [])),
+                **(CATEGORY_NOTES.get(str(c["id"])) or {}),
             }
             for c in CATEGORIES
         ],
         "tools": TOOLS,
         "total": len(TOOLS),
         "platforms": PLATFORM_LABELS,
+        "pivot_types": PIVOT_TYPES,
+        "workflows": WORKFLOWS,
+        "reporting_checkpoints": REPORTING_CHECKPOINTS,
+        "confidence_scale": CONFIDENCE_SCALE,
     }
 
 

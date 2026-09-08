@@ -221,6 +221,56 @@ def test_osintradar_mirror_is_integrated(client) -> None:
             assert t.get("features") and t.get("usage") and t.get("bookmarks")
 
 
+def test_methodology_layer_in_payload(client) -> None:
+    """OSINT Radar methodology layer (Lapis A) ships with the catalog payload."""
+    from app.program.osintradar_tools import OSR_CATEGORY_IDS
+
+    data = _tools_json(client)
+
+    # Pivot vocabulary — the 12 identifier types verified on the site, and
+    # every catalog you_have code must fall inside it (the UI "I have" filter
+    # depends on this).
+    pivot_codes = {p["code"] for p in data["pivot_types"]}
+    assert pivot_codes == {
+        "name", "company", "username", "email", "domain", "ip",
+        "url", "wallet", "location", "image", "file", "phone",
+    }
+    have_values = {h for t in data["tools"] for h in (t.get("you_have") or [])}
+    assert have_values <= pivot_codes, f"you_have outside vocabulary: {have_values - pivot_codes}"
+
+    # Workflows — the 6 investigative frameworks, verbatim slugs, each step
+    # referencing only tools that exist in the catalog.
+    slugs = [w["slug"] for w in data["workflows"]]
+    assert slugs == [
+        "investigate-a-username", "analyze-an-email", "research-a-domain",
+        "verify-an-image", "locate-a-place", "trace-a-wallet",
+    ]
+    names = _names_lower(data)
+    for w in data["workflows"]:
+        assert w["question"] and w["steps"] and w["caution"], w["slug"]
+        assert w["start_type"] in pivot_codes
+        referenced = [t for s in w["steps"] for t in s["tools"]]
+        assert referenced, f"{w['slug']} has no tool references"
+        for tn in referenced:
+            assert tn.lower() in names, f"{w['slug']} references unknown tool {tn}"
+
+    # Reporting checkpoints + confidence scale (Reporting Checkpoints §A3).
+    assert [c["id"] for c in data["reporting_checkpoints"]] == [
+        "target_value", "source_and_time", "observed_result", "confidence",
+    ]
+    assert [c["level"] for c in data["confidence_scale"]] == [
+        "confirmed", "probable", "lead", "disputed",
+    ]
+
+    # Every OSR category carries its analysis limitation; the riskiest groups
+    # additionally carry an explicit risk class.
+    cats = {c["id"]: c for c in data["categories"]}
+    for cid in OSR_CATEGORY_IDS:
+        assert cats[cid].get("note"), f"{cid} missing limitation note"
+    for cid in ("osint-people", "osint-image", "osint-threat", "osint-darkweb",
+                "osint-social", "osint-synthetic"):
+        assert cats[cid].get("risk"), f"{cid} should carry an explicit risk class"
+
 def test_cli_registers_tools_group() -> None:
     from app.cli.main import app
 
