@@ -2112,6 +2112,26 @@ def tools_list_cmd(
             help="Cari tool berdasarkan fitur/kapabilitas (mis. 'subdomain').",
         ),
     ] = None,
+    have: Annotated[
+        str | None,
+        typer.Option(
+            "--have",
+            help="Pivot filter — tool yang menerima identifier ini "
+                 "(email/domain/ip/username/url/name/company/location/image/file/phone/wallet).",
+        ),
+    ] = None,
+    pricing: Annotated[
+        str | None,
+        typer.Option("--pricing", help="Filter harga: Free|Freemium|Paid."),
+    ] = None,
+    access: Annotated[
+        str | None,
+        typer.Option("--access", help="Filter akses (mis. 'Open Source')."),
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option("--status", help="Status verifikasi: Operational|Unverified|Flagged."),
+    ] = None,
 ) -> None:
     """Tampilkan katalog tools pentest, dikelompokkan per kategori."""
     from app.cli.renderer import render_tools_catalog
@@ -2148,6 +2168,23 @@ def tools_list_cmd(
                 t for t in tools
                 if any(fq in str(x).lower() for x in t.get("features", []))
             ]
+        if have:
+            tools = [t for t in tools if have in (t.get("you_have") or [])]
+        if pricing:
+            tools = [
+                t for t in tools
+                if str(t.get("pricing") or "").lower() == pricing.lower()
+            ]
+        if access:
+            tools = [
+                t for t in tools
+                if str(t.get("access") or "").lower() == access.lower()
+            ]
+        if status:
+            tools = [
+                t for t in tools
+                if str(t.get("tool_status") or "Operational").lower() == status.lower()
+            ]
         filtered = dict(catalog)
         filtered["categories"] = cats
         filtered["tools"] = tools
@@ -2159,7 +2196,10 @@ def tools_list_cmd(
                 f"  [{_PAL.sev_medium}] Tidak ada tool yang cocok"
                 f"{f' dengan kueri {query!r}' if query else ''}"
                 f"{f' dengan fitur {feature!r}' if feature else ''}"
-                f"{f' di kategori {category!r}' if category else ''}.[/]"
+                f"{f' di kategori {category!r}' if category else ''}"
+                f"{f' yang menerima {have!r}' if have else ''}"
+                f"{f' pricing {pricing!r}' if pricing else ''}"
+                f"{f' status {status!r}' if status else ''}.[/]"
             )
             raise typer.Exit(1)
 
@@ -2236,10 +2276,6 @@ def tools_info_cmd(
             render_error_panel(_state.console, _state.caps, str(e))
             raise typer.Exit(3) from None
 
-        if _state.caps.json_out:
-            typer.echo(json.dumps(catalog, indent=2))
-            return
-
         tool = _find_tool(catalog, name)
         if tool is None:
             render_error_panel(
@@ -2248,6 +2284,11 @@ def tools_info_cmd(
                 "Gunakan `cyense tools list` untuk melihat daftar lengkap.",
             )
             raise typer.Exit(1)
+
+        if _state.caps.json_out:
+            # single-tool JSON — not the whole catalog (matches the human view)
+            typer.echo(json.dumps(tool, indent=2))
+            return
 
         from app.cli.renderer import render_tool_detail
         render_tool_detail(_state.console, _state.caps, tool, catalog)
@@ -2295,6 +2336,101 @@ def tools_usage_cmd(
     _run(_do())
 
 
+@tools_app.command("workflows")
+def tools_workflows_cmd() -> None:
+    """Daftar kerangka investigasi (workflow) OSINT Radar + ekspansi Cyense."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps({
+                "workflows": catalog.get("workflows", []),
+                "reporting_checkpoints": catalog.get("reporting_checkpoints", []),
+                "confidence_scale": catalog.get("confidence_scale", []),
+            }, indent=2))
+            return
+
+        from app.cli.renderer import render_workflows
+        render_workflows(_state.console, _state.caps, catalog)
+
+    _run(_do())
+
+
+_PIVOT_CODES = (
+    "name", "company", "username", "email", "domain", "ip",
+    "url", "wallet", "location", "image", "file", "phone",
+)
+
+@tools_app.command("pivot")
+def tools_pivot_cmd(
+    identifier: Annotated[
+        str, typer.Argument(help=f"Jenis identifier yang dipegang: {', '.join(_PIVOT_CODES)}"),
+    ],
+    detail: Annotated[
+        bool, typer.Option("--detail", "-d", help="Tampilkan output tiap tool + hop lanjutannya."),
+    ] = False,
+) -> None:
+    """Tool apa yang menerima identifier ini? (Pivot Map 'saya punya X')."""
+
+    async def _do():
+        code = identifier.strip().lower()
+        if code not in _PIVOT_CODES:
+            render_error_panel(
+                _state.console, _state.caps,
+                f"identifier tidak dikenal: {identifier!r}",
+                "Pilih salah satu: " + ", ".join(_PIVOT_CODES),
+            )
+            raise typer.Exit(1) from None
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            acc = sorted(
+                (t.get("name") for t in catalog.get("tools", [])
+                 if code in (t.get("you_have") or [])
+                 and str(t.get("tool_status") or "Operational") == "Operational"),
+                key=str.lower,
+            )
+            typer.echo(json.dumps({"have": code, "tools": acc, "count": len(acc)}, indent=2))
+            return
+
+        from app.cli.renderer import render_pivot
+        render_pivot(_state.console, _state.caps, catalog, code, detail)
+
+    _run(_do())
+
+
+@tools_app.command("training")
+def tools_training_cmd() -> None:
+    """Pustaka metodologi internal — prinsip kerja investigasi OSINT yang aman."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps(catalog.get("training", []), indent=2))
+            return
+
+        from app.cli.renderer import render_training
+        render_training(_state.console, _state.caps, catalog)
+
+    _run(_do())
+
 @tools_app.command("stats")
 def tools_stats_cmd() -> None:
     """Tampilkan statistik katalog tools (jumlah, platform, distribusi kategori)."""
@@ -2312,7 +2448,7 @@ def tools_stats_cmd() -> None:
             return
 
         from app.cli.renderer import render_tools_stats
-        render_tools_stats(_state.console, _state.caps, _tools_stats(catalog))
+        render_tools_stats(_state.console, _state.caps, _tools_stats(catalog), catalog)
 
     _run(_do())
 
@@ -2353,6 +2489,14 @@ def _tools_stats(catalog: dict[str, Any]) -> dict[str, Any]:
         "tools_with_features": with_features,
         "platforms": dict(sorted(platform_count.items(), key=lambda kv: -kv[1])),
         "top_categories": dict(sorted(by_cat.items(), key=lambda kv: -kv[1])[:10]),
+        "workflows": len(catalog.get("workflows") or []),
+        "training": len(catalog.get("training") or []),
+        # verification strip — mirror app.program.osintradar_pivot.build_health,
+        # recomputed from the payload itself so the CLI works with any server build.
+        "verifications": {
+            k: sum(1 for t in tools if str(t.get("tool_status") or "Operational") == k)
+            for k in ("Operational", "Unverified", "Flagged")
+        },
     }
 
 

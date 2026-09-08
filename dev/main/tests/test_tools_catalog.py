@@ -353,12 +353,36 @@ def test_cli_registers_tools_group() -> None:
     runner = CliRunner()
     r = runner.invoke(app, ["tools", "--help"])
     assert r.exit_code == 0
-    for name in ("list", "categories", "info", "usage"):
+    for name in ("list", "categories", "info", "usage", "workflows", "pivot", "training"):
         assert name in r.stdout, f"subcommand {name} not in tools help"
 
     r = runner.invoke(app, ["--help"])
     assert r.exit_code == 0
     assert "tools" in r.stdout
+
+def test_cli_tools_facet_flags_in_help() -> None:
+    """`tools list` mirrors the /tools/search facets (§A1/§4.2 parity)."""
+    from app.cli.main import app
+
+    r = CliRunner().invoke(app, ["tools", "list", "--help"])
+    assert r.exit_code == 0
+    for flag in ("--have", "--pricing", "--access", "--status", "--category", "--query", "--feature"):
+        assert flag in r.stdout, flag
+
+def test_cli_pivot_rejects_bad_identifier_offline() -> None:
+    """Argument validation happens before the network → exit 1 even offline."""
+    from app.cli.main import app
+
+    r = CliRunner().invoke(app, ["tools", "pivot", "zip"])
+    assert r.exit_code == 1
+    assert "identifier tidak dikenal" in r.stdout
+    # valid codes must pass through to the fetch (offline → clean error panel, exit 3)
+    for code in ("name", "company", "username", "email", "domain", "ip",
+                 "url", "wallet", "location", "image", "file", "phone"):
+        assert code in r.stdout, f"hint must list {code}"
+    r2 = CliRunner().invoke(app, ["tools", "pivot", "email"])
+    assert r2.exit_code == 3  # service down → not a crash
+    
 
 
 def test_cli_tools_usage_and_info_offline_errors() -> None:

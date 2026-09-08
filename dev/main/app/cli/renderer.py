@@ -1106,6 +1106,49 @@ def render_tool_detail(
         console.print()
 
     _block("FITUR", p.blue_accent, tool.get("features", []))
+
+    # ── OSINT Radar mirror layer (§2.2 A1/A2 + §4.2 display) ───────────
+    how = tool.get("how_it_works") or []
+    have = tool.get("you_have") or []
+    get = tool.get("you_get") or []
+    if how or have or get:
+        console.print(f"  [bold {p.blue_accent}]CARA KERJA (asli — OSINT Radar)[/]")
+        if have or get:
+            hv = " · ".join(str(x) for x in have) or "—"
+            gt = " · ".join(str(x) for x in get) or "—"
+            console.print(f"    [{p.blue_mist}]you have[/]  {hv}")
+            console.print(f"    [{p.blue_soft}] ↓[/]")
+            console.print(f"    [{p.blue_mist}]you get[/]   {gt}")
+        for para in how:
+            console.print(f"    [dim]{_esc(para)}[/]")
+        console.print()
+    src = _esc(tool.get("source_page") or "")
+    status = str(tool.get("tool_status") or "")
+    verified = str(tool.get("last_verified") or "")
+    if src or status or verified:
+        bits = []
+        if status:
+            col = {"Operational": p.ok, "Flagged": p.sev_high}.get(status, p.sev_medium)
+            bits.append(f"[{col}]{status}[/]")
+        if verified:
+            bits.append(f"[{p.muted}]verified {verified}[/]")
+        if src:
+            bits.append(f"[{p.blue_soft}]{src}[/]")
+        console.print(f"  [{p.muted}]Verifikasi:[/] " + "  ·  ".join(bits))
+        console.print()
+    risk = tool.get("risk")
+    if risk:
+        icon = {"biometrik": "🧬", "privasi-tinggi": "👤", "offensif": "💥",
+                "darkweb": "🕳", "ToS": "📄", "mati": "💀"}.get(risk, "⚠")
+        console.print(
+            f"  [{p.sev_high}]{icon} RISIKO — {risk}[/]"
+            + (f"  [{p.muted}]{_esc(tool.get('risk_why',''))}[/]" if tool.get("risk_why") else "")
+        )
+        console.print()
+    if tool.get("coverage"):
+        console.print(f"  [{p.muted}]📍 {_esc(tool.get('coverage'))}[/]")
+        console.print()
+
     _block("CONTOH PENGGUNAAN", p.ok, tool.get("usage", []), "$")
     _block("BOOKMARK / REFERENSI", p.blue_soft, tool.get("bookmarks", []), "→")
     if tool.get("related"):
@@ -1113,8 +1156,161 @@ def render_tool_detail(
         for r in tool.get("related", []):
             console.print(f"    [dim]→ {_esc(r)}[/]")
         console.print()
+
+    # OSR layer: workflows that use this tool, and where its outputs can pivot next.
+    tname = str(tool.get("name", "")).lower()
+    used_in = [
+        w for w in catalog.get("workflows") or []
+        if any(
+            tname == str(t).lower()
+            for st in (w.get("steps") or [])
+            for t in st.get("tools", [])
+        )
+    ]
+    if used_in:
+        console.print(f"  [bold {p.blue_accent}]DIPAKAI DALAM WORKFLOW[/]")
+        for w in used_in:
+            ext = " [dim](ekspansi)[/]" if w.get("extension") else ""
+            steps = ", ".join(str(s.get("title", "")) for s in (w.get("steps") or [])[:3])
+            console.print(
+                f"    [{p.blue_mist}]• {w.get('question')}{ext}[/] "
+                f"[{p.muted}]: {steps}[/]"
+            )
+        console.print()
+    at = catalog.get("artefact_types") or {}
+    nxt: dict[str, set] = {}
+    for g in get:
+        for code in at.get(str(g), []) or []:
+            nxt.setdefault(code, set()).add(str(g))
+    if nxt:
+        accepting = {
+            code: sorted({str(x.get("name")) for x in catalog.get("tools", [])
+                          if code in (x.get("you_have") or [])
+                          and str(x.get("tool_status") or "Operational") == "Operational"})
+            for code in nxt
+        }
+        accepting = {c: names for c, names in accepting.items() if names}
+        if accepting:
+            pivot_types = {p_.get("code"): p_.get("label") for p_ in catalog.get("pivot_types", [])}
+            lines = []
+            for code, names in sorted(accepting.items(), key=lambda kv: -len(kv[1])):
+                shown = ", ".join(names[:5]) + ("…" if len(names) > 5 else "")
+                lines.append(
+                    f"    [{p.blue_mist}]{pivot_types.get(code, code)}[/] "
+                    f"[{p.muted}]({len(names)} tool)[/] [dim]{shown}[/]"
+                )
+            console.print(
+                f"  [bold {p.blue_accent}]PIVOT LANJUTAN[/] "
+                f"[{p.muted}](saya punya artefak → tool penerima)[/]"
+            )
+            console.print("\n".join(lines[:4]))
+            console.print()
     console.print(sep)
     console.print(
         f"  [{p.muted}]Gunakan: cyense tools list --category {category}[/]"
     )
+    console.print()
+
+
+def render_tools_stats(
+    console: Console,
+    caps: TermCaps,
+    stats: dict[str, Any],
+    catalog: dict[str, Any] | None = None,
+) -> None:
+    """Covers ``cyense tools stats`` — size/platform distribution plus the
+    verification (health) strip from the OSINT Radar layer when available."""
+    p = PALETTE
+    console.print(f"\n  [bold {p.blue_primary}]STATISTIK KATALOG TOOLS[/]")
+    console.print(f"  total tools        : {stats.get('total_tools', 0)}")
+    console.print(f"  kategori           : {stats.get('total_categories', 0)}")
+    console.print(f"  fitur              : {stats.get('total_features', 0)} "
+                  f"[dim]({stats.get('tools_with_features', 0)} tool memiliki)[/]")
+    usage_n = stats.get("usage_examples", 0)
+    if usage_n:
+        console.print(f"  contoh usage       : {usage_n}")
+    if stats.get("platforms"):
+        plats = "  ".join(f"{k}:{v}" for k, v in list(stats["platforms"].items())[:8])
+        console.print(f"  platform           : [dim]{plats}[/]")
+    ver = stats.get("verifications") or {}
+    if ver:
+        col = {"Operational": p.ok, "Unverified": p.sev_medium, "Flagged": p.sev_high}
+        joined = "  ".join(
+            f"[{col.get(k, p.muted)}]{v} {k.lower()}[/]" for k, v in ver.items() if v
+        )
+        console.print(f"  verifikasi link   : {joined}")
+    wfs = stats.get("workflows", 0)
+    trn = stats.get("training", 0)
+    if wfs or trn:
+        console.print(f"  lapis metodologi : [dim]{wfs} workflows · {trn} resources "
+                      f"training · pivot vocabulary 12 types[/]")
+    console.print()
+
+
+def render_workflows(console: Console, caps: TermCaps, catalog: dict[str, Any]) -> None:
+    p = PALETTE
+    wfs = catalog.get("workflows") or []
+    n_ext = sum(1 for w in wfs if w.get("extension"))
+    suffix = f" + {n_ext} ekspansi Cyense" if n_ext else ""
+    console.print(f"\n  [bold {p.blue_primary}]WORKFLOWS INVESTIGASI[/]  "
+                  f"[{p.muted}]({len(wfs) - n_ext} OSINT Radar{suffix})[/]")
+    for w in wfs:
+        ext = f" [{p.sev_medium}]•ekspansi[/]" if w.get("extension") else ""
+        console.print(f"  [bold {p.blue_soft}]{w.get('slug','?')}[/]{ext}")
+        console.print(
+            f"    [dim]{w.get('question','')}[/] — awal: "
+            f"[dim]{w.get('start_type','')}[/]"
+        )
+        for i, st in enumerate(w.get("steps") or [], 1):
+            tools = ", ".join(str(t) for t in (st.get("tools") or []))
+            tlabel = (tools[:100] + "…") if len(tools) > 100 else tools
+            console.print(f"      {i}. {st.get('title','')} [dim]{tlabel}[/]")
+        console.print(f"      [dim]⚠ {w.get('caution','')}[/]")
+        console.print()
+    cp = catalog.get("reporting_checkpoints") or []
+    if cp:
+        names = " · ".join(str(x.get("label")) for x in cp)
+        console.print(f"  [dim]Checkpoints pelaporan: {names}[/]")
+        console.print()
+
+
+def render_pivot(console: Console, caps: TermCaps, catalog: dict[str, Any], code: str,
+                 detail: bool = False) -> None:
+    """Tools accepting identifier `code`; optionally their outputs + next hop."""
+    p = PALETTE
+    tools = sorted(
+        (t for t in catalog.get("tools", [])
+         if code in (t.get("you_have") or [])
+         and str(t.get("tool_status") or "Operational") == "Operational"),
+        key=lambda t: str(t.get("name", "")).lower(),
+    )
+    at = catalog.get("artefact_types") or {}
+    console.print(f"\n  [bold {p.blue_primary}]PIVOT — kamu punya {code}[/]  "
+                  f"[{p.muted}]({len(tools)} tool operasional menerimanya)[/]")
+    for t in tools:
+        console.print(f"  • [bold]{_esc(t.get('name'))}[/]  [{p.muted}]{t.get('category','')}[/]")
+        if detail:
+            outs = t.get("you_get") or []
+            if outs:
+                nxt = sorted({c for o in outs for c in (at.get(str(o)) or [])})
+                console.print(f"    [dim]dapat menghasilkan →[/] {_esc(', '.join(map(str, outs)))}")
+                if nxt:
+                    console.print(
+                        f"    [dim]→ bisa lanjut pivot ke identifier[/] "
+                        f"[dim]{', '.join(nxt)}[/]"
+                    )
+    console.print(f"  [{p.muted}]Gunakan: cyense tools info <name>[/]")
+    console.print()
+
+
+def render_training(console: Console, caps: TermCaps, catalog: dict[str, Any]) -> None:
+    p = PALETTE
+    items = catalog.get("training") or []
+    console.print(f"\n  [bold {p.blue_primary}]TRAINING & REFERENCE[/] [{p.muted}]"
+                  f"(pustaka metodologi internal — penutup gap kategori osint-training §4.2; "
+                  f"bukan tool eksternal agar tak membusuk)[/]")
+    for r in items:
+        console.print(f"\n  [bold {p.blue_soft}]{_esc(r.get('title',''))}[/]")
+        body = str(r.get("body", ""))
+        console.print(f"    [dim]{_esc(body)}[/]")
     console.print()
