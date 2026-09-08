@@ -7,6 +7,7 @@
   import Toolbench from '../components/Toolbench.svelte'
   import CaseFile from '../components/CaseFile.svelte'
   import PivotMap from '../components/PivotMap.svelte'
+  import SafetyPanel from '../components/SafetyPanel.svelte'
   import { caseFile, addToCaseFile, removeFromCaseFile, isInCaseFile } from '../lib/casefile.js'
   import { catalogJsonLd, toolJsonLd } from '../lib/seo.js'
 
@@ -381,6 +382,8 @@
         {/each}
       </div>
     {/if}
+
+    <SafetyPanel safety={catalog?.safety || {}} />
   </div>
 </section>
 

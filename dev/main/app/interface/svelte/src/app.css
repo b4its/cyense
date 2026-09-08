@@ -626,3 +626,28 @@ main { overflow-x: clip; }
 @media (max-width: 520px) {
   .field { width: 100% !important; }
 }
+
+/* ── safety / privasi panel ── */
+.safety-panel { margin-top: 22px; padding: 16px 20px; border-top: 1px solid var(--line); }
+
+/* Motto & warning */
+.safety-motto { font-size: 1.12em; font-weight: 600; color: var(--ink); margin: 8px 0 4px; }
+.safety-warn { border-left: 3px solid color-mix(in srgb, var(--danger) 55%, transparent); background: var(--panel-amber-bg); margin-top: 6px; }
+
+/* Table */
+.safe-reg-wrap { overflow-x: auto; max-width: 1100px; }
+.safe-reg-table { min-width: 700px; border-collapse: collapse; }
+.safe-reg-table th { font-size: .86em; font-weight: 600; color: var(--ink); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.safe-reg-table td { font-size: .84em; color: var(--ink); vertical-align: top; padding: 6px 8px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.safe-code { font-family: monospace; font-size: .8em; white-space: nowrap; color: var(--accent-strong); }
+.safe-body { min-width: 260px; padding-right: 8px; }
+
+/* Refusal cards (hard gate) */
+.safety-refuse { border-left: 3px solid color-mix(in srgb, var(--danger) 48%, transparent); }
+.safety-refuse .tool-name { color: color-mix(in srgb, var(--danger) 65%, var(--ink)); }
+.safety-code { font-family: monospace; font-size: .9em; }
+
+/* Contract */
+.safety-contract { margin-top: 6px; }
+.safety-contract summary { font-size: .9em; cursor: pointer; padding: 4px 0; color: var(--accent-strong); }
+.safety-contract pre { margin-top: 8px; font-size: .8em; max-height: 480px; overflow-y: auto; border: 1px solid var(--line); padding: 10px 12px; border-radius: 6px; white-space: pre-wrap; }
