@@ -414,6 +414,24 @@ limitation notes + risk classes** (biometrik, offensif, privasi tinggi, …) on
 the category headings. Data: `app/program/osintradar_methodology.py`; PRD:
 `instruction/feature/osintradar-methodology.md`.
 
+Two more Lapis-A features are implemented fully client-side:
+
+- **Toolbench** — 7 local utilities rebuilt from the platform: Dork Builder,
+  IP Lookup (the documented network exception), Timestamp Decoder, Email
+  Header Analyzer, Image Metadata / EXIF (with SHA-256 for chain-of-custody),
+  Username Sweep (pivot-URL generation, no requests), Hash Identifier.
+  Components: `components/Toolbench.svelte` + `components/toolbench/*.svelte`,
+  parser libs at `lib/exif.js` and `lib/headers.js`.
+- **Case File** — an OSINT-Radar-style lightweight evidence bundle
+  (`localStorage`): save tools during browsing, add observed-result notes,
+  copy/export as Markdown or JSON. Every export includes a SHA-256 integrity
+  hash of the report body so recipients can independently verify the evidence
+  hasn't been altered (`lib/casefile.js`).
+
+Both are `local · no account · offline-capable` (IP Lookup excepted) — no data
+leaves the browser except the one geolocation API call the doc explicitly
+acknowledges.
+
 ---
 
 ## 8. Security, Ethics & Ground Rules / Keamanan, Etika & Ground Rules
