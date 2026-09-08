@@ -354,7 +354,7 @@ make lint       # ruff, 0 errors
 | GET | `/scans/resumable` | List resumable scans / Daftar scan yang bisa dilanjutkan |
 | DELETE | `/scans/{id}` | Delete scan & artifacts / Hapus scan & artefak |
 | GET | `/rules` | Active rules catalog / Daftar rule aktif |
-| GET | `/tools` | Pentest tools catalog (Kali-style + OSINT + full OSINT Radar mirror, 684 tools, 56 categories, each with `features`; OSR entries keep the original how-it-works mechanism + you-have→you-get pivot) + methodology layer (`workflows`, `pivot_types`, `reporting_checkpoints`, `confidence_scale`, per-category `note`/`risk`) / Katalog tools pentest (… ) + lapis metodologi (workflow, kosakata pivot, checkpoint, skala keyakinan, catatan & kelas risiko per kategori) |
+| GET | `/tools` | Pentest tools catalog (Kali-style + OSINT + full OSINT Radar mirror, 684 tools, 56 categories, each with `features`; OSR entries keep the original how-it-works mechanism + you-have→you-get pivot) + methodology layer (`workflows`, `pivot_types`, `reporting_checkpoints`, `confidence_scale`, `artefact_types`, `health`, `training`, per-category `note`/`risk`) / Katalog tools pentest (… ) + lapis metodologi (workflow, kosakata pivot, checkpoint, skala keyakinan, peta artefak→tipe, status verifikasi, resources pelatihan, catatan & kelas risiko per kategori) |
 | GET | `/viewer/{id}` | Web viewer landing page / Halaman web viewer |
 | GET | `/viewer/{id}/data` | Viewer JSON data / Data JSON viewer |
 | GET | `/viewer/{id}/trajectories` | Agent trajectory logs / Log trajectory agent |
@@ -406,12 +406,29 @@ cards + category filter + detail panel on click).
 
 The Website additionally renders the **OSINT Radar methodology layer** — the
 platform features the catalogue analysis identified as distinct from the
-curated catalog itself: a **Workflows** view (6 investigative frameworks, one
-question per view, steps linked to catalog tools, reporting checkpoints +
-confidence scale), a **pivot filter** ("Saya punya: email / domain / username
-/ …" backed by each tool's `you_have` vocabulary), and **per-category
-limitation notes + risk classes** (biometrik, offensif, privasi tinggi, …) on
-the category headings. Data: `app/program/osintradar_methodology.py`; PRD:
+curated catalog itself:
+
+- **Workflows** view — 6 investigative frameworks (one question per view),
+  steps linked to catalog tools, reporting checkpoints + confidence scale.
+- **Pivot Map** view — an interactive, *user-guided* typed graph: each tool is
+  `you have → you get`; you pick the identifier you hold, choose a tool that
+  accepts it, then choose which output artefact to hand off to the next tool.
+  Because every hop is an explicit human choice (no auto-ranked suggestions,
+  which the analysis flags as occasionally illogical), it never misleads.
+  Backed by `app/program/osintradar_pivot.py` (`artefact_types`).
+- **Pivot filter** ("Saya punya: email / domain / username / …") backed by each
+  tool's `you_have` vocabulary.
+- **Saran workflow per tool** — in the tool drawer, which investigative
+  workflow(s) use this tool and at what step.
+- **Per-category limitation notes + risk classes** (biometrik, offensif,
+  privasi tinggi, …) and a **verification / health view** (Operational /
+  Unverified / Flagged totals + per-category badges) — honest status rendering,
+  the thing that keeps a curated catalogue trustworthy.
+- **Training & Reference** — 10 in-house methodology resources (responsible
+  use, proportionality, chain-of-custody, confidence, …) closing the §4.2 gap
+  without inventing external tools that would rot.
+
+Data: `app/program/osintradar_methodology.py` + `osintradar_pivot.py`; PRD:
 `instruction/feature/osintradar-methodology.md`.
 
 Two more Lapis-A features are implemented fully client-side:

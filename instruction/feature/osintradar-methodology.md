@@ -1,9 +1,9 @@
-# PRD Fitur — Lapis Metodologi OSINT Radar di /tools (Workflows + Pivot Map + Catatan Risiko)
+# PRD Fitur — Lapis Metodologi OSINT Radar di /tools (Pivot Map + Workflows + Verifikasi + Training)
 
-> **Feature PRD** | Versi 1.0 | Status: implemented
+> **Feature PRD** | Versi 1.2 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` — dokumen ini adalah *addendum*, bukan pengganti
 > **Sumber konten:** "Dokumentasi Implementasi & Penerapan Fitur — osintradar.com/tools", analisis independen v1.0 (8 Sep 2026) atas `/tools` (20 halaman, 346 tool, 21 kategori), `/categories`, `/workflows`, `/free-tools`, `/about`, `/responsible-use`, `sitemap.xml`
-> **Lokasi implementasi:** `dev/main/app/program/osintradar_methodology.py`, `dev/main/app/program/tools_catalog.py`, `dev/main/app/api/system.py` (`GET /tools`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/Toolbench.svelte` + `components/toolbench/*`, `components/CaseFile.svelte`, `lib/{exif,headers,casefile}.js`
+> **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile}.js`
 
 ---
 
