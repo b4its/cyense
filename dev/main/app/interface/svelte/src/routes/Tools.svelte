@@ -156,7 +156,7 @@
     {:else if view === 'workflows'}
       <h1>{loading ? '...' : `${workflows.length} workflows investigasi`}</h1>
     {:else if view === 'toolbench'}
-      <h1>Toolbench — 7 utilitas lokal</h1>
+      <h1>Toolbench — 8 utilitas lokal</h1>
     {:else if view === 'pivot'}
       <h1>Pivot Map</h1>
     {:else}

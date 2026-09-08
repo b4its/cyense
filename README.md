@@ -433,12 +433,14 @@ Data: `app/program/osintradar_methodology.py` + `osintradar_pivot.py`; PRD:
 
 Two more Lapis-A features are implemented fully client-side:
 
-- **Toolbench** — 7 local utilities rebuilt from the platform: Dork Builder,
-  IP Lookup (the documented network exception), Timestamp Decoder, Email
-  Header Analyzer, Image Metadata / EXIF (with SHA-256 for chain-of-custody),
-  Username Sweep (pivot-URL generation, no requests), Hash Identifier.
-  Components: `components/Toolbench.svelte` + `components/toolbench/*.svelte`,
-  parser libs at `lib/exif.js` and `lib/headers.js`.
+- **Toolbench** — 8 local utilities (7 rebuilt from the platform + 1 §4.2
+  extension): Dork Builder, IP Lookup (the documented network exception),
+  Timestamp Decoder, Email Header Analyzer, Image Metadata / EXIF (with
+  SHA-256 for chain-of-custody), Username Sweep (pivot-URL generation, no
+  requests), Hash Identifier, and Coordinate Converter (DMS ⇄ decimal ⇄ UTM,
+  Snyder/WGS84, round-trip verified). Components:
+  `components/Toolbench.svelte` + `components/toolbench/*.svelte`,
+  parser libs at `lib/exif.js`, `lib/headers.js`, `lib/coords.js`.
 - **Case File** — an OSINT-Radar-style lightweight evidence bundle
   (`localStorage`): save tools during browsing, add observed-result notes,
   copy/export as Markdown or JSON. Every export includes a SHA-256 integrity
