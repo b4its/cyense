@@ -8,6 +8,7 @@
   import CaseFile from '../components/CaseFile.svelte'
   import PivotMap from '../components/PivotMap.svelte'
   import { caseFile, addToCaseFile, removeFromCaseFile, isInCaseFile } from '../lib/casefile.js'
+  import { catalogJsonLd, toolJsonLd } from '../lib/seo.js'
 
   let catalog = null
   let loading = true
@@ -88,6 +89,15 @@
   $: health = catalog?.health || null
   $: haveLabel = (c) => pivotTypes.find((p) => p.code === c)?.label || c
 
+  // JSON-LD mirror of the catalog listing / open drawer (§4.2 — names as
+  // structured data, not just anchor text).
+  $: ld = selected
+    ? toolJsonLd(catalog, selected)
+    : catalog && (view === 'tools')
+      ? catalogJsonLd(catalog, paged, { position0: (page - 1) * pageSize, matched: filtered.length })
+      : null
+  $: ldText = ld ? JSON.stringify(ld).replace(/</g, '\\u003c') : ''
+
   const RISK_ICON = {
     biometrik: '🧬', 'privasi-tinggi': '👤', offensif: '💥',
     darkweb: '🕳️', ToS: '📄', mati: '💀',
@@ -147,6 +157,12 @@
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') closeTop() }} />
+
+<svelte:head>
+  {#if ldText}
+    {@html `<script type="application/ld+json" data-cyense-ld>${ldText}</\script>`}
+  {/if}
+</svelte:head>
 
 <section class="hero" style="padding-bottom:24px">
   <div class="wrap">
