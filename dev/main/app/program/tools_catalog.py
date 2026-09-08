@@ -533,6 +533,19 @@ def _all_tools() -> list[dict[str, object]]:
     # Second pass: related tools = curated cross-family relations (or the
     # OSR record's own related list) filtered to existing names + same-category
     # siblings for a useful "similar tools" list.
+    from app.program.osintradar_methodology import JURISDICTION, TOOL_RISK, TOOL_RISK_WHY
+
+    # Per-record risk labels + jurisdiction (§4.2) — pure display enrichment,
+    # attached only to tools the analysis singles out (others inherit none).
+    for rec in merged:
+        nm = str(rec["name"])
+        cls = TOOL_RISK.get(nm)
+        if cls:
+            rec["risk"] = cls
+            rec["risk_why"] = TOOL_RISK_WHY.get(cls, "")
+        cov = JURISDICTION.get(nm)
+        if cov:
+            rec["coverage"] = cov
     names_lower = {str(t["name"]).lower() for t in merged}
     for rec in merged:
         name = str(rec["name"])

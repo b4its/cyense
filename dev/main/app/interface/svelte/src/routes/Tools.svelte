@@ -88,6 +88,11 @@
   $: health = catalog?.health || null
   $: haveLabel = (c) => pivotTypes.find((p) => p.code === c)?.label || c
 
+  const RISK_ICON = {
+    biometrik: '🧬', 'privasi-tinggi': '👤', offensif: '💥',
+    darkweb: '🕳️', ToS: '📄', mati: '💀',
+  }
+
   function openTool(t) { selected = t }
   function closeTool() { selected = null }
   function openWf(w) { selectedWf = w }
@@ -270,6 +275,10 @@
                   {/if}
                 </ul>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center">
+                  {#if t.risk}
+                    <span class="badge {t.risk === 'mati' ? '' : 'high'} tool-risk"
+                          title={t.risk_why || 'kelas risiko per tool (analisis §4.2)'}>⚠ {t.risk}</span>
+                  {/if}
                   {#each t.platforms || [] as p}
                     <span class="badge info" title={platformLabel(p)}>{platformLabel(p)}</span>
                   {/each}
@@ -405,7 +414,18 @@
         {#if selected.tool_status}
           <span class="badge {selected.tool_status === 'Operational' ? 'operational' : (selected.tool_status === 'Flagged' ? 'flagged' : 'unverified')}">{selected.tool_status}</span>
         {/if}
+        {#if selected.risk}
+          <span class="badge {selected.risk === 'mati' ? '' : 'high'} tool-risk"
+                title={selected.risk_why || 'kelas risiko per tool'}>⚠ {selected.risk}</span>
+        {/if}
+        {#if selected.coverage}
+          <span class="badge info" title="Catatan cakupan yurisdiksi (§4.2)">{selected.coverage}</span>
+        {/if}
       </div>
+
+      {#if selected.risk && selected.risk_why}
+        <div class="wf-caution" style="color:#fcd34d">{RISK_ICON[selected.risk] || '⚠'} {selected.risk_why}</div>
+      {/if}
 
       {#if (selected.how_it_works || []).length}
         <!-- OSINT Radar mirror: the tool's original operating model, kept

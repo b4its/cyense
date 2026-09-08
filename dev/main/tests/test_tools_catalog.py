@@ -298,6 +298,16 @@ def test_methodology_layer_in_payload(client) -> None:
     for t in data["training"]:
         assert t["id"] and t["title"] and t["body"]
 
+    # Per-tool risk labels + jurisdiction notes (§4.2 display enrichment).
+    by_name = {str(t["name"]): t for t in data["tools"]}
+    assert by_name["Face Recognition"].get("risk") == "biometrik"
+    assert by_name["Face Recognition"].get("risk_why"), "biometrik label needs rationale"
+    assert by_name["Gobuster"].get("risk") == "offensif"
+    assert by_name["InstaLooter"].get("risk") == "mati"
+    assert "AS" in by_name["US People Search"].get("coverage", "")
+    risky = [t for t in data["tools"] if t.get("risk")]
+    assert len(risky) >= 25, "per-tool labels should cover the flagged tools"
+
 def test_faceted_catalog_search_api(client) -> None:
     """/api/v1/tools/search — read-only faceted machine API (§4.2, mirrors §A1
     query-param contract: category / have / pricing / status / q / page)."""
@@ -320,8 +330,9 @@ def test_faceted_catalog_search_api(client) -> None:
     assert r3.json()["matched"] == 2  # Twiangulate, Usa Official (as published)
 
     # pagination: page 2 disjoint from page 1, matched stays stable
-    p1 = client.get("/api/v1/tools/search", params={"category": "osint-domain", "page_size": 10, "page": 1}).json()
-    p2 = client.get("/api/v1/tools/search", params={"category": "osint-domain", "page_size": 10, "page": 2}).json()
+    fq = {"category": "osint-domain", "page_size": 10}
+    p1 = client.get("/api/v1/tools/search", params={**fq, "page": 1}).json()
+    p2 = client.get("/api/v1/tools/search", params={**fq, "page": 2}).json()
     assert {t["name"] for t in p1["tools"]} & {t["name"] for t in p2["tools"]} == set()
     assert p1["matched"] == p2["matched"]
     assert len(p1["tools"]) == 10

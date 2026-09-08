@@ -449,6 +449,79 @@ CATEGORY_NOTES: dict[str, dict[str, str]] = {
 }
 
 # ---------------------------------------------------------------------------
+# Per-tool risk labels (§4.2: "Tandai kelas risiko per tool" + "Catatan
+# cakupan yurisdiksi"). Only tools the analysis singles out get an explicit,
+# human-written label; everything else inherits the category-level note and
+# carries no per-tool flag. These are *display data for the UI*, consumed by
+# the tool drawer — never by a detection engine.
+# ---------------------------------------------------------------------------
+
+# risk class: biometrik | privasi-tinggi | offensif | darkweb | ToS | mati
+TOOL_RISK: dict[str, str] = {
+    "Face Recognition": "biometrik",
+    "Face Search": "biometrik",
+    "Facecheck": "biometrik",
+    "Photofeeder": "biometrik",
+    "StalkFace": "privasi-tinggi",
+    "Spokeo": "privasi-tinggi",
+    "Intelius": "privasi-tinggi",
+    "Radaris": "privasi-tinggi",
+    "Truecaller": "privasi-tinggi",
+    "Whitepages": "privasi-tinggi",
+    "US People Search": "privasi-tinggi",
+    "Thatsthem": "privasi-tinggi",
+    "People Data Labs": "privasi-tinggi",
+    "Zaba Search": "privasi-tinggi",
+    "Gobuster": "offensif",
+    "theHarvester": "offensif",
+    "Exploit DB": "offensif",
+    "Default Passwords": "offensif",
+    "Sn1per": "offensif",
+    "Amass": "offensif",
+    "Tor Bot": "darkweb",
+    "Onion Scan": "darkweb",
+    "Onion Scan Tool": "darkweb",
+    "Dark Web Tools": "darkweb",
+    "Instagram Osint Tool": "ToS",
+    "Twitter/X Scraping": "ToS",
+    "InstaLooter": "mati",
+    "Opengrey": "mati",
+}
+
+# One-line explanations shown with the badge (verbatim rationale from the
+# analysis' kategori limitations §B1–B21 and responsible-use framing).
+TOOL_RISK_WHY: dict[str, str] = {
+    "biometrik": "Kelas paling berisiko di katalog: false positive meyakinkan, bias demografis, tunduk GDPR Art.9/BIPA — jangan jadikan dasar identifikasi tunggal.",
+    "privasi-tinggi": "Agregator orang — tidak boleh untuk melacak/memantau individu atas alasan pribadi (stalking, pidana di banyak yurisdiksi); keputusan kerja/kredit diatur FCRA.",
+    "offensif": "Hanya sah terhadap aset milik sendiri atau dengan otorisasi tertulis; pemindaian tanpa izin adalah computer-misuse.",
+    "darkweb": "Wajib VM terisolasi + pemisahan identitas; risiko konten ilegal & indeks .onion usang.",
+    "ToS": "Bergantung pada scraping/endpoint internal — melanggar ToS platform & rentan perubahan API.",
+    "mati": "Diuji defunct/tidak aktif tetapi masih tercantum — ilustrasi pentingnya tanggal verifikasi.",
+}
+
+# Jurisdiction/coverage hints per the §B9/B13/B15 note that people & registries
+# coverage is region-bound (US/UK/CA/RIR).
+JURISDICTION: dict[str, str] = {
+    "US People Search": "cakupan: AS",
+    "UK People Search": "cakupan: Inggris (192.com)",
+    "Canada People Search": "cakupan: Kanada (Canada411)",
+    "Whitepages": "cakupan: AS",
+    "White Pages": "cakupan: AS",
+    "Spokeo": "cakupan: AS",
+    "Intelius": "cakupan: AS",
+    "Radaris": "cakupan: AS",
+    "Thatsthem": "cakupan: AS",
+    "Skipease": "cakupan: AS",
+    "Zaba Search": "cakupan: AS",
+    "Background Checks": "cakupan: AS (FCRA berlaku)",
+    "Truecaller": "cakupan terkuat: Brasil/Serbia/AS",
+    "National Archives UK": "cakupan: Inggris Raya",
+    "APNIC": "cakupan: Asia-Pasifik",
+    "RIPE": "cakupan: Eropa/Timur Tengah/Afrika",
+    "ARIN": "cakupan: Amerika Utara",
+}
+
+# ---------------------------------------------------------------------------
 # Training & Reference gap (§4.2 — "Tinggi": expand from 2 to 20+ entries).
 # Rather than invent catalogue tools with unverified external URLs (which would
 # rot, the very disease this catalogue fights), we close the gap with an
