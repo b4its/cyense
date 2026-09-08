@@ -1314,3 +1314,98 @@ def render_training(console: Console, caps: TermCaps, catalog: dict[str, Any]) -
         body = str(r.get("body", ""))
         console.print(f"    [dim]{_esc(body)}[/]")
     console.print()
+
+
+def render_safety(console: Console, caps: TermCaps, catalog: dict[str, Any]) -> None:
+    """§3.4 Keamanan & Privasi + §3.3.6 kontrak workflow deklaratif — reference,
+    Cyense tidak menjalankan konektor."""
+    p = PALETTE
+    s = catalog.get("safety") or {}
+    if not s:
+        console.print("  [bold]Belum ada data keamanan/privasi.[/]")
+        return
+    g = caps.g()
+    sep = f"[{p.rule_line}]{g.h * caps.width}[/]"
+
+    # Motto & aggregation warning
+    motto = _esc(s.get("motto", ""))
+    if motto:
+        console.print(f"\n  [bold {p.blue_primary}]\u2696  ETIKA & PRIVASI OSINT[/]")
+        console.print(sep)
+        console.print(f"  [bold {p.blue_accent}]{motto}[/]")
+        aw = _esc(s.get("aggregation_warning", ""))
+        if aw:
+            console.print(f"  [dim]{aw}[/]")
+
+    # Data principles
+    dp = s.get("data_principles") or []
+    if dp:
+        console.print(f"\n  [bold {p.blue_primary}]PRINSIP DATA[/] [{p.muted}](\u00a73.4.1)[/]")
+        console.print(sep)
+        for item in dp:
+            console.print(f"  [bold {p.blue_soft}]\u2022 {_esc(item.get('title',''))}[/]")
+            body = str(item.get("body", ""))
+            # wrap long body lines
+            console.print(f"    [dim]{body[:320]}{'...' if len(body) > 320 else ''}[/]")
+
+    # Regulations
+    regs = s.get("regulations") or []
+    if regs:
+        jr = s.get("jurisdiction_rule", "")[:60]
+        console.print(
+            f"\n  [bold {p.blue_primary}]REGULASI KEBIJAKAN[/] "
+            f"[{p.muted}](§3.4.2 — {jr})[/]"
+        )
+        console.print(sep)
+        for rg in regs:
+            code = _esc(rg.get("code", "?"))
+            name = _esc(rg.get("name", "?"))
+            duty = str(rg.get("duties", ""))
+            console.print(
+                f"  [{p.blue_mist}]§[/] [bold {p.blue_soft}]{name}[/] "
+                f"[{p.muted}](code={code})[/]"
+            )
+            console.print(f"    [dim]{duty[:340]}{'...' if len(duty) > 340 else ''}[/]")
+
+    # Abuse controls
+    ac = s.get("abuse_controls") or []
+    if ac:
+        console.print(
+            f"\n  [bold {p.blue_primary}]KONTROL ANTI-PENYALAHGUNAAN[/] "
+            f"[{p.muted}](§3.4.3 organisasional)[/]"
+        )
+        console.print(sep)
+        for c in ac:
+            console.print(f"  [bold {p.blue_soft}]\u2022 {_esc(c.get('title',''))}[/]")
+            body = str(c.get("body", ""))
+            console.print(f"    [dim]{body[:300]}{'...' if len(body) > 300 else ''}[/]")
+
+    # Hard refusals
+    hr = s.get("hard_refusals") or []
+    if hr:
+        console.print(
+            f"\n  [bold {p.sev_high}]PENOLAKAN KERAS[/] "
+            f"[{p.muted}](gerbang SEBELUM eksekusi — tak dapat di-override)[/]"
+        )
+        console.print(sep)
+        for r in hr:
+            code = _esc(r.get("code", "?"))
+            label = _esc(r.get("label", ""))
+            body = str(r.get("body", ""))
+            console.print(f"  [{p.sev_high}]FORBID:[/] [bold]{code}[/] [{p.muted}]{label}[/]")
+            console.print(f"    [dim]{body[:260]}{'...' if len(body) > 260 else ''}[/]")
+
+    # Workflow contract YAML
+    wc = s.get("workflow_contract") or {}
+    ym = (wc.get("yaml") or "").strip()
+    if ym:
+        note = _esc(wc.get("note", "")[:180])
+        console.print(
+            f"\n  [bold {p.blue_accent}]KONTRAK WORKFLOW DEKLARATIF[/] "
+            f"[{p.muted}]{note}[/]"
+        )
+        console.print(f"  [{p.rule_line}]{g.h * caps.width}[/]")
+        lines = ym.split("\n")
+        for ln in lines:
+            console.print(f"    [dim]{_esc(ln)}[/]")
+    console.print()

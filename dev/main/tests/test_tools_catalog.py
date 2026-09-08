@@ -316,6 +316,34 @@ def test_methodology_layer_in_payload(client) -> None:
     risky = [t for t in data["tools"] if t.get("risk")]
     assert len(risky) >= 25, "per-tool labels should cover the flagged tools"
 
+def test_safety_payload(client) -> None:
+    """§3.4 Security & Privacy + §3.3.6 declarative workflow contract ships."""
+    data = _tools_json(client)
+    s = data["safety"]
+    assert s["motto"] and s["aggregation_warning"]
+    # Data principles need ≥ 5 items; each item must have id/title/body.
+    assert len(s["data_principles"]) >= 5
+    for dp in s["data_principles"]:
+        assert dp["id"] and dp["title"] and dp["body"]
+    # Regulations: 6 entries, covering global major + UU PDP.
+    assert len(s["regulations"]) >= 6
+    codes = [r["code"] for r in s["regulations"]]
+    for code in ("gdpr", "uu-pdp", "ccpa", "fcra", "bipa", "computer-misuse"):
+        assert code in codes, f"{code} missing from regulations"
+    # Hard refusals must include subject_is_minor (absolute).
+    refusal_codes = [r["code"] for r in s["hard_refusals"]]
+    assert "subject_is_minor" in refusal_codes
+    assert "no_case_reference" in refusal_codes
+    for r in s["hard_refusals"]:
+        assert r["code"] and r["label"] and r["body"]
+    # Workflow contract ships YAML + note.
+    wc = s["workflow_contract"]
+    assert wc["note"] and wc["yaml"]
+    assert "policy:" in wc["yaml"]
+    assert "subject_is_minor" in wc["yaml"]
+    # Jurisdiction rule statement.
+    assert len(s["jurisdiction_rule"]) > 20
+
 def test_faceted_catalog_search_api(client) -> None:
     """/api/v1/tools/search — read-only faceted machine API (§4.2, mirrors §A1
     query-param contract: category / have / pricing / status / q / page)."""
@@ -366,7 +394,10 @@ def test_cli_tools_facet_flags_in_help() -> None:
 
     r = CliRunner().invoke(app, ["tools", "list", "--help"])
     assert r.exit_code == 0
-    for flag in ("--have", "--pricing", "--access", "--status", "--category", "--query", "--feature"):
+    for flag in (
+        "--have", "--pricing", "--access", "--status",
+        "--category", "--query", "--feature",
+    ):
         assert flag in r.stdout, flag
 
 def test_cli_pivot_rejects_bad_identifier_offline() -> None:
@@ -382,7 +413,7 @@ def test_cli_pivot_rejects_bad_identifier_offline() -> None:
         assert code in r.stdout, f"hint must list {code}"
     r2 = CliRunner().invoke(app, ["tools", "pivot", "email"])
     assert r2.exit_code == 3  # service down → not a crash
-    
+
 
 
 def test_cli_tools_usage_and_info_offline_errors() -> None:

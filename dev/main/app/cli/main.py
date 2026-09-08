@@ -2431,6 +2431,28 @@ def tools_training_cmd() -> None:
 
     _run(_do())
 
+
+@tools_app.command("safety")
+def tools_safety_cmd() -> None:
+    """Keamanan-privasi + kontrak workflow deklaratif (reference, satu sumber dgn Web)."""
+
+    async def _do():
+        try:
+            async with open_client(_state.api_url) as c:
+                catalog = await c.tools()
+        except Exception as e:
+            render_error_panel(_state.console, _state.caps, str(e))
+            raise typer.Exit(3) from None
+
+        if _state.caps.json_out:
+            typer.echo(json.dumps(catalog.get("safety", {}), indent=2))
+            return
+
+        from app.cli.renderer import render_safety
+        render_safety(_state.console, _state.caps, catalog)
+
+    _run(_do())
+
 @tools_app.command("stats")
 def tools_stats_cmd() -> None:
     """Tampilkan statistik katalog tools (jumlah, platform, distribusi kategori)."""

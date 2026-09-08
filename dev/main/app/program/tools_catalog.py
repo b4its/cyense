@@ -650,6 +650,7 @@ def tools_catalog() -> dict[str, object]:
         WORKFLOWS,
     )
     from app.program.osintradar_pivot import ARTEFACT_TYPES, build_health
+    from app.program.osintradar_safety import SAFETY
 
     return {
         "categories": [
@@ -672,6 +673,7 @@ def tools_catalog() -> dict[str, object]:
         "health": build_health(TOOLS),
         "artefact_types": ARTEFACT_TYPES,
         "training": TRAINING,
+        "safety": SAFETY,
     }
 
 
