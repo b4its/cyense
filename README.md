@@ -422,6 +422,9 @@ curated catalog itself:
   accepts it, then choose which output artefact to hand off to the next tool.
   Because every hop is an explicit human choice (no auto-ranked suggestions,
   which the analysis flags as occasionally illogical), it never misleads.
+  Two renderings, one state: a text **List** and an SVG node-link **Graf**
+  (§3.3.5: identifier pills → tool boxes → dashed artefact nodes, arrowed
+  bezier edges, every node clickable to navigate the hop).
   Backed by `app/program/osintradar_pivot.py` (`artefact_types`).
 - **Pivot filter** ("Saya punya: email / domain / username / …") backed by each
   tool's `you_have` vocabulary.

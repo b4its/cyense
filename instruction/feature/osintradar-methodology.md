@@ -1,6 +1,6 @@
 # PRD Fitur — Lapis Metodologi OSINT Radar di /tools (Pivot Map + Workflows + Verifikasi + Training)
 
-> **Feature PRD** | Versi 1.4 | Status: implemented
+> **Feature PRD** | Versi 1.5 | Status: implemented
 > **Parent PRD:** `instruction/PRD.md` — dokumen ini adalah *addendum*, bukan pengganti
 > **Sumber konten:** "Dokumentasi Implementasi & Penerapan Fitur — osintradar.com/tools", analisis independen v1.0 (8 Sep 2026) atas `/tools` (20 halaman, 346 tool, 21 kategori), `/categories`, `/workflows`, `/free-tools`, `/about`, `/responsible-use`, `sitemap.xml`
 > **Lokasi implementasi:** `dev/main/app/program/{osintradar_methodology,osintradar_pivot,tools_catalog}.py`, `dev/main/app/api/system.py` (`GET /tools`, `GET /tools/search`), `dev/main/app/interface/svelte/src/routes/Tools.svelte`, `dev/main/app/interface/svelte/src/app.css`, `components/{Toolbench,CaseFile,PivotMap}.svelte` + `components/toolbench/*`, `lib/{exif,headers,casefile,coords,solar,warc,seo}.js`
@@ -49,7 +49,7 @@ mengeksekusi apa pun).
 
 | Bagian dokumen sumber | Elemen | Jatuh ke |
 |---|---|---|
-| §2.2 A2 — Pivot Map | Kosakata 12 identifier terverifikasi | `PIVOT_TYPES`; chip "Saya punya" di hero `Tools.svelte`; invariant diuji (`have_values ⊆ pivot_codes`) |
+| §2.2 A2 — Pivot Map + §3.3.5 visualisasi | Kosakata 12 identifier + graf SVG node-link (kolom identifier→tool→artefak, edge bezier berarah, semua node klikabel menavigasi hop; toggle Graf/List) | `PIVOT_TYPES`; chip "Saya punya" di hero; invariant diuji (`have_values ⊆ pivot_codes`); `PivotMap.svelte` (`buildGraph(f, tools)` sengaja berargumen — Svelte melacak dep `$:` secara sintaksis, akses via closure tak memicu recompute) |
 | §2.2 A3 — Workflows (6 alur; +4 ekspansi fase 4) | `investigate-a-username` … `trace-a-wallet` + peringatan tiap alur | `WORKFLOWS`; tab Workflows + drawer kerangka |
 | §2.2 A3 — Reporting Checkpoints | Target value / Source and time / Observed result / Confidence | `REPORTING_CHECKPOINTS`; footer drawer workflow |
 | §3.3.3 — Skoring keyakinan | confirmed / probable / lead / disputed + kriteria & contoh | `CONFIDENCE_SCALE`; drawer workflow |
@@ -169,6 +169,7 @@ Tools.svelte
 | Fase 4 — risk/coverage | ✅ payload: Face Recognition=biometrik, Gobuster=offensif, InstaLooter=mati, USPS coverage 'AS'; ≥25 label; kartu+drawer badge terverifikasi headless |
 | Fase 5 — Chronolocation (solar) | ✅ node: equinox Jakarta noon 83.96° (expect ≈83.8±1), NYC equinox sunrise/sunset azimuth 90.08/270.19 (≈±90/270±1.5), London solstice max elev 61.93 vs 61.94, solver elev=45 round-trip ≤0.01°, polar night = 0 crossing; UI: panel depan + rasio bayangan 2m/2m → 45.00° → 2 kandidat waktu UTC, regresi guard `isFinite(null)` terverifikasi (10 tool, tanpa console error) |
 | Fase 5 — WARC integrity | ✅ node fixture 4 record: `ok`(sha1-hex) / `mismatch`(body dirusak) / `ok`(urn:sha1-base32) / `no-digest`; deteksi gzip eksplisit; UI panel + file input render (end-to-end `DataTransfer` terhalang origin browser — logika parser teruji di node) |
+| Fase 5b — Graf SVG | ✅ headless: Email → SVG 1 type + 14 tool + 12 artefact + 26 edge; klik node tool ⇒ rebuild (3 input, 4 artefak); klik artefak ⇒ drill ke identifier awal dengan 27 node; 0 console error; fix Bug reaktif: `$: graph = buildGraph()` tak recompute saat focus berubah (dep tak terlacak sintaksis) ⇒ argumen eksplisit `buildGraph(focus, flatTools)` |
 
 ## 5. Batasan (diumumkan ke pengguna di UI)
 
