@@ -354,7 +354,7 @@ make lint       # ruff, 0 errors
 | GET | `/scans/resumable` | List resumable scans / Daftar scan yang bisa dilanjutkan |
 | DELETE | `/scans/{id}` | Delete scan & artifacts / Hapus scan & artefak |
 | GET | `/rules` | Active rules catalog / Daftar rule aktif |
-| GET | `/tools` | Pentest tools catalog (Kali-style + OSINT + full OSINT Radar mirror, 684 tools, 56 categories, each with `features`; OSR entries keep the original how-it-works mechanism + you-have→you-get pivot) / Katalog tools pentest (Kali-style + OSINT + mirror penuh OSINT Radar, 684 tool, 56 kategori; entri OSR menyimpan mekanisme asli + pivot you-have→you-get) |
+| GET | `/tools` | Pentest tools catalog (Kali-style + OSINT + full OSINT Radar mirror, 684 tools, 56 categories, each with `features`; OSR entries keep the original how-it-works mechanism + you-have→you-get pivot) + methodology layer (`workflows`, `pivot_types`, `reporting_checkpoints`, `confidence_scale`, per-category `note`/`risk`) / Katalog tools pentest (… ) + lapis metodologi (workflow, kosakata pivot, checkpoint, skala keyakinan, catatan & kelas risiko per kategori) |
 | GET | `/viewer/{id}` | Web viewer landing page / Halaman web viewer |
 | GET | `/viewer/{id}/data` | Viewer JSON data / Data JSON viewer |
 | GET | `/viewer/{id}/trajectories` | Agent trajectory logs / Log trajectory agent |
@@ -403,6 +403,16 @@ examples, **bookmarks** and **related** tools — surfaced in the CLI
 (`cyense tools list` shows a `Fitur:` block; `cyense tools info <name>` the full
 profile), the `/api/v1/tools` JSON, and the Website page `/#/tools` (searchable
 cards + category filter + detail panel on click).
+
+The Website additionally renders the **OSINT Radar methodology layer** — the
+platform features the catalogue analysis identified as distinct from the
+curated catalog itself: a **Workflows** view (6 investigative frameworks, one
+question per view, steps linked to catalog tools, reporting checkpoints +
+confidence scale), a **pivot filter** ("Saya punya: email / domain / username
+/ …" backed by each tool's `you_have` vocabulary), and **per-category
+limitation notes + risk classes** (biometrik, offensif, privasi tinggi, …) on
+the category headings. Data: `app/program/osintradar_methodology.py`; PRD:
+`instruction/feature/osintradar-methodology.md`.
 
 ---
 
