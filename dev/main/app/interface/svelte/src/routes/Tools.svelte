@@ -264,6 +264,12 @@
           <span class="seg"><span class="health-dot" style="background:#f59e0b"></span><b>{health.unverified}</b> unverified</span>
           <span class="seg"><span class="health-dot" style="background:#ef4444"></span><b>{health.flagged}</b> flagged</span>
           <span class="tool-src">transparansi status — pembeda katalog terkurasi ini vs daftar link biasa</span>
+          {#if catalog.verification}
+            <span class="seg" title="Tanggal verifikasi sumber + tanggal mirror Cyense — lihat §1.1">
+              <span class="health-dot" style="background:var(--accent,#3b82f6)"></span>
+              sumber <b>{catalog.verification.site_verified_at}</b> · mirror <b>{catalog.verification.mirrored_at}</b> · label tak terverifikasi: “{catalog.verification.not_verified_label}”
+            </span>
+          {/if}
         </div>
       {/if}
       {#each visibleGroups as g}
