@@ -452,9 +452,12 @@ curated catalog itself:
   `SoftwareApplication` nodes mirrors the rendered cards (and swaps to a
   single `SoftwareApplication` when a drawer is open), so tool *names* are
   structured data for extractors & SEO, not just anchor text (§4.2).
-- **Training & Reference** — 10 in-house methodology resources (responsible
-  use, proportionality, chain-of-custody, confidence, …) closing the §4.2 gap
-  without inventing external tools that would rot.
+- **Training & Reference** — 20 in-house methodology resources (responsible
+  use, proportionality, chain-of-custody, confidence, source priority,
+  raw/parsed separation, provenance-per-claim, minimisation, retention-by-code,
+  RBAC/SoD, case-binding, audit+anomaly, policy-gate-before-execution, secret &
+  log hygiene, …) closing the §4.2 gap without inventing external tools that
+  would rot.
 - **Safety Panel (§3.4 + §3.3.6)** — security/privacy considerations shown at
   the point of use: 5 data principles (encryption, minimisation, third-party
   incidental data, secret management, log redaction); 6-regulation table

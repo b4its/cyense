@@ -131,7 +131,7 @@ yang sama ke CLI (data tetap satu sumber, tanpa endpoint baru):
 |---|---|---|
 | `cyense tools workflows` | 10 framework + checkpoints; label "(ekspansi)" untuk 4 Cyense | `payload.workflows` |
 | `cyense tools pivot <code> [--detail]` | "saya punya X" → tool penerima (operasional saja); `--detail` output + hop identifier berikutnya | `you_have` / `artefact_types` |
-| `cyense tools training` | 10 resources metodologi | `payload.training` |
+| `cyense tools training` | 20 resources metodologi (fase 7: +10 dari §3.3–3.4) | `payload.training` |
 | `list --have --pricing --access --status` | facet penuh ala `/tools/search` (filter sisi klien — mengikuti pola CLI yang sudah ada: fetch satu payload) | payload |
 | `info <name>` (diperkaya) | blok baru: *Cara kerja (asli — OSINT Radar)* dengan pivot `you have → you get`, baris **Verifikasi** (status + source), **RISK per tool** (ikon+alasan), **coverage**, **DIPAKAI DALAM WORKFLOW**, **PIVOT LANJUTAN** (artefak→identifier→penerima) | payload per-record |
 | `stats` (diperkaya) | strip verifikasi Operational/Unverified/Flagged + jumlah workflows/training | derivasi payload (`_tools_stats`) |
