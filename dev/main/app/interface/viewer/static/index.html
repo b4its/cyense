@@ -1,15 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyense Scan Results</title>
+    <title>NOX//SEC · Cyense Scan Results</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="flicker" aria-hidden="true"></div>
+    <div class="scan" aria-hidden="true"></div>
+    <div class="frame-b" aria-hidden="true">
+        <span class="corner-bracket tl"></span>
+        <span class="corner-bracket tr"></span>
+        <span class="corner-bracket bl"></span>
+        <span class="corner-bracket br"></span>
+    </div>
+
     <div class="container">
         <header class="header">
-            <h1>Cyense Scan Results</h1>
+            <div class="brand-group">
+                <a href="/ui/#/" class="brand-title">NOX<span class="slash">//</span>SEC</a>
+                <span class="brand-version">(v4.2 · OPS LIVE)</span>
+                <span class="brand-sub">CYENSE AUDIT ENGINE</span>
+            </div>
             <div class="scan-info">
                 <span class="scan-id" id="scanId">Loading...</span>
                 <span class="scan-date" id="scanDate"></span>
@@ -17,7 +34,7 @@
         </header>
 
         <section class="summary-section">
-            <h2>Summary</h2>
+            <div class="s-lbl">// 01 — SEVERITY MATRIX</div>
             <div class="severity-grid">
                 <div class="severity-card critical">
                     <div class="severity-label">Critical</div>
@@ -43,7 +60,7 @@
         </section>
 
         <section class="findings-section">
-            <h2>Findings</h2>
+            <div class="s-lbl">// 02 — DISCLOSED FINDINGS</div>
             <div class="filters">
                 <div class="ssel-wrap" id="severityWrap">
                     <div class="ssel-trigger" id="severityTrigger" role="button" tabindex="0" aria-label="Filter severity">
@@ -89,10 +106,10 @@
             <div class="pager" id="findingsPager" aria-label="Findings pagination"></div>
         </section>
 
-        <!-- Agent Trajectories Section (Strix-inspired agent graph visualization) -->
+        <!-- Agent Trajectories Section -->
         <section class="trajectories-section">
-            <h2>Agent Trajectories</h2>
-            <p class="section-subtitle">Timeline of agent reasoning steps during the scan</p>
+            <div class="s-lbl">// 03 — AGENT TRAJECTORIES</div>
+            <p class="section-subtitle">// Autonomous reasoning steps executed during the scan engagement</p>
             <div id="trajectoriesContainer" class="trajectories-container">
                 <div class="loading">Loading trajectories...</div>
             </div>
