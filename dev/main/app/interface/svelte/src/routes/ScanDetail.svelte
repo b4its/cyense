@@ -77,6 +77,7 @@
   const PIPELINE = ['crawl', 'analyze', 'framework', 'port-scan', 'cve', 'discovery',
                      'harvest', 'osint', 're', 'nikto', 'nuclei', 'sec-live', 'probe', 'sqli', 'report']
   const PENTEST_PIPELINE = ['recon', 'network', 'vuln-scan', 'webapp', 'injection', 'auth-audit', 'devsec', 'post-exploit', 'reporting']
+  const ADAPTIVE_PENTEST_PIPELINE = ['vuln-profiling', 'info-gathering', 'recon', 'vulnerability', 'exploitation', 'reporting']
 
   let receiptQuery = ''
   let receiptPage = 1
@@ -136,9 +137,10 @@
   onDestroy(() => { if (pollTimer) clearInterval(pollTimer) })
 
   // Stage graph status derived from pipeline + summary progress.
-  // Falls back to PENTEST_PIPELINE or PIPELINE.
+  // Falls back to ADAPTIVE_PENTEST_PIPELINE, PENTEST_PIPELINE, or PIPELINE.
   $: isPentestMode = job?.mode === 'full' || job?.mode === 'pentest' || report?.mode === 'full' || ((report?.tools_receipts?.length || 0) > 0)
-  $: pipeline = report?.meta?.pipeline?.length ? report.meta.pipeline : (isPentestMode ? PENTEST_PIPELINE : PIPELINE)
+  $: isAdaptive = job?.workflow === 'adaptive' || report?.workflow === 'adaptive' || report?.meta?.workflow === 'adaptive' || (report?.meta?.pipeline && report.meta.pipeline[0] === 'vuln-profiling')
+  $: pipeline = report?.meta?.pipeline?.length ? report.meta.pipeline : (isAdaptive ? ADAPTIVE_PENTEST_PIPELINE : (isPentestMode ? PENTEST_PIPELINE : PIPELINE))
   $: activeStage = (report?.meta?.error ? null : job?.stage) || null
   $: stages = pipeline.map((name, i) => {
     const isCompleted = job?.status === 'completed'

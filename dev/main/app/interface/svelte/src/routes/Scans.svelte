@@ -54,7 +54,7 @@
 
   // Single-pass search index over the scan library (rebuild only on change).
   $: index = buildIndex(scans, (s) =>
-    [s.scan_id, s.mode, s.status, s.stage, s.summary?.total,
+    [s.scan_id, s.target, s.domain, s.url, s.workflow, s.mode, s.status, s.stage, s.summary?.total,
      s.summary?.critical, s.summary?.high, s.summary?.medium].join(' ')
   )
   $: filtered = searchIndex(index, query)
@@ -76,7 +76,8 @@
       <div class="field">
         <SearchableSelect bind:value={mode}
           items={[
-            { value: 'full', label: 'pentest full (684 tools)' },
+            { value: 'pentest', label: 'pentest 6-stage adaptive (684 tools)' },
+            { value: 'full', label: 'pentest full matrix (684 tools)' },
             { value: 'website', label: 'website' },
             { value: 'domain', label: 'domain' },
             { value: 'link', label: 'link' },
