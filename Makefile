@@ -29,8 +29,8 @@ COMPOSE_IN_APP := cd $(APP_DIR) && $(COMPOSE)
 # All local targets run from the project venv (dev/main/.venv) with absolute
 # paths so they work regardless of the current shell cwd.
 LOCAL_HOST ?= 127.0.0.1
-API_PORT ?= 8000
-LAB_PORT ?= 8080            # note: lab_app.py hardcodes 8080 (see lab_Dockerfile)
+API_PORT ?= 8044
+LAB_PORT ?= 8124            # note: lab_app.py uses 8124 (see lab_Dockerfile)
 LOCAL_WORKSPACE ?= $(APP_ABS)/target
 LOCAL_API_URL := http://$(LOCAL_HOST):$(API_PORT)
 API_PID := $(APP_ABS)/.api.pid
@@ -358,7 +358,7 @@ web-install: ## Install dependensi frontend (npm; jangan pnpm)
 
 web-build: web-install ## Build ulang Web UI (npm ci) — output di $(SVELTE_DIR)/dist
 	cd $(SVELTE_DIR) && $(WEB_NPM) run build
-	@echo "✓ Web UI dibangun — disajikan di :8000/ui oleh API"
+	@echo "✓ Web UI dibangun — disajikan di :8044/ui oleh API"
 
 web: local-up ## Alias: pastikan service lokal hidup, lalu buka Web UI di browser
 	@$(MAKE) open

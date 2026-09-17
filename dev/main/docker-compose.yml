@@ -3,7 +3,7 @@ services:
     build: .
     image: cyense-api:latest
     ports:
-      - "${CYENSE_API_PORT:-8000}:8000"
+      - "${CYENSE_API_PORT:-8044}:8044"
     volumes:
       - ./reports:/app/reports
       - ../brain:/app/brain
@@ -17,7 +17,7 @@ services:
       - CYENSE_BRAIN_DIR=/app/brain
       - CYENSE_WORKSPACE_DIR=/workspace
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/v1/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8044/api/v1/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -29,6 +29,6 @@ services:
     image: cyense-lab:latest
     profiles: ["lab"]
     ports:
-      # Host port configurable via CYENSE_LAB_PORT (default 8080) so it can
-      # coexist with other services already bound to 8080 on the machine.
-      - "${CYENSE_LAB_PORT:-8080}:8080"
+      # Host port configurable via CYENSE_LAB_PORT (default 8124) so it can
+      # coexist with other services already bound to 8124 on the machine.
+      - "${CYENSE_LAB_PORT:-8124}:8124"

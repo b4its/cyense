@@ -2,5 +2,5 @@ FROM python:3.11-slim
 WORKDIR /lab
 COPY vulnerable_app/lab_app.py .
 RUN pip install --no-cache-dir flask
-EXPOSE 8080
+EXPOSE 8124
 CMD ["python", "lab_app.py"]
