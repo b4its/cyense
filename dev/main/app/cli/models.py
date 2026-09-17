@@ -17,7 +17,7 @@ from app.core.models import Severity  # noqa: F401 — re-export
 class CliConfig(BaseModel):
     """Konfigurasi runtime CLI — dikumpulkan dari flag + env."""
 
-    api_url: str = "http://localhost:8000"
+    api_url: str = "http://localhost:8044"
     color: bool = True
     ascii_only: bool = False
     quiet: bool = False

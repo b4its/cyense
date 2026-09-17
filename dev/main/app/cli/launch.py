@@ -27,7 +27,7 @@ from app.utils.logger import get_logger
 log = get_logger("launch")
 
 _DEFAULT_HOST = "127.0.0.1"
-_DEFAULT_PORT = 8000
+_DEFAULT_PORT = 8044
 
 
 def _find_venv_python() -> str | None:

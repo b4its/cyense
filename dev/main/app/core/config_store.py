@@ -19,10 +19,10 @@ from typing import Any
 
 _DEFAULTS: dict[str, Any] = {
     "version": 1,
-    "api_url": "http://localhost:8000",
+    "api_url": "http://localhost:8044",
     "default_scan_mode": "standard",
     "default_scope_mode": "auto",
-    "viewer_port": 8080,
+    "viewer_port": 8124,
     "auto_open_viewer": True,
     "github_token": None,
     "telemetry_enabled": False,

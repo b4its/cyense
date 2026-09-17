@@ -9,10 +9,10 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
+    port: 5217,
     proxy: {
       // In dev, proxy API calls to the local FastAPI backend.
-      '/api': 'http://127.0.0.1:8000',
+      '/api': 'http://127.0.0.1:8044',
     },
   },
 })

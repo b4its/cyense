@@ -17,7 +17,7 @@ def test_run_cli_mode_already_running(monkeypatch) -> None:
     from app.cli import launch
 
     monkeypatch.setattr(launch, "is_backend_running", lambda h, p: True)
-    code = launch.run_cli_mode("127.0.0.1", 8000)
+    code = launch.run_cli_mode("127.0.0.1", 8044)
     assert code == 0
 
 
@@ -40,7 +40,7 @@ def test_run_cli_mode_starts_backend(monkeypatch) -> None:
     monkeypatch.setattr(launch, "is_backend_running", _fake_is_running)
     monkeypatch.setattr(launch, "start_background_backend", _fake_start)
     monkeypatch.setattr(launch, "time", _FakeTime())
-    code = launch.run_cli_mode("127.0.0.1", 8000)
+    code = launch.run_cli_mode("127.0.0.1", 8044)
     assert code == 0
 
 
@@ -72,10 +72,10 @@ def test_run_website_mode_prints_url_and_blocks(monkeypatch, capsys) -> None:
     monkeypatch.setattr(launch.os, "execv", _fake_execv)
 
     with pytest.raises(SystemExit):
-        launch.run_website_mode("127.0.0.1", 9000, open_browser=False)
+        launch.run_website_mode("127.0.0.1", 9044, open_browser=False)
 
     out = capsys.readouterr().out
-    assert "http://127.0.0.1:9000/ui" in out
+    assert "http://127.0.0.1:9044/ui" in out
     assert "mode WEBSITE" in out
     assert exec_called and "app.main:app" in " ".join(exec_called[0])
 
@@ -83,7 +83,7 @@ def test_run_website_mode_prints_url_and_blocks(monkeypatch, capsys) -> None:
 def test_backend_cmd_uses_uvicorn_main() -> None:
     from app.cli import launch
 
-    cmd = launch._backend_cmd("127.0.0.1", 8000)
+    cmd = launch._backend_cmd("127.0.0.1", 8044)
     assert "-m" in cmd and "uvicorn" in cmd
     assert "app.main:app" in cmd
-    assert "--port" in cmd and "8000" in cmd
+    assert "--port" in cmd and "8044" in cmd

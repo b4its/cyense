@@ -40,7 +40,7 @@ import httpx
 # ---------------------------------------------------------------------------
 # Konstanta
 
-_DEFAULT_BASE = "http://localhost:8000"
+_DEFAULT_BASE = "http://localhost:8044"
 _API = "/api/v1"
 
 

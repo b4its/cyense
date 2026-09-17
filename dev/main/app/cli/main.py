@@ -86,7 +86,7 @@ _VERSION = "2.1.0"
 # State global (disiapkan oleh callback utama sebelum subcommand berjalan)
 
 class _State:
-    api_url: str = "http://localhost:8000"
+    api_url: str = "http://localhost:8044"
     caps: TermCaps = detect_caps()
     console: Console = make_rich_console(caps)
     timeout: float = 300.0
@@ -101,7 +101,7 @@ _state = _State()
 def _global(
     api_url: Annotated[
         str, typer.Option("--api-url", envvar="CYENSE_API_URL", help="URL service Cyense.")
-    ] = "http://localhost:8000",
+    ] = "http://localhost:8044",
     no_color: Annotated[bool, typer.Option("--no-color", help="Matikan warna.")] = False,
     ascii_mode: Annotated[
         bool, typer.Option("--ascii", help="Paksa glyph ASCII.")
@@ -122,11 +122,11 @@ def _global(
 
     # Precedence: flag/env eksplisit > config file > default bawaan.
     resolved_api = api_url.rstrip("/")
-    if resolved_api == "http://localhost:8000":
+    if resolved_api == "http://localhost:8044":
         try:
             from app.core.config_store import load_config
             cfg_url = str(load_config().get("api_url", "")).rstrip("/")
-            if cfg_url and cfg_url != "http://localhost:8000":
+            if cfg_url and cfg_url != "http://localhost:8044":
                 resolved_api = cfg_url
         except Exception:
             pass  # config bersifat best-effort
@@ -3386,7 +3386,7 @@ def config_reset_cmd(
 
 @app.command("launch")
 def launch_cmd(
-    port: Annotated[int, typer.Option("--port", help="Port backend FastAPI.")] = 8000,
+    port: Annotated[int, typer.Option("--port", help="Port backend FastAPI.")] = 8044,
     host: Annotated[str, typer.Option("--host", help="Host backend FastAPI.")] = "127.0.0.1",
     mode: Annotated[
         str | None,
