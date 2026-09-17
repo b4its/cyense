@@ -528,6 +528,17 @@ def _all_tools() -> list[dict[str, object]]:
         rec["usage"] = usage
         rec["bookmarks"] = bookmarks
         rec.update(osr_enrichments.get(name.lower()) or {})
+        if not rec.get("how_it_works"):
+            from app.program.pentest_mechanisms import pentest_mechanism
+
+            rec.update(
+                pentest_mechanism(
+                    name=name,
+                    category=str(cat),
+                    description=str(rec.get("description") or ""),
+                    tags=rec.get("tags") or [],
+                )
+            )
         merged.append(rec)
 
     # Second pass: related tools = curated cross-family relations (or the

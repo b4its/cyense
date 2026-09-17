@@ -199,12 +199,54 @@ class WebsiteScanRequest(BaseModel):
         return self
 
 
+class FullPentestScanRequest(BaseModel):
+    """Full penetration test assessment evaluating and orchestrating across
+    the complete catalog of all 684 pentest & OSINT tools.
+    """
+
+    mode: Literal["full", "pentest"] = "full"
+    target: str = ""
+    url: str = ""
+    domain: str = ""
+    max_depth: int = Field(default=2, ge=0, le=5)
+    max_pages: int = Field(default=30, ge=1, le=500)
+    rate_limit: int = Field(default=10, ge=1, le=100)
+    headers: dict[str, str] = {}
+    cookies: dict[str, str] = {}
+    skip_port_scan: bool = False
+    flag_hunt: bool = False
+    i_have_permission: bool = False
+    instruction: str | None = None
+    scan_mode: str = "deep"
+    resume_from: str | None = None
+
+    @field_validator("target", "url", "domain")
+    @classmethod
+    def _validate_target(cls, value: str) -> str:
+        if any(ord(ch) < 0x20 or ch == "\x7f" for ch in value):
+            raise ValueError("target must not contain control characters")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _permission_gate(self) -> FullPentestScanRequest:
+        if not self.i_have_permission:
+            raise ValueError(
+                "i_have_permission must be true: only perform full pentest "
+                "on targets you are authorized to assess"
+            )
+        resolved = self.target or self.url or self.domain
+        if not resolved and not self.resume_from:
+            raise ValueError("target, url, or domain must be specified for full pentest")
+        return self
+
+
 ScanRequest = (
     LinkScanRequest
     | ProgramScanRequest
     | GithubScanRequest
     | WebsiteScanRequest
     | DomainScanRequest
+    | FullPentestScanRequest
 )
 
 
@@ -250,6 +292,7 @@ class ScanJob(BaseModel):
         | GithubScanRequest
         | WebsiteScanRequest
         | DomainScanRequest
+        | FullPentestScanRequest
     )
     status: ScanStatus = ScanStatus.QUEUED
     stage: str | None = None  # recon | probe | verify | report | crawl

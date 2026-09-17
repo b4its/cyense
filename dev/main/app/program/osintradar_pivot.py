@@ -78,6 +78,10 @@ ARTEFACT_TYPES: dict[str, list[str]] = {
     "matches": ["image", "url", "file"],
     "metadata": ["image", "file", "url"],
     "onion services": ["url", "domain"],
+    "sessions": ["ip", "domain"],
+    "network traffic": ["ip", "domain"],
+    "code flaws": ["file", "url"],
+    "payloads": ["url", "file"],
 }
 
 # Per-type canonical labels (mirror PIVOT_TYPES order) so the client can label

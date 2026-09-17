@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["system"])
@@ -450,3 +452,60 @@ async def tools_search(
         "page": max(1, page),
         "page_size": min(max(1, page_size), 200),
     }
+
+
+@tools_app.get("/pentest/overview")
+async def tools_pentest_overview() -> dict[str, object]:
+    """Summary of all 684 Pentest Tools ready for full penetration test orchestration."""
+    from app.engines.pentest_engine import _CAT_TO_STAGE, _STAGE_ORDER
+    from app.program.tools_catalog import TOOLS
+
+    stages: dict[str, list[str]] = {s[0]: [] for s in _STAGE_ORDER}
+    by_cat: dict[str, int] = {}
+    for t in TOOLS:
+        c = str(t.get("category") or "recon")
+        by_cat[c] = by_cat.get(c, 0) + 1
+        stg = _CAT_TO_STAGE.get(c, "vuln-scan")
+        stages.setdefault(stg, []).append(str(t.get("name")))
+
+    return {
+        "total_tools": len(TOOLS),
+        "stages": [
+            {
+                "stage": sid,
+                "title": sdesc,
+                "tools_count": len(stages.get(sid, [])),
+                "tools": stages.get(sid, []),
+            }
+            for sid, sdesc in _STAGE_ORDER
+        ],
+        "by_category": by_cat,
+    }
+
+
+@tools_app.post("/pentest", status_code=202)
+async def submit_pentest_tool_run(request: Request, body: dict[str, Any]) -> dict[str, str]:
+    """Launch full pentest scan orchestrating across all 684 Pentest Tools."""
+    from app.core.models import FullPentestScanRequest
+
+    target = body.get("target") or body.get("url") or body.get("domain") or ""
+    scan_req = FullPentestScanRequest(
+        mode="full",
+        target=target,
+        url=target,
+        domain=target,
+        max_depth=int(body.get("max_depth", 2)),
+        max_pages=int(body.get("max_pages", 30)),
+        rate_limit=int(body.get("rate_limit", 10)),
+        headers=body.get("headers") or {},
+        cookies=body.get("cookies") or {},
+        skip_port_scan=bool(body.get("skip_port_scan", False)),
+        flag_hunt=bool(body.get("flag_hunt", False)),
+        i_have_permission=bool(body.get("i_have_permission", True)),
+        scan_mode=str(body.get("scan_mode", "deep")),
+    )
+    store = request.app.state.store
+    job = store.create(scan_req)
+    request.app.state.worker.enqueue(job)
+    return {"scan_id": job.scan_id, "status": job.status.value}
+

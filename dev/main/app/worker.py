@@ -143,6 +143,10 @@ class ScanWorker:
                 "sqli": 80, "verify": 70, "owasp": 65, "flag": 72,
                 # domain
                 "enumerate": 15, "hosts": 35, "host": 60,
+                # pentest full (684 tools)
+                "network": 24, "vuln-scan": 36, "webapp": 48,
+                "injection": 60, "auth-audit": 72, "devsec": 80, "post-exploit": 88,
+                "reporting": 95,
                 "report": 90,
             }
             progress = progress_map.get(stage_name, 0)
@@ -229,6 +233,30 @@ class ScanWorker:
                     headers=request_dict.get("headers") or {},
                     cookies=request_dict.get("cookies") or {},
                     flag_hunt=bool(request_dict.get("flag_hunt", False)),
+                )
+            elif request_dict["mode"] in ("full", "pentest"):
+                # Full Pentest mode: orchestrate across all 684 pentest tools
+                target = (
+                    request_dict.get("target")
+                    or request_dict.get("url")
+                    or request_dict.get("domain")
+                    or ""
+                )
+                report = await run_pentest_scan(
+                    scan_id=scan_id,
+                    target=target,
+                    max_depth=int(request_dict.get("max_depth", 2)),
+                    max_pages=int(request_dict.get("max_pages", 30)),
+                    rate_limit=int(request_dict.get("rate_limit", 10)),
+                    headers=request_dict.get("headers") or {},
+                    cookies=request_dict.get("cookies") or {},
+                    skip_port_scan=bool(request_dict.get("skip_port_scan", False)),
+                    flag_hunt=bool(request_dict.get("flag_hunt", False)),
+                    scan_mode=request_dict.get("scan_mode", "deep"),
+                    brain=self.brain,
+                    reports_dir=str(self.settings.reports_dir),
+                    settings=self.settings,
+                    on_stage=on_stage,
                 )
             else:
                 await self.store.mark_stage(scan_id, "recon", 25)
@@ -606,3 +634,43 @@ async def run_website_scan(
         skip_port_scan=skip_port_scan,
         flag_hunt=flag_hunt,
     )
+
+
+async def run_pentest_scan(
+    scan_id: str,
+    target: str,
+    max_depth: int = 2,
+    max_pages: int = 30,
+    rate_limit: int = 10,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+    skip_port_scan: bool = False,
+    flag_hunt: bool = False,
+    scan_mode: str = "deep",
+    brain: Any = None,
+    reports_dir: str = "",
+    settings: Any = None,
+    on_stage: Any = None,
+) -> dict[str, Any]:
+    """Run full pentest mode pipeline orchestrating across all 684 Pentest Tools."""
+    from app.engines.pentest_engine import FullPentestEngine
+
+    engine = FullPentestEngine(
+        scan_id=scan_id,
+        brain=brain,
+        reports_dir=reports_dir,
+        settings=settings,
+        on_stage=on_stage,
+    )
+    return await engine.run(
+        target=target,
+        max_depth=max_depth,
+        max_pages=max_pages,
+        rate_limit=rate_limit,
+        headers=headers or {},
+        cookies=cookies or {},
+        skip_port_scan=skip_port_scan,
+        flag_hunt=flag_hunt,
+        scan_mode=scan_mode,
+    )
+
