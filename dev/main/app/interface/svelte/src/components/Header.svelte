@@ -34,11 +34,11 @@
 <div class="header-container">
   <header class="ops-header">
     <div class="brand-slot">
-      <a class="brand-mark" href="#/" onclick={nav} title="Cyense // Tactical Offensive Security">
-        NOX<span class="slash">//</span>SEC
+      <a class="brand-mark" href="#/" onclick={nav} title="CYENSE // Tactical Offensive Security">
+        CY<span class="slash">//</span>ENSE
       </a>
       <span class="ops-version">(v4.2 · OPS LIVE)</span>
-      <span class="cyense-tag">CYENSE</span>
+      <span class="cyense-tag">SECURITY ENGINE</span>
     </div>
 
     <nav class="center-nav" class:mobile-open={open}>
@@ -242,6 +242,7 @@
   @media (max-width: 880px) {
     .ops-header {
       grid-template-columns: 1fr auto;
+      padding: 0 16px;
     }
 
     .center-nav {
@@ -252,10 +253,11 @@
       right: 0;
       background: var(--panel);
       flex-direction: column;
-      padding: 16px 24px;
+      padding: 16px 20px;
       gap: 12px;
       border-bottom: 1px solid var(--red);
       z-index: 1001;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     }
 
     .center-nav.mobile-open {
@@ -264,6 +266,36 @@
 
     .mobile-toggle {
       display: flex;
+    }
+
+    .status-bar {
+      display: flex;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      white-space: nowrap;
+      gap: 20px;
+      padding: 6px 16px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .ops-header {
+      padding: 0 12px;
+      gap: 8px;
+    }
+
+    .brand-mark {
+      font-size: 14px;
+    }
+
+    .ops-version,
+    .cyense-tag,
+    .utc-clock {
+      display: none !important;
+    }
+
+    .right-slot {
+      gap: 8px;
     }
 
     .status-bar {

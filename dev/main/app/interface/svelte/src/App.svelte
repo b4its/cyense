@@ -90,7 +90,7 @@
   <div class="footer-wrap">
     <div class="footer-grid">
       <div class="footer-col-1">
-        <div class="footer-brand">NOX<span class="slash">//</span>SEC</div>
+        <div class="footer-brand">CY<span class="slash">//</span>ENSE</div>
         <p class="footer-tagline">
           // No compliance theatre. Just receipts. Autonomous attack surface discovery, deterministic AST remediation.
         </p>
@@ -138,7 +138,7 @@
     </div>
 
     <div class="footer-bottom">
-      <span class="copyright">COPYRIGHT &copy; {currentYear} NOX//SEC CYENSE. ALL RIGHTS RESERVED.</span>
+      <span class="copyright">COPYRIGHT &copy; {currentYear} CYENSE. ALL RIGHTS RESERVED.</span>
       <span class="disclaimer">RESPONSIBLE DISCLOSURE &middot; PRIVACY &middot; BUG BOUNTY</span>
     </div>
   </div>
@@ -344,6 +344,21 @@
       flex-direction: column;
       align-items: flex-start;
       gap: 8px;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .site-footer {
+      padding: 40px 0 24px;
+    }
+
+    .footer-wrap {
+      padding: 0 16px;
+    }
+
+    .footer-grid {
+      grid-template-columns: 1fr;
+      gap: 24px;
     }
   }
 </style>

@@ -1,5 +1,5 @@
 /* ============================================================
-   NOX//SEC CYENSE DESIGN SYSTEM
+   CYENSE DESIGN SYSTEM
    Military / Hacker ops room 03:00 CRT aesthetic.
    "No compliance theatre. Just receipts."
    ============================================================ */
@@ -110,6 +110,8 @@ html, body {
   font-size: 14px;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 /* 3. TIPOGRAFI RULES */
@@ -326,7 +328,7 @@ a:hover {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 16px;
 }
 
@@ -648,10 +650,174 @@ code.inline {
 }
 
 .tool-modal, .modal-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  width: 100%;
+  overflow-y: auto;
+  z-index: 9001;
   background: var(--panel);
   border: 1px solid var(--red);
   padding: 28px;
   box-shadow: 0 0 32px rgba(255, 26, 60, 0.3);
+  box-sizing: border-box;
+}
+
+.tool-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+
+.tool-modal-close {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--mute);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.tool-modal-close:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.tool-modal-close.cf-on {
+  border-color: var(--acid);
+  color: var(--acid);
+}
+
+.tool-modal-url {
+  word-break: break-all;
+  font-size: 12px;
+  color: var(--red);
+}
+
+.tool-modal-desc {
+  font-size: 13px;
+  color: var(--fg);
+  line-height: 1.6;
+}
+
+.tool-modal-h {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin: 18px 0 8px 0;
+}
+
+.tool-modal-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.tool-modal-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg);
+  padding: 12px;
+  border: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+/* ---------- TABLE SCROLL & STAGE GRAPH ---------- */
+.table-scroll, .table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stage-graph {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 16px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stage-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.stage-node .lbl {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+.stage-node.done .lbl {
+  color: var(--acid);
+}
+
+.stage-node.active .lbl {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.stage-link {
+  height: 1px;
+  background: var(--line);
+  width: 24px;
+  flex-shrink: 0;
+  margin-bottom: 20px;
+}
+
+/* ---------- LAYOUT SPLIT & TOC ---------- */
+.layout-split {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.toc {
+  position: sticky;
+  top: 64px;
+}
+
+.hero {
+  padding: 40px 0 24px;
+}
+
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 8px;
+}
+
+.kicker::before {
+  content: '// ';
+  color: var(--mute);
 }
 
 /* Light theme overlay overrides */
@@ -811,7 +977,7 @@ code.inline {
   border-color: rgba(199, 87, 0, 0.3);
 }
 
-/* 16. RESPONSIVE BREAKPOINT 880px */
+/* 16. RESPONSIVE BREAKPOINTS */
 @media (max-width: 880px) {
   .frame-b {
     display: none !important;
@@ -822,7 +988,7 @@ code.inline {
   }
 
   .hero h1 {
-    font-size: 42px !important;
+    font-size: clamp(32px, 6vw, 44px) !important;
     line-height: 1.1 !important;
   }
 
@@ -849,5 +1015,82 @@ code.inline {
 
   .layout-split {
     grid-template-columns: 1fr !important;
+    gap: 24px;
+  }
+
+  .toc {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .wrap {
+    padding: 0 16px !important;
+  }
+
+  .hero {
+    padding: 24px 0 16px;
+  }
+
+  .hero h1 {
+    font-size: clamp(26px, 7vw, 36px) !important;
+  }
+
+  .grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .pager {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .pager-btns {
+    flex-wrap: wrap;
+  }
+
+  .tool-modal, .modal-content {
+    padding: 16px;
+    max-height: calc(100vh - 20px);
+    max-width: calc(100vw - 16px);
+  }
+
+  .view-tabs {
+    gap: 6px;
+  }
+
+  .view-tab {
+    padding: 6px 12px;
+    font-size: 10px;
+  }
+
+  form {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  form .field {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  form button {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .footer-grid {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .tool-card {
+    padding: 16px;
   }
 }

@@ -407,14 +407,73 @@
     }
 
     .hero-title {
-      font-size: 42px !important;
+      font-size: clamp(34px, 6.5vw, 48px) !important;
       line-height: 1.1;
+      word-break: break-word;
     }
 
     .hud-badge.h3 {
-      left: 16px;
-      top: 50%;
-      transform: none;
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .hero-wrap {
+      padding: 24px 12px 48px;
+    }
+
+    .hero-title {
+      font-size: clamp(26px, 8vw, 36px) !important;
+      line-height: 1.12;
+    }
+
+    .hero-mono-p {
+      font-size: 12.5px;
+      line-height: 1.6;
+    }
+
+    .hero-ctas {
+      flex-direction: column;
+      width: 100%;
+      gap: 10px;
+    }
+
+    .btn-n,
+    .btn-ng {
+      width: 100%;
+      justify-content: center;
+      padding: 12px 16px;
+      font-size: 12px;
+    }
+
+    .hud-badge {
+      padding: 4px 8px;
+    }
+
+    .hud-title {
+      font-size: 8px;
+    }
+
+    .hud-value {
+      font-size: 9px;
+    }
+
+    .hud-badge.h1 {
+      top: 6px;
+      left: 6px;
+    }
+
+    .hud-badge.h2 {
+      bottom: 6px;
+      right: 6px;
+    }
+
+    .hero-quick-ledger {
+      gap: 12px;
+    }
+
+    .ledger-stat {
+      min-width: 110px;
     }
   }
 </style>

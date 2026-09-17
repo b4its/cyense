@@ -673,7 +673,7 @@
     50% { opacity: 0.15; }
   }
 
-  /* 16. RESPONSIVE (breakpoint 880px) */
+  /* 16. RESPONSIVE */
   @media (max-width: 880px) {
     .blades-grid {
       grid-template-columns: 1fr;
@@ -694,6 +694,55 @@
 
     .closing-cta-section {
       padding: 80px 20px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .section-block {
+      padding: 36px 0;
+    }
+
+    .wrap {
+      padding: 0 16px;
+    }
+
+    .matrix-h3 {
+      font-size: clamp(24px, 6vw, 36px);
+      margin-bottom: 12px;
+    }
+
+    .matrix-p {
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .matrix-stats-2x2 {
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .matrix-big-num {
+      font-size: 36px;
+    }
+
+    .blade-card {
+      padding: 24px 20px;
+    }
+
+    .closing-cta-section {
+      padding: 60px 16px;
+    }
+
+    .closing-h2 {
+      font-size: clamp(22px, 6vw, 38px);
+      margin-bottom: 24px;
+    }
+
+    .btn-n {
+      width: 100%;
+      padding: 14px 20px;
+      font-size: 12px;
     }
   }
 </style>
