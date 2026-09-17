@@ -417,7 +417,7 @@ def test_cli_pivot_rejects_bad_identifier_offline() -> None:
     for code in ("name", "company", "username", "email", "domain", "ip",
                  "url", "wallet", "location", "image", "file", "phone"):
         assert code in r.stdout, f"hint must list {code}"
-    r2 = CliRunner().invoke(app, ["tools", "pivot", "email"])
+    r2 = CliRunner().invoke(app, ["--api-url", "http://127.0.0.1:59999", "tools", "pivot", "email"])
     assert r2.exit_code == 3  # service down → not a crash
 
 
@@ -427,7 +427,10 @@ def test_cli_tools_usage_and_info_offline_errors() -> None:
     from app.cli.main import app
 
     runner = CliRunner()
-    for args in (["tools", "info", "nmap"], ["tools", "usage", "nmap"]):
+    for args in (
+        ["--api-url", "http://127.0.0.1:59999", "tools", "info", "nmap"],
+        ["--api-url", "http://127.0.0.1:59999", "tools", "usage", "nmap"],
+    ):
         r = runner.invoke(app, args)
         assert r.exit_code == 3, f"{args} should exit 3 when service is offline"
         assert r.stdout.strip()
@@ -438,6 +441,6 @@ def test_tools_categories_offline_invalid_id_exits() -> None:
 
     runner = CliRunner()
     # service is not running in the test env → expect a clean error panel (3)
-    r = runner.invoke(app, ["tools", "categories"])
+    r = runner.invoke(app, ["--api-url", "http://127.0.0.1:59999", "tools", "categories"])
     assert r.exit_code == 3
     assert r.stdout.strip(), "expected an error panel on offline service"
