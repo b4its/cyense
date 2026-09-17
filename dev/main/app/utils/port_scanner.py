@@ -94,6 +94,18 @@ class PortScanResult:
             "duration_ms": self.duration_ms,
         }
 
+    def __len__(self) -> int:
+        return len(self.open_ports)
+
+    def __iter__(self):
+        return iter(self.open_ports)
+
+    def __bool__(self) -> bool:
+        return bool(self.open_ports)
+
+    def __getitem__(self, item: int) -> dict[str, Any]:
+        return self.open_ports[item]
+
 
 def _extract_banner_version(banner: str, port: int) -> str | None:
     """Best-effort version extraction from a service banner.
