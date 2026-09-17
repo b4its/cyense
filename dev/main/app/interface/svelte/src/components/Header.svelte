@@ -43,6 +43,7 @@
 
     <nav class="center-nav" class:mobile-open={open}>
       <a href="#/" class:active={active('/')} onclick={nav}>dashboard</a>
+      <a href="#/pentest" class:active={active('/pentest')} onclick={nav}>pentest</a>
       <a href="#/websites" class:active={active('/websites')} onclick={nav}>websites</a>
       <a href="#/scans" class:active={active('/scans')} onclick={nav}>scans</a>
       <a href="#/tools" class:active={active('/tools')} onclick={nav}>tools</a>

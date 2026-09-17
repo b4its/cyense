@@ -6,6 +6,7 @@
   import Websites from './routes/Websites.svelte'
   import Rules from './routes/Rules.svelte'
   import Tools from './routes/Tools.svelte'
+  import Pentest from './routes/Pentest.svelte'
   import { onMount } from 'svelte'
 
   let route = '/'
@@ -68,6 +69,8 @@
 <main class="main-content">
   {#if scanId}
     <ScanDetail scanId={scanId} />
+  {:else if route.startsWith('/pentest')}
+    <Pentest />
   {:else if route.startsWith('/websites')}
     <Websites />
   {:else if route.startsWith('/scans')}
@@ -100,6 +103,7 @@
         <h5>OPERATIONS</h5>
         <ul>
           <li><a href="#/">› live telemetry</a></li>
+          <li><a href="#/pentest">› adaptive pentest</a></li>
           <li><a href="#/websites">› attack perimeters</a></li>
           <li><a href="#/scans">› scan library</a></li>
           <li><a href="#/tools">› toolbench</a></li>
