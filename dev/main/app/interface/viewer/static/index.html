@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NOX//SEC · Cyense Scan Results</title>
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('cyense-theme') || 'dark';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Michroma&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
@@ -27,9 +35,22 @@
                 <span class="brand-version">(v4.2 · OPS LIVE)</span>
                 <span class="brand-sub">CYENSE AUDIT ENGINE</span>
             </div>
-            <div class="scan-info">
-                <span class="scan-id" id="scanId">Loading...</span>
-                <span class="scan-date" id="scanDate"></span>
+            <div class="header-right-cluster">
+                <div class="scan-info">
+                    <span class="scan-id" id="scanId">Loading...</span>
+                    <span class="scan-date" id="scanDate"></span>
+                </div>
+                <div class="theme-switch-wrap">
+                    <button type="button" id="themeSwitchBtn" class="theme-switch" role="switch"
+                            aria-checked="true" aria-label="Toggle dark and light operational theme"
+                            title="Switch between CRT Dark and Tactical Light theme">
+                        <span class="ts-label">// THEME</span>
+                        <div class="ts-track is-dark" id="themeTrack">
+                            <span class="ts-thumb"></span>
+                        </div>
+                        <span class="ts-mode" id="themeMode">DARK</span>
+                    </button>
+                </div>
             </div>
         </header>
 

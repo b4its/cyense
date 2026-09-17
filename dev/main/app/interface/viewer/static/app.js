@@ -16,6 +16,9 @@ let severityValue = 'all';
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize theme toggle and sync with localStorage
+    initThemeToggle();
+
     const scanId = getScanIdFromUrl();
     if (scanId) {
         loadScanData(scanId);
@@ -43,6 +46,58 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 });
+
+// ---------------------------------------------------------------------------
+// Tactical Theme Switch (Dark CRT / Tactical Light)
+// ---------------------------------------------------------------------------
+function initThemeToggle() {
+    const btn = document.getElementById('themeSwitchBtn');
+    const track = document.getElementById('themeTrack');
+    const mode = document.getElementById('themeMode');
+    if (!btn) return;
+
+    function applyTheme(t) {
+        const isDark = t === 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+        btn.setAttribute('aria-checked', isDark ? 'true' : 'false');
+        if (track) {
+            track.classList.toggle('is-dark', isDark);
+        }
+        if (mode) {
+            mode.textContent = isDark ? 'DARK' : 'LIGHT';
+        }
+        try {
+            localStorage.setItem('cyense-theme', t);
+        } catch (e) {}
+    }
+
+    let initial = 'dark';
+    try {
+        initial = localStorage.getItem('cyense-theme') || document.documentElement.getAttribute('data-theme') || 'dark';
+    } catch (e) {
+        initial = document.documentElement.getAttribute('data-theme') || 'dark';
+    }
+    applyTheme(initial);
+
+    btn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+        applyTheme(next);
+    });
+
+    btn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            btn.click();
+        }
+    });
+
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'cyense-theme' && (e.newValue === 'light' || e.newValue === 'dark')) {
+            applyTheme(e.newValue);
+        }
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Searchable severity select (combobox with type-to-filter)
