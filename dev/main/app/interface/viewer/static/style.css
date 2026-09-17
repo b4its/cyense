@@ -1,5 +1,5 @@
 /* ============================================================
-   NOX//SEC CYENSE VIEWER STYLES
+   CYENSE VIEWER STYLES
    Mood: ruang operasi militer/hacker jam 03:00.
    "No compliance theatre. Just receipts."
    ============================================================ */
@@ -79,6 +79,8 @@ body {
     line-height: 1.6;
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    max-width: 100%;
 }
 
 /* 4. OVERLAYS */
@@ -680,8 +682,71 @@ body {
     .header {
         flex-direction: column;
         align-items: flex-start;
+        gap: 16px;
+    }
+    .header-right-cluster {
+        width: 100%;
+        justify-content: space-between;
     }
     .severity-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 16px 12px 60px;
+    }
+    .brand-version {
+        display: none !important;
+    }
+    .brand-sub {
+        display: none !important;
+    }
+    .brand-title {
+        font-size: 16px;
+    }
+    .scan-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    .scan-id {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+    .filters {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .search-input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .severity-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .severity-card {
+        padding: 16px 12px;
+    }
+    .severity-count {
+        font-size: 26px;
+    }
+    .findings-table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .pager {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .modal {
+        padding: 20px 8px;
+    }
+    .modal-content {
+        padding: 16px;
+        width: calc(100vw - 16px);
     }
 }
