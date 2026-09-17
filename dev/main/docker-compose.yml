@@ -5,6 +5,7 @@ services:
     ports:
       - "${CYENSE_API_PORT:-8044}:8044"
     volumes:
+      - ./app:/app/app
       - ./reports:/app/reports
       - ../brain:/app/brain
       - ../target:/workspace:ro

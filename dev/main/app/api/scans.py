@@ -37,12 +37,24 @@ async def list_scans(request: Request) -> list[dict[str, object]]:
     reports_dir = request.app.state.settings.reports_dir
     out: list[dict[str, object]] = []
     for job in store.list():
+        req_obj = job.request
+        target_str = (
+            getattr(req_obj, "target", "")
+            or getattr(req_obj, "url", "")
+            or getattr(req_obj, "domain", "")
+            or ""
+        )
         item: dict[str, object] = {
             "scan_id": job.scan_id,
             "status": job.status.value,
             "stage": job.stage,
             "progress": job.progress,
             "mode": job.request.mode,
+            "target": target_str,
+            "url": getattr(req_obj, "url", ""),
+            "domain": getattr(req_obj, "domain", ""),
+            "workflow": getattr(req_obj, "workflow", ""),
+            "error": job.error,
             "created_at": job.created_at,
             "finished_at": job.finished_at,
         }
