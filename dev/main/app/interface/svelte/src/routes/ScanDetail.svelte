@@ -330,6 +330,70 @@
     </section>
   {/if}
 
+  <!-- Pentest scan: subdomains attack surface table -->
+  {#if report?.subdomains?.length}
+    <section class="block">
+      <div class="wrap">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <div>
+            <div class="mono" style="color:#58a6ff;font-size:12px;font-weight:700">// SUBDOMAIN ATTACK SURFACE</div>
+            <h2 style="margin:4px 0 0;font-family:'Michroma',sans-serif;font-size:20px">
+              Subdomain Terpetakan ({report.subdomains.length})
+            </h2>
+          </div>
+          <span class="badge info" style="font-size:12px;padding:4px 10px">
+            {report.subdomains.filter(s => s.status === 'active').length} AKTIF
+          </span>
+        </div>
+        <p class="sub">Hasil pemetaan subdomain melalui Certificate Transparency, Wayback Machine CDX, dan active DNS dictionary.</p>
+        <div class="table-scroll">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Subdomain</th>
+              <th>IP Resolusi</th>
+              <th>HTTP</th>
+              <th>Server / Title</th>
+              <th>CNAME / Takeover</th>
+              <th>Sumber</th>
+            </tr>
+          </thead>
+          <tbody>
+          {#each report.subdomains as s}
+            <tr>
+              <td>
+                <span class="badge {s.status === 'active' ? 'low' : (s.status === 'resolvable' ? 'info' : 'unspecified')}">
+                  {s.status}
+                </span>
+              </td>
+              <td class="mono">
+                <a href="http://{s.subdomain}" target="_blank" rel="noreferrer" style="color:var(--cyan);text-decoration:none">
+                  {s.subdomain} ↗
+                </a>
+              </td>
+              <td class="mono">{s.ip || '-'}</td>
+              <td class="mono">{s.http_status || '-'}</td>
+              <td>
+                <div>{s.title || '-'}</div>
+                {#if s.server}<small style="color:var(--mute)">{s.server}</small>{/if}
+              </td>
+              <td class="mono">
+                {s.cname || '-'}
+                {#if s.takeover_risk}
+                  <div style="color:var(--red);font-weight:bold;font-size:11px">⚠ TAKEOVER RISK ({s.takeover_risk})</div>
+                {/if}
+              </td>
+              <td style="font-size:11px;color:var(--mute)">{(s.sources || []).join(', ')}</td>
+            </tr>
+          {/each}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+  {/if}
+
   <!-- Pentest Full: 684 Tools Execution Matrix & Telemetry -->
   {#if report?.tools_receipts?.length || report?.summary?.total_tools === 684}
     <section class="block">
