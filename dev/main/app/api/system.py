@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter(tags=["system"])
 
@@ -483,12 +483,33 @@ async def tools_pentest_overview() -> dict[str, object]:
     }
 
 
+@tools_app.get("/pentest/stages")
+async def tools_pentest_stages() -> dict[str, Any]:
+    """Return the 6 pentesting stages in the exact workflow sequence."""
+    from app.engines.adaptive_pentest import ADAPTIVE_PENTEST_STAGES
+    return {"stages": ADAPTIVE_PENTEST_STAGES, "total_stages": len(ADAPTIVE_PENTEST_STAGES)}
+
+
+@tools_app.post("/pentest/profile")
+async def tools_pentest_profile(body: dict[str, Any]) -> dict[str, Any]:
+    """Fast pre-scan profiling: technology detection, CVE matching, and adaptive tool selection."""
+    from app.engines.adaptive_pentest import profile_target
+
+    target = str(body.get("target") or body.get("url") or body.get("domain") or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Target URL or domain is required.")
+    probe_live = bool(body.get("probe_live", True))
+    timeout = float(body.get("timeout", 6.0))
+    return await profile_target(target=target, probe_live=probe_live, timeout=timeout)
+
+
 @tools_app.post("/pentest", status_code=202)
 async def submit_pentest_tool_run(request: Request, body: dict[str, Any]) -> dict[str, str]:
     """Launch full pentest scan orchestrating across all 684 Pentest Tools."""
     from app.core.models import FullPentestScanRequest
 
     target = body.get("target") or body.get("url") or body.get("domain") or ""
+    workflow = str(body.get("workflow", "adaptive"))
     scan_req = FullPentestScanRequest(
         mode="full",
         target=target,
@@ -503,6 +524,7 @@ async def submit_pentest_tool_run(request: Request, body: dict[str, Any]) -> dic
         flag_hunt=bool(body.get("flag_hunt", False)),
         i_have_permission=bool(body.get("i_have_permission", True)),
         scan_mode=str(body.get("scan_mode", "deep")),
+        workflow=workflow,
     )
     store = request.app.state.store
     job = store.create(scan_req)

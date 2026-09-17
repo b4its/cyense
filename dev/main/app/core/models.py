@@ -219,6 +219,7 @@ class FullPentestScanRequest(BaseModel):
     instruction: str | None = None
     scan_mode: str = "deep"
     resume_from: str | None = None
+    workflow: str = "adaptive"
 
     @field_validator("target", "url", "domain")
     @classmethod

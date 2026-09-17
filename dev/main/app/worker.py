@@ -143,9 +143,11 @@ class ScanWorker:
                 "sqli": 80, "verify": 70, "owasp": 65, "flag": 72,
                 # domain
                 "enumerate": 15, "hosts": 35, "host": 60,
-                # pentest full (684 tools)
+                # pentest full & adaptive (684 tools)
+                "vuln-profiling": 16, "info-gathering": 33,
                 "network": 24, "vuln-scan": 36, "webapp": 48,
                 "injection": 60, "auth-audit": 72, "devsec": 80, "post-exploit": 88,
+                "vulnerability": 68, "exploitation": 84,
                 "reporting": 95,
                 "report": 90,
             }
@@ -253,6 +255,7 @@ class ScanWorker:
                     skip_port_scan=bool(request_dict.get("skip_port_scan", False)),
                     flag_hunt=bool(request_dict.get("flag_hunt", False)),
                     scan_mode=request_dict.get("scan_mode", "deep"),
+                    workflow=request_dict.get("workflow", "adaptive"),
                     brain=self.brain,
                     reports_dir=str(self.settings.reports_dir),
                     settings=self.settings,
@@ -647,6 +650,7 @@ async def run_pentest_scan(
     skip_port_scan: bool = False,
     flag_hunt: bool = False,
     scan_mode: str = "deep",
+    workflow: str = "adaptive",
     brain: Any = None,
     reports_dir: str = "",
     settings: Any = None,
@@ -672,5 +676,6 @@ async def run_pentest_scan(
         skip_port_scan=skip_port_scan,
         flag_hunt=flag_hunt,
         scan_mode=scan_mode,
+        workflow=workflow,
     )
 
