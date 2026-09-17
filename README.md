@@ -310,8 +310,8 @@ ruff check: All checks passed (0 errors)
 
 ```bash
 git clone <repo-url> && cd cyense
-make up          # api :8000 + lab app :8080 (profile lab)
-curl http://localhost:8000/api/v1/health
+make up          # api :8044 + lab app :8124 (profile lab)
+curl http://localhost:8044/api/v1/health
 # {"status":"ok","service":"cyense","version":"2.1.0"}
 ```
 
@@ -321,8 +321,8 @@ curl http://localhost:8000/api/v1/health
 cd dev/main
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --port 8000
-# Swagger UI: http://localhost:8000/docs
+uvicorn app.main:app --port 8044
+# Swagger UI: http://localhost:8044/docs
 ```
 
 ### Reproduce evaluation (baseline vs agentic) / Reproduksi evaluasi
@@ -333,21 +333,21 @@ docker compose --profile lab up -d
 # or: python dev/main/tests/fixtures/vulnerable_app/lab_app.py
 
 # 2. Agentic scan — case 1 (IDOR critical + PII)
-curl -X POST http://localhost:8000/api/v1/scans \
+curl -X POST http://localhost:8044/api/v1/scans \
   -H 'Content-Type: application/json' \
-  -d '{"mode":"link","url":"http://localhost:8080/invoice/{ID}",
+  -d '{"mode":"link","url":"http://localhost:8124/invoice/{ID}",
        "baseline_id":"1","probe_ids":["2","3"],"i_have_permission":true}'
 # → 202 {"scan_id":"..."}
 
-curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
+curl http://localhost:8044/api/v1/scans/<id>/report | jq '.summary'
 # {"critical":2,"total":2,...}  ← PII bob@example.com + control-ID blocked
 
 # 3. False-positive trap — case 4 (generic-200)
-curl -X POST http://localhost:8000/api/v1/scans \
+curl -X POST http://localhost:8044/api/v1/scans \
   -H 'Content-Type: application/json' \
-  -d '{"mode":"link","url":"http://localhost:8080/docs/{ID}",
+  -d '{"mode":"link","url":"http://localhost:8124/docs/{ID}",
        "baseline_id":"x","probe_ids":["y","z"],"i_have_permission":true}'
-curl http://localhost:8000/api/v1/scans/<id>/report | jq '.summary'
+curl http://localhost:8044/api/v1/scans/<id>/report | jq '.summary'
 # {"total":0,"rejected_false_positives":8,...}  ← REJECTED via control-ID ⭐
 ```
 
@@ -399,18 +399,18 @@ make lint       # ruff, 0 errors
 
 ```bash
 # Audit public GitHub repo (fetcher + sandbox + CY001-CY013/XS/SQLI rules)
-curl -X POST http://localhost:8000/api/v1/scans \
+curl -X POST http://localhost:8044/api/v1/scans \
   -H 'Content-Type: application/json' \
   -d '{"mode":"github","repo_url":"https://github.com/owner/repo",
        "ref":"main","i_have_permission":true}'
 
 # Request remediation proposals from a scan (dry-run, does not write)
-curl -X POST http://localhost:8000/api/v1/scans/<scan_id>/fixes
+curl -X POST http://localhost:8044/api/v1/scans/<scan_id>/fixes
 # → {"session_id":"fix_...","message":"Proposals generated: 10 fixes ready"}
 
 # Review diff, then apply subset (requires explicit confirm)
-curl http://localhost:8000/api/v1/fixes/<session_id>/diff
-curl -X POST http://localhost:8000/api/v1/fixes/<session_id>/apply \
+curl http://localhost:8044/api/v1/fixes/<session_id>/diff
+curl -X POST http://localhost:8044/api/v1/fixes/<session_id>/apply \
   -H 'Content-Type: application/json' \
   -d '{"fix_ids":["..."],"confirm":true}'
 ```

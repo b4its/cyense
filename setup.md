@@ -88,15 +88,15 @@ docker compose --profile lab up -d --wait api vulnerable-app
 ```
 
 Hasilnya:
-- **API**: http://localhost:8000 — cek: `curl http://localhost:8000/api/v1/health`
-- **Swagger UI**: http://localhost:8000/docs
-- **Web UI**: http://localhost:8000/ui
-- **Lab app** (target evaluasi): http://localhost:8080
+- **API**: http://localhost:8044 — cek: `curl http://localhost:8044/api/v1/health`
+- **Swagger UI**: http://localhost:8044/docs
+- **Web UI**: http://localhost:8044/ui
+- **Lab app** (target evaluasi): http://localhost:8124
 
 ### 3.2 Verifikasi
 
 ```bash
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8044/api/v1/health
 # {"status":"ok","service":"cyense","version":"2.1.0"}
 ```
 
@@ -107,7 +107,7 @@ CLI tidak perlu diinstall di host — jalankan di dalam container API:
 ```bash
 # lewat Makefile:
 make cli ARGS="version"
-make cli ARGS="scan website http://localhost:8080 --i-have-permission"
+make cli ARGS="scan website http://localhost:8124 --i-have-permission"
 
 # atau langsung:
 docker compose exec api python -m app.cli.main version
@@ -156,15 +156,15 @@ pip install -r requirements.txt
 
 ```bash
 cd cyense/dev/main
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-# Swagger: http://127.0.0.1:8000/docs
-# Web UI  : http://127.0.0.1:8000/ui
+uvicorn app.main:app --host 127.0.0.1 --port 8044
+# Swagger: http://127.0.0.1:8044/docs
+# Web UI  : http://127.0.0.1:8044/ui
 ```
 
 Verifikasi di terminal lain:
 
 ```bash
-curl http://127.0.0.1:8000/api/v1/health
+curl http://127.0.0.1:8044/api/v1/health
 ```
 
 ### 4.3 Jalankan CLI (host)
@@ -186,7 +186,7 @@ cd cyense/dev/main
 python -m app.cli.main version
 ```
 
-> **Penting:** CLI default-nya memanggil `http://localhost:8000`. Jika API
+> **Penting:** CLI default-nya memanggil `http://localhost:8044`. Jika API
 > berjalan di port lain, gunakan `--api-url`:
 > `cyense --api-url http://localhost:8100 list`
 
@@ -195,7 +195,7 @@ python -m app.cli.main version
 ```bash
 cd cyense/dev/main
 python -m app.cli.main launch
-# pilih 1) Website  → buka http://127.0.0.1:8000/ui
+# pilih 1) Website  → buka http://127.0.0.1:8044/ui
 #       2) CLI      → contoh perintah CLI
 ```
 
@@ -376,17 +376,17 @@ make cli ARGS="view $SID --no-browser"
 ## 8. Menggunakan Browser / Web UI
 
 Ada dua antarmuka web:
-1. **Svelte Web UI** — http://localhost:8000/ui (dashboard, daftar scan, detail
+1. **Svelte Web UI** — http://localhost:8044/ui (dashboard, daftar scan, detail
    scan dengan pipeline + temuan, halaman rules).
-2. **Viewer per-scan** — http://localhost:8000/api/v1/viewer/<scan_id>
+2. **Viewer per-scan** — http://localhost:8044/api/v1/viewer/<scan_id>
    (laporan + trajectories agent).
 
 ### 8.1 Syarat
 
 - Service API berjalan (salah satu cara A/B/C).
 - **Web UI** memakai bundle Svelte yang sudah di-*build* di
-  `app/interface/svelte/dist/` (sudah ter-commit). Jika ingin membangun ulang
-  dari source:
+   `app/interface/svelte/dist/` (sudah ter-commit). Jika ingin membangun ulang
+   dari source:
 
   ```bash
   cd dev/main/app/interface/svelte
@@ -398,7 +398,7 @@ Ada dua antarmuka web:
 
 ### 8.2 Menggunakan
 
-1. Buka http://localhost:8000/ui di browser.
+1. Buka http://localhost:8044/ui di browser.
 2. **Dashboard** — ringkasan scan terbaru.
 3. **Scan Library** — daftar scan; isi URL + pilih mode (`website`, `domain`,
    `link`, `program (sample)`, `github`) lalu klik **Scan**.
@@ -415,7 +415,7 @@ cyense view --latest              # scan terbaru
 cyense view <scan_id> --no-browser  # hanya cetak URL
 ```
 
-URL viewer: `http://localhost:8000/api/v1/viewer/<scan_id>`.
+URL viewer: `http://localhost:8044/api/v1/viewer/<scan_id>`.
 
 ---
 
@@ -427,7 +427,7 @@ URL viewer: `http://localhost:8000/api/v1/viewer/<scan_id>`.
 | `/ui` mengembalikan 503 | Bundle Svelte `dist/` belum ada; jalankan `npm run build` di `app/interface/svelte`. |
 | `Connection refused` pada CLI | API belum hidup; jalankan `make up` atau `uvicorn app.main:app`, atau `--api-url` ke port yang benar. |
 | `ModuleNotFoundError` saat manual | Dependensi belum terinstall: `pip install -r requirements.txt` (dan `pip install -e ".[dev]"` untuk tes). |
-| Port 8000/8080 sudah terpakai | Pakai `CYENSE_API_PORT` / `CYENSE_LAB_PORT` (Docker) atau ubah `--port` (manual). |
+| Port 8044/8124 sudah terpakai | Pakai `CYENSE_API_PORT` / `CYENSE_LAB_PORT` (Docker) atau ubah `--port` (manual). |
 | `make test` pakai Python salah | Aktifkan venv host yang berisi flask/pytest/ruff, atau `make install-dev`. |
 | Scan GitHub lambat / gagal | Pastikan internet + `--token` GITHUB bila men-scan repo privat (token hanya ke github.com). |
 | Banyaknya temuan discovery tak muncul di CLI | Gunakan `cyense recon <url> --i-have-permission` (menampilkan OSINT/RE/OWASP/HARVEST/... di tabel discovery). |
@@ -443,7 +443,7 @@ make down
 
 # manual
 source dev/main/.venv/bin/activate
-cd dev/main && uvicorn app.main:app --port 8000
+cd dev/main && uvicorn app.main:app --port 8044
 cd dev/main && python -m app.cli.main scan website http://example.com --i-have-permission
 ```
 
