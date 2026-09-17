@@ -1,8 +1,8 @@
 import { writable } from 'svelte/store'
 
-// Theme store: 'light' (default) or 'dim'.
-const stored = (typeof localStorage !== 'undefined' && localStorage.getItem('cyense-theme')) || 'light'
-export const theme = writable(stored)
+// Theme store: 'dark' (default) or 'light'.
+const stored = (typeof localStorage !== 'undefined' && localStorage.getItem('cyense-theme')) || 'dark'
+export const theme = writable(stored === 'light' ? 'light' : 'dark')
 
 theme.subscribe((t) => {
   if (typeof document !== 'undefined') {
@@ -12,5 +12,10 @@ theme.subscribe((t) => {
 })
 
 export function toggleTheme() {
-  theme.update((t) => (t === 'light' ? 'dim' : 'light'))
+  theme.update((t) => (t === 'dark' ? 'light' : 'dark'))
 }
+
+export function setTheme(t) {
+  theme.set(t === 'light' ? 'light' : 'dark')
+}
+
