@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 
@@ -33,6 +34,14 @@ class Response:
     def blocked(self) -> bool:
         return self.status in (401, 403) or 300 <= self.status < 400
 
+    @property
+    def text(self) -> str:
+        return self.body
+
+    @property
+    def status_code(self) -> int:
+        return self.status
+
 
 @dataclass
 class HttpClient:
@@ -41,6 +50,8 @@ class HttpClient:
     max_concurrency: int = 10
     headers: dict[str, str] = field(default_factory=dict)
     cookies: dict[str, str] = field(default_factory=dict)
+    follow_redirects: bool = False
+    verify: bool = False
 
     def __post_init__(self) -> None:
         self._client: httpx.AsyncClient | None = None
@@ -58,7 +69,8 @@ class HttpClient:
             timeout=self.timeout,
             headers=self.headers,
             cookies=self.cookies,
-            follow_redirects=False,
+            follow_redirects=self.follow_redirects,
+            verify=self.verify,
         )
         return self
 
@@ -75,7 +87,14 @@ class HttpClient:
                 await asyncio.sleep(wait)
             self._last_request = time.monotonic()
 
-    async def request(self, method: str, url: str) -> Response:
+    async def request(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        follow_redirects: bool | None = None,
+    ) -> Response:
         """Issue a read-only request. Mutating methods are rejected.
 
         Allowed: GET, HEAD (standard read-only) plus OPTIONS, TRACE which are
@@ -90,8 +109,15 @@ class HttpClient:
         async with self._sem:
             await self._pace()
             start = time.monotonic()
+            req_kwargs: dict[str, Any] = {}
+            if headers is not None:
+                req_kwargs["headers"] = headers
+            if cookies is not None:
+                req_kwargs["cookies"] = cookies
+            if follow_redirects is not None:
+                req_kwargs["follow_redirects"] = follow_redirects
             try:
-                resp = await self._client.request(method, url)
+                resp = await self._client.request(method, url, **req_kwargs)
             except httpx.HTTPError as exc:
                 # redact_url_credentials — wrapping the URL under a non-
                 # sensitive key ("u") let embedded user:pass@ credentials
@@ -113,8 +139,24 @@ class HttpClient:
                 url=str(resp.url),
             )
 
-    async def get(self, url: str) -> Response:
-        return await self.request("GET", url)
+    async def get(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        follow_redirects: bool | None = None,
+    ) -> Response:
+        return await self.request(
+            "GET", url, headers=headers, cookies=cookies, follow_redirects=follow_redirects
+        )
 
-    async def head(self, url: str) -> Response:
-        return await self.request("HEAD", url)
+    async def head(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        follow_redirects: bool | None = None,
+    ) -> Response:
+        return await self.request(
+            "HEAD", url, headers=headers, cookies=cookies, follow_redirects=follow_redirects
+        )
