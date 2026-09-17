@@ -78,7 +78,7 @@
     position: sticky;
     top: 0;
     z-index: 1000;
-    background: var(--bg, #050204);
+    background: var(--bg);
   }
 
   .ops-header {
@@ -87,8 +87,8 @@
     align-items: center;
     height: 48px;
     padding: 0 24px;
-    border-bottom: 1px solid rgba(255, 26, 60, 0.2);
-    background: var(--panel, #0e0508);
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
     gap: 16px;
   }
 
@@ -103,7 +103,7 @@
     font-family: var(--font-display, 'Michroma', sans-serif);
     font-size: 15px;
     font-weight: 700;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     text-decoration: none;
     letter-spacing: 0.04em;
     display: inline-flex;
@@ -111,22 +111,22 @@
   }
 
   .brand-mark .slash {
-    color: var(--red, #ff1a3c);
+    color: var(--red);
   }
 
   .ops-version {
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 11px;
     letter-spacing: 0.08em;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
   }
 
   .cyense-tag {
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 9px;
     padding: 1px 5px;
-    border: 1px solid rgba(255, 26, 60, 0.4);
-    color: var(--red, #ff1a3c);
+    border: 1px solid var(--line);
+    color: var(--red);
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
@@ -140,7 +140,7 @@
   .center-nav a {
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 13px;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     text-decoration: none;
     text-transform: lowercase;
     transition: color 0.2s ease, text-shadow 0.2s ease;
@@ -148,20 +148,20 @@
 
   .center-nav a::before {
     content: '> ';
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     margin-right: 2px;
     transition: color 0.2s ease;
   }
 
   .center-nav a:hover,
   .center-nav a.active {
-    color: var(--red, #ff1a3c);
-    text-shadow: 0 0 8px var(--red, #ff1a3c);
+    color: var(--red);
+    text-shadow: 0 0 8px var(--red);
   }
 
   .center-nav a:hover::before,
   .center-nav a.active::before {
-    color: var(--red, #ff1a3c);
+    color: var(--red);
   }
 
   .right-slot {
@@ -176,20 +176,20 @@
     gap: 6px;
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 12px;
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
     letter-spacing: 0.08em;
   }
 
   .utc-dot {
     font-size: 8px;
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
     animation: blink 1.5s infinite;
   }
 
   .mobile-toggle {
     display: none;
     background: transparent;
-    border: 1px solid rgba(255, 26, 60, 0.3);
+    border: 1px solid var(--line);
     padding: 6px;
     cursor: pointer;
     flex-direction: column;
@@ -200,7 +200,7 @@
     display: block;
     width: 18px;
     height: 2px;
-    background: var(--fg, #f5e8e8);
+    background: var(--fg);
   }
 
   .status-bar {
@@ -208,17 +208,17 @@
     grid-template-columns: repeat(5, auto);
     justify-content: space-between;
     padding: 6px 24px;
-    background: var(--bg, #050204);
-    border-bottom: 1px solid rgba(255, 26, 60, 0.2);
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 11px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
   }
 
   .status-cell b {
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
     font-weight: 700;
   }
 
@@ -229,7 +229,7 @@
   }
 
   .blink-siren {
-    color: var(--red, #ff1a3c);
+    color: var(--red);
     animation: blink 1.5s infinite;
     font-size: 10px;
   }
@@ -250,11 +250,11 @@
       top: 48px;
       left: 0;
       right: 0;
-      background: var(--panel, #0e0508);
+      background: var(--panel);
       flex-direction: column;
       padding: 16px 24px;
       gap: 12px;
-      border-bottom: 1px solid var(--red, #ff1a3c);
+      border-bottom: 1px solid var(--red);
       z-index: 1001;
     }
 

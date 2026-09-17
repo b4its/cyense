@@ -158,6 +158,11 @@
     pointer-events: none;
     z-index: 9997;
     background: radial-gradient(circle at center, transparent 65%, rgba(5, 2, 4, 0.88) 100%);
+    transition: opacity 0.3s ease;
+  }
+
+  :global([data-theme='light']) .vignette {
+    opacity: 0;
   }
 
   .flicker {
@@ -167,11 +172,11 @@
     z-index: 9998;
     background: radial-gradient(circle at center, rgba(255, 26, 60, 0.04) 0%, transparent 80%);
     animation: flickerPulse 4s ease-in-out infinite;
+    transition: opacity 0.3s ease;
   }
 
-  @keyframes flickerPulse {
-    0%, 100% { opacity: 0.35; }
-    50% { opacity: 0.9; }
+  :global([data-theme='light']) .flicker {
+    opacity: 0;
   }
 
   .scan {
@@ -181,6 +186,11 @@
     z-index: 9999;
     background: repeating-linear-gradient(180deg, transparent 3px, rgba(255, 26, 60, 0.025) 4px);
     mix-blend-mode: overlay;
+    transition: opacity 0.3s ease;
+  }
+
+  :global([data-theme='light']) .scan {
+    opacity: 0;
   }
 
   .frame-b {
@@ -188,7 +198,7 @@
     inset: 14px;
     pointer-events: none;
     z-index: 10000;
-    border: 1px solid rgba(255, 26, 60, 0.25);
+    border: 1px solid var(--line);
   }
 
   .corner-bracket {
@@ -200,35 +210,35 @@
   .corner-bracket.tl {
     top: -2px;
     left: -2px;
-    border-top: 2px solid var(--red, #ff1a3c);
-    border-left: 2px solid var(--red, #ff1a3c);
+    border-top: 2px solid var(--red);
+    border-left: 2px solid var(--red);
   }
 
   .corner-bracket.tr {
     top: -2px;
     right: -2px;
-    border-top: 2px solid var(--red, #ff1a3c);
-    border-right: 2px solid var(--red, #ff1a3c);
+    border-top: 2px solid var(--red);
+    border-right: 2px solid var(--red);
   }
 
   .corner-bracket.bl {
     bottom: -2px;
     left: -2px;
-    border-bottom: 2px solid var(--red, #ff1a3c);
-    border-left: 2px solid var(--red, #ff1a3c);
+    border-bottom: 2px solid var(--red);
+    border-left: 2px solid var(--red);
   }
 
   .corner-bracket.br {
     bottom: -2px;
     right: -2px;
-    border-bottom: 2px solid var(--red, #ff1a3c);
-    border-right: 2px solid var(--red, #ff1a3c);
+    border-bottom: 2px solid var(--red);
+    border-right: 2px solid var(--red);
   }
 
   /* 12. Footer */
   .site-footer {
-    border-top: 1px solid rgba(255, 26, 60, 0.2);
-    background: var(--panel, #0e0508);
+    border-top: 1px solid var(--line);
+    background: var(--panel);
     padding: 60px 0 32px;
     position: relative;
     z-index: 10;
@@ -253,19 +263,19 @@
     font-size: 18px;
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     margin-bottom: 12px;
   }
 
   .footer-brand .slash {
-    color: var(--red, #ff1a3c);
+    color: var(--red);
   }
 
   .footer-tagline {
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 12px;
     line-height: 1.6;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     margin: 0;
     max-width: 340px;
   }
@@ -274,7 +284,7 @@
     font-family: var(--font-display, 'Michroma', sans-serif);
     font-size: 11px;
     letter-spacing: 0.08em;
-    color: var(--red, #ff1a3c);
+    color: var(--red);
     margin: 0 0 16px 0;
     text-transform: uppercase;
   }
@@ -291,13 +301,13 @@
   .footer-col a {
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 12px;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     text-decoration: none;
     transition: color 0.2s ease;
   }
 
   .footer-col a:hover {
-    color: var(--red, #ff1a3c);
+    color: var(--red);
     text-decoration: none;
   }
 
@@ -305,13 +315,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-top: 1px solid rgba(255, 26, 60, 0.15);
+    border-top: 1px solid var(--line);
     padding-top: 24px;
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 10px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     flex-wrap: wrap;
     gap: 12px;
   }

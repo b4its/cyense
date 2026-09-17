@@ -59,8 +59,8 @@
           xmlns="http://www.w3.org/2000/svg"
           preserveAspectRatio="xMidYMid slice"
         >
-          <!-- Dark background -->
-          <rect width="800" height="500" fill="#090306" />
+          <!-- Dark/Light adaptive background -->
+          <rect width="800" height="500" class="radar-bg" />
 
           <!-- Monospace telemetry watermarks -->
           <defs>
@@ -322,9 +322,9 @@
     position: relative;
     aspect-ratio: 16 / 10;
     width: 100%;
-    border: 1px solid rgba(255, 26, 60, 0.4);
+    border: 1px solid var(--line);
     filter: contrast(1.15) saturate(0.9);
-    background: var(--panel, #0e0508);
+    background: var(--panel);
     overflow: visible;
   }
 
@@ -334,16 +334,26 @@
     display: block;
   }
 
+  .radar-bg {
+    fill: var(--svg-radar-bg, #090306);
+    transition: fill 0.3s ease;
+  }
+
   .hud-badge {
     position: absolute;
-    background: rgba(5, 2, 4, 0.85);
-    border: 1px solid var(--acid, #42ff8a);
+    background: var(--hud-bg, rgba(5, 2, 4, 0.85));
+    border: 1px solid var(--acid);
     padding: 8px 12px;
     display: flex;
     flex-direction: column;
     gap: 3px;
     z-index: 10;
     box-shadow: 0 0 12px rgba(66, 255, 138, 0.15);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+
+  :global([data-theme='light']) .hud-badge {
+    box-shadow: 0 0 8px rgba(11, 120, 50, 0.15);
   }
 
   .hud-title {
@@ -351,14 +361,14 @@
     font-size: 10px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
   }
 
   .hud-value {
     font-family: var(--font-display, 'Michroma', sans-serif);
     font-size: 11px;
     letter-spacing: 0.04em;
-    color: var(--red, #ff1a3c);
+    color: var(--red);
     font-weight: 700;
     white-space: nowrap;
   }

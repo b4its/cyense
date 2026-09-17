@@ -38,25 +38,30 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: transparent;
-    border: 1px solid rgba(255, 26, 60, 0.3);
-    padding: 4px 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 4px 10px;
     cursor: pointer;
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 11px;
     letter-spacing: 0.12em;
-    color: var(--fg, #f5e8e8);
-    transition: border-color 0.2s, box-shadow 0.2s;
+    color: var(--fg);
+    transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
     border-radius: 0;
   }
 
   .theme-switch:hover {
-    border-color: var(--red, #ff1a3c);
+    border-color: var(--red);
     box-shadow: 0 0 12px rgba(255, 26, 60, 0.25);
   }
 
+  :global([data-theme='light']) .theme-switch:hover {
+    border-color: var(--red);
+    box-shadow: 0 0 12px rgba(217, 15, 47, 0.2);
+  }
+
   .ts-label {
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     font-weight: 400;
   }
 
@@ -64,8 +69,8 @@
     position: relative;
     width: 32px;
     height: 14px;
-    background: var(--panel, #0e0508);
-    border: 1px solid var(--mute, #8a5a64);
+    background: var(--bg);
+    border: 1px solid var(--mute);
     border-radius: 0;
     transition: border-color 0.2s, background-color 0.2s;
   }
@@ -76,38 +81,40 @@
     left: 1px;
     width: 10px;
     height: 10px;
-    background: var(--mute, #8a5a64);
+    background: var(--mute);
     border-radius: 0;
     transition: transform 0.2s ease, background-color 0.2s ease;
   }
 
   .ts-track.is-dark {
-    border-color: var(--red, #ff1a3c);
+    border-color: var(--red);
   }
 
   .ts-track.is-dark .ts-thumb {
     transform: translateX(18px);
-    background: var(--red, #ff1a3c);
-    box-shadow: 0 0 6px var(--red, #ff1a3c);
+    background: var(--red);
+    box-shadow: 0 0 6px var(--red);
   }
 
   :global([data-theme='light']) .ts-track:not(.is-dark) {
-    border-color: var(--acid, #0d8236);
+    border-color: var(--acid);
   }
 
   :global([data-theme='light']) .ts-track:not(.is-dark) .ts-thumb {
     transform: translateX(0);
-    background: var(--acid, #0d8236);
+    background: var(--acid);
   }
 
   .ts-mode {
     font-family: var(--font-display, 'Michroma', sans-serif);
     font-size: 10px;
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
     letter-spacing: 0.08em;
+    min-width: 38px;
+    text-align: left;
   }
 
   :global([data-theme='light']) .ts-mode {
-    color: var(--red, #d90f2f);
+    color: var(--acid);
   }
 </style>

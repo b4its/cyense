@@ -8,6 +8,7 @@
 :root, [data-theme='dark'] {
   --bg:    #050204;   /* near-black dengan hint magenta */
   --panel: #0e0508;   /* panel gelap */
+  --panel-elev: #160a0e;
   --fg:    #f5e8e8;   /* off-white pinkish untuk teks utama */
   --mute:  #8a5a64;   /* muted rose untuk teks sekunder & label */
   --red:   #ff1a3c;   /* aksen utama — alert, brand, CTA */
@@ -31,10 +32,20 @@
   --code-bg: var(--panel);
   --code-ink: var(--fg);
 
+  /* Card and SVG backgrounds */
+  --card-bg: linear-gradient(180deg, rgba(14, 5, 8, 0.85), rgba(5, 2, 4, 0.95));
+  --card-bg-hover: linear-gradient(180deg, rgba(30, 8, 14, 0.95), rgba(18, 4, 8, 0.98));
+  --hud-bg: rgba(5, 2, 4, 0.85);
+  --svg-radar-bg: #090306;
+  --svg-rack-bg: #0e0508;
+  --svg-grid-line: rgba(255, 26, 60, 0.08);
+
   /* 3. TIPOGRAFI */
   --font-display: 'Michroma', sans-serif;
   --font-mono: 'Space Mono', ui-monospace, 'Courier New', monospace;
   --font-inter: 'Inter', sans-serif;
+  --serif: var(--font-display);
+  --mono: var(--font-mono);
 
   /* 14. LARANGAN KERAS: Semua sudut tajam. Tidak ada rounded corners > 0px */
   --radius: 0px;
@@ -44,15 +55,16 @@
 [data-theme='light'] {
   /* Tactical military field dossier / high contrast light theme */
   --bg:    #f5f0f2;
-  --panel: #e6dee1;
-  --fg:    #050204;
-  --mute:  #7d4d57;
+  --panel: #eae2e5;
+  --panel-elev: #ffffff;
+  --fg:    #0e0508;
+  --mute:  #70444f;
   --red:   #d90f2f;
-  --acid:  #0d8236;
+  --acid:  #0b7832;
   --orange: #c75700;
-  --blue:  #1868b8;
+  --blue:  #0b63b8;
 
-  --line: rgba(217, 15, 47, 0.25);
+  --line: rgba(217, 15, 47, 0.22);
   --bg-elev: var(--panel);
   --bg-soft: rgba(217, 15, 47, 0.06);
   --bg-inset: #ded4d8;
@@ -64,12 +76,21 @@
   --ok: var(--acid);
   --warn: var(--orange);
   --err: var(--red);
-  --code-bg: var(--panel);
+  --code-bg: #ffffff;
   --code-ink: var(--fg);
+
+  --card-bg: linear-gradient(180deg, #ffffff, #f2e9ec);
+  --card-bg-hover: linear-gradient(180deg, #ffffff, #fbecee);
+  --hud-bg: rgba(255, 255, 255, 0.94);
+  --svg-radar-bg: #eae2e5;
+  --svg-rack-bg: #ffffff;
+  --svg-grid-line: rgba(217, 15, 47, 0.12);
 
   --font-display: 'Michroma', sans-serif;
   --font-mono: 'Space Mono', ui-monospace, 'Courier New', monospace;
   --font-inter: 'Inter', sans-serif;
+  --serif: var(--font-display);
+  --mono: var(--font-mono);
 
   --radius: 0px;
   --shadow: none;
@@ -266,7 +287,7 @@ a:hover {
 
 /* ---------- CARDS / BLADES ---------- */
 .card {
-  background: linear-gradient(180deg, rgba(14, 5, 8, 0.85), rgba(5, 2, 4, 0.95));
+  background: var(--card-bg);
   border: 1px solid var(--line);
   padding: 24px 22px;
   display: flex;
@@ -276,7 +297,7 @@ a:hover {
 }
 
 .card:hover {
-  background: linear-gradient(180deg, rgba(30, 8, 14, 0.92), rgba(18, 4, 8, 0.98));
+  background: var(--card-bg-hover);
   border-color: var(--red);
   box-shadow: 0 0 20px rgba(255, 26, 60, 0.2);
 }
@@ -621,11 +642,173 @@ code.inline {
   backdrop-filter: blur(4px);
 }
 
+[data-theme='light'] .tool-modal-backdrop,
+[data-theme='light'] .modal {
+  background: rgba(14, 5, 8, 0.45);
+}
+
 .tool-modal, .modal-content {
   background: var(--panel);
   border: 1px solid var(--red);
   padding: 28px;
   box-shadow: 0 0 32px rgba(255, 26, 60, 0.3);
+}
+
+/* Light theme overlay overrides */
+[data-theme='light'] .vignette,
+[data-theme='light'] .flicker,
+[data-theme='light'] .scan {
+  opacity: 0 !important;
+}
+
+/* ---------- VIEW TABS & TOOLS CATALOG ---------- */
+.view-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  flex-wrap: wrap;
+}
+
+.view-tab {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mute);
+  background: var(--panel);
+  cursor: pointer;
+  border: 1px solid var(--line);
+  padding: 8px 16px;
+  transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+}
+
+.view-tab:hover {
+  border-color: var(--red);
+  color: var(--fg);
+}
+
+.view-tab.active {
+  color: #ffffff;
+  border-color: var(--red);
+  background: var(--red);
+  font-weight: 700;
+}
+
+.tool-card {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.tool-card:hover {
+  background: var(--card-bg-hover);
+  border-color: var(--red);
+  box-shadow: 0 0 16px rgba(255, 26, 60, 0.2);
+}
+
+.tool-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.tool-desc {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+  opacity: 0.9;
+  line-height: 1.5;
+  margin: 0;
+  flex: 1;
+}
+
+.tool-features {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mute);
+}
+
+.tool-features li {
+  position: relative;
+}
+
+.tool-features li::before {
+  content: "› ";
+  color: var(--red);
+  font-weight: 700;
+  position: absolute;
+  left: -12px;
+}
+
+.tag-chip-ui {
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--bg-soft);
+}
+
+.tag-chip-ui.out {
+  color: var(--mute);
+}
+
+.pivot-chip {
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  background: var(--panel);
+  color: var(--mute);
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.pivot-chip:hover {
+  border-color: var(--red);
+  color: var(--fg);
+}
+
+.pivot-chip.active {
+  color: #ffffff;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.pivot-chip.clear {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.wf-caution {
+  margin: 4px 0 12px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--orange);
+  background: rgba(255, 138, 58, 0.08);
+  border: 1px solid rgba(255, 138, 58, 0.3);
+}
+
+[data-theme='light'] .wf-caution {
+  color: #c75700;
+  background: rgba(199, 87, 0, 0.08);
+  border-color: rgba(199, 87, 0, 0.3);
 }
 
 /* 16. RESPONSIVE BREAKPOINT 880px */

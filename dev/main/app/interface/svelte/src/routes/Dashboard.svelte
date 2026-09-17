@@ -200,8 +200,8 @@
             <rect width="500" height="500" fill="url(#m-grid)" />
 
             <!-- Server telemetry racks -->
-            <rect x="50" y="60" width="180" height="380" fill="#0e0508" stroke="rgba(255, 26, 60, 0.35)" stroke-width="1" />
-            <rect x="270" y="60" width="180" height="380" fill="#0e0508" stroke="rgba(66, 255, 138, 0.3)" stroke-width="1" />
+            <rect x="50" y="60" width="180" height="380" class="rack-pod" stroke="var(--line)" stroke-width="1" />
+            <rect x="270" y="60" width="180" height="380" class="rack-pod" stroke="var(--acid)" stroke-width="1" />
 
             <!-- Rack bays -->
             {#each [90, 140, 190, 240, 290, 340, 390] as y}
@@ -217,7 +217,7 @@
 
             <!-- Center bus line -->
             <path d="M 230 190 L 250 190 L 250 310 L 270 310" stroke="#ff1a3c" stroke-width="2" fill="none" />
-            <circle cx="250" cy="250" r="14" fill="#050204" stroke="#ff1a3c" stroke-width="2" />
+            <circle cx="250" cy="250" r="14" class="rack-bus" stroke="#ff1a3c" stroke-width="2" />
             <text x="250" y="254" font-family="'Michroma', sans-serif" font-size="8" fill="#42ff8a" text-anchor="middle">TX</text>
 
             <text x="50" y="45" font-family="'Space Mono', monospace" font-size="10" fill="rgba(255, 26, 60, 0.8)">// RACK_01 :: ADVERSARIAL POD</text>
@@ -311,13 +311,13 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 1px;
-    background: rgba(255, 26, 60, 0.2);
-    border: 1px solid rgba(255, 26, 60, 0.2);
+    background: var(--line);
+    border: 1px solid var(--line);
   }
 
   .blade-card {
     padding: 32px 28px;
-    background: linear-gradient(180deg, rgba(14, 5, 8, 0.85), rgba(5, 2, 4, 0.95));
+    background: var(--card-bg);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -325,7 +325,7 @@
   }
 
   .blade-card:hover {
-    background: linear-gradient(180deg, rgba(30, 8, 14, 0.95), rgba(18, 4, 8, 0.98));
+    background: var(--card-bg-hover);
   }
 
   .blade-header {
@@ -334,30 +334,30 @@
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 11px;
     letter-spacing: 0.14em;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     margin-bottom: 16px;
   }
 
   .live-dot {
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
     font-weight: 700;
   }
 
   .quiet-dot {
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
   }
 
   .blade-card h3 {
     font-family: var(--font-display, 'Michroma', sans-serif);
     font-size: 19px;
     letter-spacing: -0.02em;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     margin: 0 0 14px 0;
     line-height: 1.25;
   }
 
   .blade-card h3 em {
-    color: var(--red, #ff1a3c);
+    color: var(--red);
     font-style: normal;
   }
 
@@ -365,23 +365,23 @@
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 13px;
     line-height: 1.65;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     opacity: 0.9;
     margin: 0 0 24px 0;
     flex-grow: 1;
   }
 
   .blade-footer {
-    border-top: 1px dashed rgba(255, 26, 60, 0.4);
+    border-top: 1px dashed var(--line);
     padding-top: 14px;
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 11px;
     letter-spacing: 0.1em;
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
   }
 
   .blade-footer b {
-    color: var(--acid, #42ff8a);
+    color: var(--acid);
     font-weight: 700;
   }
 
@@ -389,7 +389,7 @@
   .table-container {
     width: 100%;
     overflow-x: auto;
-    border: 1px solid rgba(255, 26, 60, 0.2);
+    border: 1px solid var(--line);
   }
 
   .ledger-table {
@@ -397,33 +397,33 @@
     border-collapse: collapse;
     font-family: var(--font-mono, 'Space Mono', monospace);
     font-size: 13px;
-    background: var(--panel, #0e0508);
+    background: var(--panel);
   }
 
   .ledger-table th {
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    color: var(--mute, #8a5a64);
-    background: rgba(255, 26, 60, 0.04);
-    border-bottom: 1px solid rgba(255, 26, 60, 0.3);
+    color: var(--mute);
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--line);
     padding: 12px 16px;
     text-align: left;
   }
 
   .ledger-table td {
     padding: 14px 16px;
-    border-bottom: 1px solid rgba(255, 26, 60, 0.1);
-    color: var(--fg, #f5e8e8);
+    border-bottom: 1px solid var(--line);
+    color: var(--fg);
   }
 
   .ledger-table tr:hover td {
-    background: rgba(255, 26, 60, 0.05);
+    background: var(--bg-soft);
   }
 
   .ledger-id {
     font-family: var(--font-display, 'Michroma', sans-serif);
-    color: var(--red, #ff1a3c);
+    color: var(--red);
     font-size: 13px;
     letter-spacing: 0.04em;
   }
@@ -557,10 +557,10 @@
     position: relative;
     aspect-ratio: 1 / 1;
     width: 100%;
-    border: 1px solid rgba(255, 26, 60, 0.35);
+    border: 1px solid var(--line);
     filter: contrast(1.2) saturate(0.85);
     overflow: hidden;
-    background: var(--panel, #0e0508);
+    background: var(--panel);
   }
 
   .matrix-art {
@@ -569,11 +569,26 @@
     display: block;
   }
 
+  .rack-pod {
+    fill: var(--svg-rack-bg, #0e0508);
+    transition: fill 0.3s ease;
+  }
+
+  .rack-bus {
+    fill: var(--bg);
+    transition: fill 0.3s ease;
+  }
+
   .square-vignette {
     position: absolute;
     inset: 0;
     pointer-events: none;
     background: radial-gradient(circle at center, transparent 35%, rgba(5, 2, 4, 0.95) 100%);
+    transition: opacity 0.3s ease;
+  }
+
+  :global([data-theme='light']) .square-vignette {
+    opacity: 0;
   }
 
   /* Live queue */
@@ -585,20 +600,20 @@
 
   .skeleton-box, .error-box, .empty-queue-box {
     padding: 32px;
-    background: var(--panel, #0e0508);
-    border: 1px solid rgba(255, 26, 60, 0.2);
+    background: var(--panel);
+    border: 1px solid var(--line);
     font-family: var(--font-mono, 'Space Mono', monospace);
   }
 
   .empty-title {
     font-family: var(--font-display, 'Michroma', sans-serif);
     font-size: 16px;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     margin: 0 0 8px 0;
   }
 
   .empty-desc {
-    color: var(--mute, #8a5a64);
+    color: var(--mute);
     font-size: 13px;
     margin: 0 0 20px 0;
   }
@@ -608,8 +623,8 @@
   .closing-cta-section {
     padding: 140px 32px;
     text-align: center;
-    border-top: 1px solid rgba(255, 26, 60, 0.2);
-    background: linear-gradient(180deg, var(--bg, #050204) 0%, var(--panel, #0e0508) 100%);
+    border-top: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--bg) 0%, var(--panel) 100%);
   }
 
   .closing-h2 {
@@ -617,7 +632,7 @@
     font-size: clamp(32px, 4.5vw, 64px);
     letter-spacing: -0.02em;
     line-height: 1.15;
-    color: var(--fg, #f5e8e8);
+    color: var(--fg);
     max-width: 980px;
     margin: 0 auto 36px;
   }
