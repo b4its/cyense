@@ -655,6 +655,103 @@ def scan_website(
 
 
 # ---------------------------------------------------------------------------
+# scan full — full penetration test orchestrating all 684 Pentest Tools
+# ---------------------------------------------------------------------------
+
+@scan_app.command("full")
+def scan_full(
+    target: Annotated[
+        str,
+        typer.Argument(help="Target URL, domain, or IP for full 684-tool penetration test."),
+    ],
+    max_depth: Annotated[
+        int,
+        typer.Option("--max-depth", help="Kedalaman crawl (default 2)."),
+    ] = 2,
+    max_pages: Annotated[
+        int,
+        typer.Option("--max-pages", help="Batas halaman per host (default 30)."),
+    ] = 30,
+    rate_limit: Annotated[
+        int,
+        typer.Option("--rate-limit", help="Max request/s (default 10)."),
+    ] = 10,
+    skip_port_scan: Annotated[
+        bool,
+        typer.Option("--skip-port-scan", help="Lewati tahap port scan TCP connect."),
+    ] = False,
+    flag_hunt: Annotated[
+        bool,
+        typer.Option("--flag-hunt", help="Aktifkan pencarian flag CTF (same-origin)."),
+    ] = False,
+    scan_mode: Annotated[
+        str,
+        typer.Option("--scan-mode", help="Mode scan: quick|standard|deep (default deep)."),
+    ] = "deep",
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[mandatory] Konfirmasi izin eksplisit untuk pentest full pada target ini.",
+        ),
+    ] = False,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+    fail_on: Annotated[
+        str,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 bila ada temuan ≥ severity ini (none|info|low|medium|high|critical).",
+        ),
+    ] = "none",
+    min_severity: Annotated[
+        str,
+        typer.Option("--min-severity", help="Severity minimum yang ditampilkan."),
+    ] = "info",
+) -> None:
+    """Full penetration test — orkestrasikan seluruh 684 Pentest Tools.
+
+    Mengeksekusi dan mengevaluasi 684 Pentest Tools secara menyeluruh
+    melintasi 9 tahapan lifecycle penetration testing (recon, network,
+    vuln-scan, webapp, injection, auth-audit, devsec, post-exploit, reporting).
+    """
+    payload: dict = {
+        "mode": "full",
+        "target": target,
+        "url": target,
+        "domain": target,
+        "max_depth": max_depth,
+        "max_pages": max_pages,
+        "rate_limit": rate_limit,
+        "skip_port_scan": skip_port_scan,
+        "flag_hunt": flag_hunt,
+        "scan_mode": scan_mode,
+        "i_have_permission": i_have_permission,
+    }
+    _run(_run_scan(
+        payload=payload,
+        mode="full",
+        out_path=out,
+        no_md=no_md,
+        fail_on=fail_on,
+        min_severity=min_severity,
+    ))
+
+
+@scan_app.command("pentest")
+def scan_pentest_alias(
+    target: Annotated[str, typer.Argument(help="Target URL, domain, or IP.")],
+    i_have_permission: Annotated[
+        bool, typer.Option("--i-have-permission", help="Konfirmasi izin audit.")
+    ] = False,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+) -> None:
+    """Alias untuk `cyense scan full` — pentest 684 tools lengkap."""
+    scan_full(target=target, i_have_permission=i_have_permission, out=out, no_md=no_md)
+
+
+# ---------------------------------------------------------------------------
 # cve — focused CVE lookup for a website (uses the CVE-aware website scan)
 # ---------------------------------------------------------------------------
 
@@ -2690,6 +2787,26 @@ def _export_catalog_text(
                 lines.append(f"\n**Terkait:** {', '.join(str(x) for x in related)}")
             lines.append("")
     return "\n".join(lines)
+
+
+@tools_app.command("pentest")
+def tools_pentest_cmd(
+    target: Annotated[
+        str,
+        typer.Argument(help="Target URL, domain, or IP for full 684-tool penetration test."),
+    ],
+    i_have_permission: Annotated[
+        bool,
+        typer.Option(
+            "--i-have-permission",
+            help="[mandatory] Konfirmasi izin eksplisit untuk pentest full pada target ini.",
+        ),
+    ] = False,
+    out: Annotated[str | None, typer.Option("--out", help="Path output .md.")] = None,
+    no_md: Annotated[bool, typer.Option("--no-md", help="Jangan tulis .md.")] = False,
+) -> None:
+    """Jalankan full pentest menggunakan 684 tools lengkap terhadap target."""
+    scan_full(target=target, i_have_permission=i_have_permission, out=out, no_md=no_md)
 
 
 # ---------------------------------------------------------------------------
