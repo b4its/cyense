@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import http.server
 import threading
+from urllib.parse import urlparse
 
 from app.engines.flag_hunt import (
     COMMON_FLAG_PATHS,
@@ -140,7 +141,7 @@ async def test_probe_flag_paths_live() -> None:
         assert hit[0]["evidence"]["marker"] == "CTF{local-flag-live}"
         # 404 paths produce nothing beyond the two 200 flag/robots candidates;
         # robots carries no marker and its path lacks "flag" → not reported.
-        assert all("404" not in f["location"] for f in findings)
+        assert all("404" not in urlparse(f["location"]).path for f in findings)
     finally:
         server.shutdown()
         server.server_close()
