@@ -78,12 +78,23 @@ async def get_scan(request: Request, scan_id: str) -> dict[str, object]:
     job = store.get(scan_id)
     if job is None:
         raise HTTPException(status_code=404, detail="scan not found")
+    req_obj = job.request
+    target_str = (
+        getattr(req_obj, "target", "")
+        or getattr(req_obj, "url", "")
+        or getattr(req_obj, "domain", "")
+        or ""
+    )
     payload: dict[str, object] = {
         "scan_id": job.scan_id,
         "status": job.status.value,
         "stage": job.stage,
         "progress": job.progress,
         "mode": job.request.mode,
+        "target": target_str,
+        "url": getattr(req_obj, "url", ""),
+        "domain": getattr(req_obj, "domain", ""),
+        "workflow": getattr(req_obj, "workflow", ""),
         "created_at": job.created_at,
         "finished_at": job.finished_at,
         "error": job.error,
