@@ -24,6 +24,11 @@
     submitting = true; msg = ''
     try {
       const payload = { mode, i_have_permission: true }
+      if (mode === 'full' || mode === 'pentest') {
+        if (!url) throw new Error('Target URL / domain wajib diisi')
+        payload.target = url
+        payload.url = url
+      }
       if (mode === 'website' || mode === 'link') {
         if (!url) throw new Error('URL/domain target wajib diisi')
         payload.url = url
@@ -71,6 +76,7 @@
       <div class="field">
         <SearchableSelect bind:value={mode}
           items={[
+            { value: 'full', label: 'pentest full (684 tools)' },
             { value: 'website', label: 'website' },
             { value: 'domain', label: 'domain' },
             { value: 'link', label: 'link' },
