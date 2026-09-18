@@ -68,6 +68,31 @@ async def list_scans(request: Request) -> list[dict[str, object]]:
                 report = load_disk_report_or_none(reports_dir, job.scan_id)
             if report is not None:
                 item["summary"] = report.get("summary", {})
+                raw_findings = report.get("findings") or []
+                findings_sample = []
+                for f in raw_findings[:8]:
+                    sev = str(f.get("severity") or "medium").lower()
+                    default_cvss = 9.8 if sev == "critical" else (8.2 if sev == "high" else 6.5)
+                    vector_val = (
+                        f.get("url")
+                        or f.get("target")
+                        or f.get("endpoint")
+                        or f.get("rule_id")
+                        or f.get("title")
+                        or target_str
+                    )
+                    findings_sample.append({
+                        "id": f.get("id") or f.get("rule_id") or f.get("cve") or f.get("title"),
+                        "title": f.get("title") or f.get("rule_id"),
+                        "severity": sev,
+                        "cvss": f.get("cvss") or f.get("cvss_score") or default_cvss,
+                        "vector": vector_val,
+                        "status": "VERIFIED" if f.get("confidence") == "high" else "REPORTED",
+                        "scan_id": job.scan_id,
+                        "target": target_str,
+                        "created_at": job.created_at,
+                    })
+                item["findings_sample"] = findings_sample
         out.append(item)
     return out
 
