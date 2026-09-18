@@ -23,7 +23,8 @@
       </p>
 
       <div class="hero-ctas">
-        <a href="#/scans" class="btn-n">&gt;&gt; INITIATE AUDIT</a>
+        <a href="#/pentest" class="btn-n">&gt;&gt; LAUNCH PENTEST</a>
+        <a href="#/scans" class="btn-ng">AUDIT SCANS &rarr;</a>
         <a href="#/rules" class="btn-ng">VECTOR RULES &rarr;</a>
       </div>
 

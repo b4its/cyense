@@ -136,6 +136,21 @@
   // leaking timers across route changes.
   onDestroy(() => { if (pollTimer) clearInterval(pollTimer) })
 
+  $: scanTarget = report?.target || report?.meta?.target || report?.meta?.url || job?.target || job?.url || job?.domain || ''
+
+  function downloadJsonReport() {
+    if (!report) return
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `cyense-audit-${scanId}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   // Stage graph status derived from pipeline + summary progress.
   // Falls back to ADAPTIVE_PENTEST_PIPELINE, PENTEST_PIPELINE, or PIPELINE.
   $: isPentestMode = job?.mode === 'full' || job?.mode === 'pentest' || report?.mode === 'full' || ((report?.tools_receipts?.length || 0) > 0)
@@ -259,6 +274,29 @@
           {#if report?.summary?.[sev] > 0}<span class="badge {sev}">{sev} {report.summary[sev]}</span>{/if}
         {/each}
         <span class="badge">total {report?.summary?.total ?? 0}</span>
+      </div>
+
+      <div class="scan-header-actions">
+        {#if scanTarget}
+          <a
+            class="btn-tactical pentest"
+            href="#/pentest?target={encodeURIComponent(scanTarget)}"
+            title="Luncurkan adaptive pentest penuh pada target ini"
+          >
+            &gt;&gt; ADAPTIVE PENTEST
+          </a>
+        {/if}
+        {#if report}
+          <button
+            class="btn-tactical export"
+            onclick={downloadJsonReport}
+            title="Unduh laporan audit lengkap dalam format JSON"
+          >
+            EXPORT REPORT (JSON) &darr;
+          </button>
+        {/if}
+        <a class="btn-tactical ghost" href="#/scans">&larr; ALL SCANS</a>
+        <a class="btn-tactical ghost" href="#/websites">PERIMETERS &rarr;</a>
       </div>
     </div>
   </section>
@@ -772,3 +810,68 @@
     <Celebration message="Scan selesai — semua stage berhasil" onClose={() => (celebrate = false)} />
   {/if}
 {/if}
+
+<style>
+  .scan-header-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line, rgba(255, 26, 60, 0.25));
+  }
+
+  .btn-tactical {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-display, 'Michroma', sans-serif);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 9px 18px;
+    text-decoration: none;
+    border-radius: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-tactical.pentest {
+    background: var(--red, #ff1a3c);
+    border: 1px solid var(--red, #ff1a3c);
+    color: #ffffff;
+  }
+
+  .btn-tactical.pentest:hover {
+    background: transparent;
+    color: var(--red, #ff1a3c);
+    box-shadow: 0 0 14px rgba(255, 26, 60, 0.35);
+  }
+
+  .btn-tactical.export {
+    background: rgba(66, 255, 138, 0.1);
+    border: 1px solid var(--acid, #42ff8a);
+    color: var(--acid, #42ff8a);
+  }
+
+  .btn-tactical.export:hover {
+    background: var(--acid, #42ff8a);
+    color: #050204;
+    box-shadow: 0 0 14px rgba(66, 255, 138, 0.3);
+  }
+
+  .btn-tactical.ghost {
+    background: transparent;
+    border: 1px solid var(--mute, #8a5a64);
+    color: var(--mute, #8a5a64);
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 12px;
+  }
+
+  .btn-tactical.ghost:hover {
+    border-color: var(--fg, #f5e8e8);
+    color: var(--fg, #f5e8e8);
+  }
+</style>

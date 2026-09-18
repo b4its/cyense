@@ -460,6 +460,11 @@
           {pentestRunning ? 'MENYIAPKAN 684 TOOLS…' : '>> LUNCURKAN FULL PENTEST'}
         </button>
       </form>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <a href="#/pentest" class="mono" style="font-size:12px;color:var(--acid);text-decoration:none">
+          ⚡ Beralih ke 6-Stage Adaptive Pentest Suite (Target Profiling &amp; Subdomain Attack Surface) &rarr;
+        </a>
+      </div>
       {#if pentestMsg}
         <p class="mono" style="font-size:13px;color:var(--acid);margin-top:12px">{pentestMsg}</p>
       {/if}

@@ -35,6 +35,27 @@
   }
   $: featured = scans[0] || null
   $: recent = scans.slice(0, 6)
+
+  const fallbackFindings = [
+    { id: 'NX-8821', vector: '/api/v1/billing/{tenant_id}/invoices', severity: 'CRITICAL', cvss: '9.8', status: 'LIVE 90D', verified: '03:14:22Z', scan_id: null },
+    { id: 'NX-7914', vector: 'CVE-2024-3400 GlobalProtect Command Injection', severity: 'CRITICAL', cvss: '10.0', status: 'PATCHED', verified: '02:58:10Z', scan_id: null },
+    { id: 'NX-6102', vector: 'DOM Stored XSS via window.location.hash', severity: 'HIGH', cvss: '8.2', status: 'CONTAINED', verified: '01:40:55Z', scan_id: null },
+    { id: 'NX-4419', vector: 'CVE-2024-21413 MonikerLink Parsing Flaw', severity: 'HIGH', cvss: '7.9', status: 'PATCHED', verified: '00:22:18Z', scan_id: null },
+    { id: 'NX-3108', vector: 'Unauthenticated Metadata /v1/system/debug', severity: 'MEDIUM', cvss: '6.5', status: 'CONTAINED', verified: '23:09:41Z', scan_id: null },
+  ]
+
+  $: realFindings = scans
+    .flatMap((s) => (s.findings_sample || s.findings || []).map((f) => ({
+      id: f.id || f.title || 'NX-ALERT',
+      vector: f.vector || f.url || f.target || s.target || '/production/surface',
+      severity: String(f.severity || 'medium').toUpperCase(),
+      cvss: f.cvss != null ? Number(f.cvss).toFixed(1) : (String(f.severity).toLowerCase() === 'critical' ? '9.8' : String(f.severity).toLowerCase() === 'high' ? '8.2' : '6.5'),
+      status: f.status || 'VERIFIED',
+      verified: f.created_at ? f.created_at.slice(11, 19) + 'Z' : 'LIVE',
+      scan_id: f.scan_id || s.scan_id,
+    })))
+
+  $: displayFindings = realFindings.length > 0 ? realFindings.slice(0, 10) : fallbackFindings
 </script>
 
 <Hero scan={featured} stats={stats} />
@@ -92,7 +113,19 @@
 <!-- Section 02: Ledger Table -->
 <section class="section-block reveal">
   <div class="wrap">
-    <div class="s-lbl">// 02 — DISCLOSED LEDGER</div>
+    <div class="s-lbl-header">
+      <div class="s-lbl">// 02 — DISCLOSED LEDGER</div>
+      {#if realFindings.length > 0}
+        <div class="ledger-source-pill live">
+          <span class="pill-blink">●</span>
+          <span>LIVE TELEMETRY // {realFindings.length} FINDINGS DETECTED</span>
+        </div>
+      {:else}
+        <div class="ledger-source-pill sample">
+          <span>// BENCHMARK REFERENCE SAMPLES</span>
+        </div>
+      {/if}
+    </div>
     <div class="table-container">
       <table class="ledger-table">
         <thead>
@@ -106,46 +139,26 @@
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td class="ledger-id">NX-8821</td>
-            <td class="col-vector"><code class="mono-vector">/api/v1/billing/&#123;tenant_id&#125;/invoices</code></td>
-            <td><span class="sev-critical">CRITICAL</span></td>
-            <td><span class="cvss-num">9.8</span></td>
-            <td><span class="status-pill live">LIVE 90D</span></td>
-            <td><span class="timestamp-cell">03:14:22Z</span></td>
-          </tr>
-          <tr>
-            <td class="ledger-id">NX-7914</td>
-            <td class="col-vector"><code class="mono-vector">CVE-2024-3400 GlobalProtect Command Injection</code></td>
-            <td><span class="sev-critical">CRITICAL</span></td>
-            <td><span class="cvss-num">10.0</span></td>
-            <td><span class="status-pill patched">PATCHED</span></td>
-            <td><span class="timestamp-cell">02:58:10Z</span></td>
-          </tr>
-          <tr>
-            <td class="ledger-id">NX-6102</td>
-            <td class="col-vector"><code class="mono-vector">DOM Stored XSS via window.location.hash</code></td>
-            <td><span class="sev-high">HIGH</span></td>
-            <td><span class="cvss-num">8.2</span></td>
-            <td><span class="status-pill contained">CONTAINED</span></td>
-            <td><span class="timestamp-cell">01:40:55Z</span></td>
-          </tr>
-          <tr>
-            <td class="ledger-id">NX-4419</td>
-            <td class="col-vector"><code class="mono-vector">CVE-2024-21413 MonikerLink Parsing Flaw</code></td>
-            <td><span class="sev-high">HIGH</span></td>
-            <td><span class="cvss-num">7.9</span></td>
-            <td><span class="status-pill patched">PATCHED</span></td>
-            <td><span class="timestamp-cell">00:22:18Z</span></td>
-          </tr>
-          <tr>
-            <td class="ledger-id">NX-3108</td>
-            <td class="col-vector"><code class="mono-vector">Unauthenticated Metadata /v1/system/debug</code></td>
-            <td><span class="sev-medium">MEDIUM</span></td>
-            <td><span class="cvss-num">6.5</span></td>
-            <td><span class="status-pill contained">CONTAINED</span></td>
-            <td><span class="timestamp-cell">23:09:41Z</span></td>
-          </tr>
+          {#each displayFindings as f}
+            <tr>
+              <td class="ledger-id">
+                {#if f.scan_id}
+                  <a href="#/scan/{f.scan_id}" class="ledger-link" title="Buka Detail Audit">{f.id}</a>
+                {:else}
+                  <span>{f.id}</span>
+                {/if}
+              </td>
+              <td class="col-vector"><code class="mono-vector">{f.vector}</code></td>
+              <td><span class="sev-{f.severity.toLowerCase()}">{f.severity}</span></td>
+              <td><span class="cvss-num">{f.cvss}</span></td>
+              <td>
+                <span class="status-pill {f.status.toLowerCase().includes('patch') ? 'patched' : f.status.toLowerCase().includes('live') || f.status.toLowerCase().includes('verif') ? 'live' : 'contained'}">
+                  {f.status}
+                </span>
+              </td>
+              <td><span class="timestamp-cell">{f.verified}</span></td>
+            </tr>
+          {/each}
         </tbody>
       </table>
     </div>
@@ -254,7 +267,10 @@
         <p class="empty-desc">
           Engage target perimeter via CLI <code class="inline">cyense scan website URL --i-have-permission</code> or start a new scan job below.
         </p>
-        <a class="btn-n" href="#/scans">&gt;&gt; DISPATCH FIRST TARGET SCAN</a>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <a class="btn-n" href="#/pentest">&gt;&gt; LAUNCH ADAPTIVE PENTEST</a>
+          <a class="btn-ng" href="#/scans">AUDIT SCANS &rarr;</a>
+        </div>
       </div>
     {/if}
   </div>
@@ -266,8 +282,9 @@
     <h2 class="closing-h2">
       IF YOU'RE READING THIS ON A {currentDay}, WE HAVE UNTIL {targetDay} TO COMMENCE AUDIT.
     </h2>
-    <div class="closing-btn-wrap">
-      <a href="#/scans" class="btn-n">&gt;&gt; INITIATE AUDIT RUN</a>
+    <div class="closing-btn-wrap" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+      <a href="#/pentest" class="btn-n">&gt;&gt; LAUNCH ADAPTIVE PENTEST</a>
+      <a href="#/scans" class="btn-ng">AUDIT SCANS &rarr;</a>
     </div>
   </div>
 </section>
@@ -282,6 +299,79 @@
     margin: 0 auto;
     padding: 0 24px;
     box-sizing: border-box;
+  }
+
+  .s-lbl-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .s-lbl-header .s-lbl {
+    margin-bottom: 0;
+  }
+
+  .ledger-source-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+  }
+
+  .ledger-source-pill.live {
+    background: rgba(255, 26, 60, 0.12);
+    border: 1px solid var(--red, #ff1a3c);
+    color: var(--red, #ff1a3c);
+    font-weight: 700;
+  }
+
+  .ledger-source-pill.sample {
+    background: rgba(138, 90, 100, 0.12);
+    border: 1px dashed var(--mute, #8a5a64);
+    color: var(--mute, #8a5a64);
+  }
+
+  .ledger-link {
+    color: var(--red, #ff1a3c);
+    text-decoration: none;
+    transition: color 0.2s, text-shadow 0.2s;
+  }
+
+  .ledger-link:hover {
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(255, 26, 60, 0.8);
+    text-decoration: underline;
+  }
+
+  .btn-ng {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    outline: none;
+    border: 1px solid var(--mute, #8a5a64);
+    color: var(--fg, #f5e8e8);
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    padding: 16px 28px;
+    text-decoration: none;
+    border-radius: 0;
+    cursor: pointer;
+    transition: border-color 0.25s, color 0.25s;
+  }
+
+  .btn-ng:hover {
+    border-color: var(--red, #ff1a3c);
+    color: var(--red, #ff1a3c);
+    text-decoration: none;
   }
 
   .s-lbl {
