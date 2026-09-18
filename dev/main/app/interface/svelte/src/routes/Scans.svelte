@@ -34,10 +34,17 @@
     msg = ''
     try {
       const payload = { mode, i_have_permission: true }
-      if (mode === 'full' || mode === 'pentest') {
+      if (mode === 'pentest') {
         if (!url) throw new Error('Target URL / domain wajib diisi')
         payload.target = url
         payload.url = url
+        payload.workflow = 'adaptive'
+      }
+      if (mode === 'full') {
+        if (!url) throw new Error('Target URL / domain wajib diisi')
+        payload.target = url
+        payload.url = url
+        payload.workflow = 'full'
       }
       if (mode === 'website' || mode === 'link') {
         if (!url) throw new Error('URL/domain target wajib diisi')

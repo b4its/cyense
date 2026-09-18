@@ -209,6 +209,8 @@
       <h1>Toolbench — 10 utilitas lokal</h1>
     {:else if view === 'pivot'}
       <h1>Pivot Map</h1>
+    {:else if view === 'pentest'}
+      <h1>⚡ Full Pentest Engine (684 Tools)</h1>
     {:else}
       <h1>🗂 Case File <span class="muted" style="font-size:20px">· {$caseFile.length}</span></h1>
     {/if}
@@ -231,6 +233,9 @@
         Visualisasi graf bertipe: tiap tool <code class="wf-conf">you have → you get</code>,
         dan investigasi maju dengan menyerahkan identifier yang Anda pegang ke tool berikutnya.
         Telusuri hop demi hop secara manual — inti nilai OSINT Radar.
+      {:else if view === 'pentest'}
+        Kompilasi dan orkestrasi 684 tools keamanan ofensif melintasi tahapan pengujian penetrasi.
+        Dapat dijalankan secara penuh atau melalui suite 6-tahap adaptif yang disesuaikan khusus dengan arsitektur target.
       {:else}
         Keranjang bukti ringan ala OSINT Radar: simpan tool selama menyelidiki, beri
         catatan, lalu salin atau ekspor bundel dengan hash integritas SHA-256.

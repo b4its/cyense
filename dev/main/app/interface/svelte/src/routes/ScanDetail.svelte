@@ -151,6 +151,29 @@
     URL.revokeObjectURL(url)
   }
 
+  let generatingFixes = false
+  let fixSession = null
+  let fixDiff = ''
+  let fixError = ''
+
+  async function generateRemediations() {
+    generatingFixes = true
+    fixError = ''
+    try {
+      const res = await api.proposeFixes(scanId)
+      if (res && res.session_id) {
+        fixSession = res.session_id
+        fixDiff = await api.getFixDiff(fixSession)
+      } else if (res && res.message) {
+        fixError = res.message
+      }
+    } catch (err) {
+      fixError = `Gagal membuat proposal perbaikan: ${err.message || err}`
+    } finally {
+      generatingFixes = false
+    }
+  }
+
   // Stage graph status derived from pipeline + summary progress.
   // Falls back to ADAPTIVE_PENTEST_PIPELINE, PENTEST_PIPELINE, or PIPELINE.
   $: isPentestMode = job?.mode === 'full' || job?.mode === 'pentest' || report?.mode === 'full' || ((report?.tools_receipts?.length || 0) > 0)
@@ -795,13 +818,45 @@
           <section class="block"><p class="muted">Tidak ada temuan.</p></section>
         {/if}
 
-        {#if diffFinding}
-          <section class="block" id="remediation">
-            <h2>Diff Remediasi (Contoh)</h2>
-            <p class="sub">Klik tombol untuk melihat perubahan sebelum → sesudah.</p>
-            <DiffWidget before={diffFinding.location || '---'} after={diffFinding.remediation || ''} />
-          </section>
-        {/if}
+        <section class="block" id="remediation">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+            <div>
+              <h2 style="margin:0">AST Remediasi &amp; Patches</h2>
+              <p class="sub" style="margin:4px 0 0">Proposal patch deterministik sebelum &rarr; sesudah untuk memulihkan celah keamanan terdeteksi.</p>
+            </div>
+            <button
+              class="btn-tactical export"
+              onclick={generateRemediations}
+              disabled={generatingFixes}
+            >
+              {#if generatingFixes}
+                ● MENGANALISIS AST KODE...
+              {:else}
+                &gt;&gt; {fixDiff ? 'REFRESH AST FIXES' : 'GENERATE AST REMEDIATION'}
+              {/if}
+            </button>
+          </div>
+
+          {#if fixError}
+            <p style="color:var(--err);font-family:var(--font-mono);font-size:12px">{fixError}</p>
+          {/if}
+
+          {#if fixDiff}
+            <div style="margin-top:12px">
+              <DiffWidget
+                before="// Vulnerable Source Code"
+                after={fixDiff}
+                label="UNIFIED AST PATCH PROPOSAL"
+              />
+            </div>
+          {:else if diffFinding}
+            <div style="margin-top:12px">
+              <DiffWidget before={diffFinding.location || '---'} after={diffFinding.remediation || ''} label="REMEDIATION RECIPE (FINDING)" />
+            </div>
+          {:else}
+            <p class="muted">// Klik "GENERATE AST REMEDIATION" untuk menganalisis AST dan menerbitkan proposal resep patch otomatis.</p>
+          {/if}
+        </section>
       </div>
     </div>
   </section>

@@ -59,6 +59,14 @@
     </div>
   {/if}
 
+  <!-- Technical evidence receipt -->
+  {#if f.evidence && (typeof f.evidence === 'string' ? f.evidence.trim() : Object.keys(f.evidence).length > 0)}
+    <div class="evidence-box">
+      <div class="ev-label">// TECHNICAL RECEIPT &amp; EVIDENCE:</div>
+      <pre class="ev-content">{typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2)}</pre>
+    </div>
+  {/if}
+
   <!-- Remediation fix -->
   {#if f.remediation}
     <div class="remediation-box">
@@ -272,5 +280,33 @@
     line-height: 1.6;
     color: var(--fg, #f5e8e8);
     margin: 0;
+  }
+
+  .evidence-box {
+    background: #060205;
+    border: 1px solid var(--line, rgba(255, 26, 60, 0.2));
+    padding: 10px 12px;
+    margin-top: 4px;
+    overflow-x: auto;
+  }
+
+  .ev-label {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 10px;
+    color: var(--acid, #42ff8a);
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+
+  .ev-content {
+    font-family: var(--font-mono, 'Space Mono', monospace);
+    font-size: 11px;
+    color: var(--fg, #f5e8e8);
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 240px;
+    overflow-y: auto;
   }
 </style>
